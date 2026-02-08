@@ -31,7 +31,6 @@ def:pub useTextInput() -> dict {
 
     return {
         "textInput": textInput,
-        "setTextInput": setTextInput,
         "startTextInput": startTextInput,
         "updateTextContent": updateTextContent,
         "cancelTextInput": cancelTextInput,

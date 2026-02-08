@@ -50,20 +50,15 @@ def:pub drawImageElement(ctx: any, element: dict) -> None {
         ctx.shadowOffsetX = 0;
         ctx.shadowOffsetY = 3;
         ctx.drawImage(element.imageObj, element.x, element.y, element.width, element.height);
-        ctx.shadowColor = "transparent";
-        ctx.shadowBlur = 0;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
         ctx.restore();
     }
 }
 
 def:pub drawTextElement(ctx: any, element: dict) -> None {
+    ctx.save();
     ctx.font = element.fontSize + "px " + element.fontFamily;
     ctx.fillStyle = element.color;
     ctx.textBaseline = "top";
-
-    # Subtle text shadow
     ctx.shadowColor = "rgba(0, 0, 0, 0.06)";
     ctx.shadowBlur = 2;
     ctx.shadowOffsetX = 0;
@@ -73,21 +68,16 @@ def:pub drawTextElement(ctx: any, element: dict) -> None {
     lines.forEach(lambda line: any, index: any -> None {
         ctx.fillText(line, element.x, element.y + (index * element.fontSize * 1.2));
     });
-
-    ctx.shadowColor = "transparent";
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
+    ctx.restore();
 }
 
 def:pub drawShapeElement(ctx: any, element: dict) -> None {
+    ctx.save();
     ctx.strokeStyle = element.color;
     ctx.lineWidth = element.strokeWidth;
     ctx.fillStyle = element.fillColor or "transparent";
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-
-    # Subtle shadow for modern look
     ctx.shadowColor = "rgba(0, 0, 0, 0.08)";
     ctx.shadowBlur = 4;
     ctx.shadowOffsetX = 0;
@@ -104,12 +94,7 @@ def:pub drawShapeElement(ctx: any, element: dict) -> None {
     } elif element.type == "arrow" {
         drawArrow(ctx, element);
     }
-
-    # Reset shadow
-    ctx.shadowColor = "transparent";
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
+    ctx.restore();
 }
 
 def:pub drawFreehand(ctx: any, element: dict) -> None {
@@ -323,10 +308,6 @@ def:pub drawPreview(ctx: any, tool: str, startPoint: dict, currentPoint: dict, c
     ctx.globalAlpha = 1.0;
 }
 
-def:pub clearCanvas(ctx: any, width: float, height: float) -> None {
-    ctx.clearRect(0, 0, width, height);
-}
-
 def:pub applyViewportTransform(ctx: any, zoom: float, panOffset: dict) -> None {
     ctx.translate(panOffset.x, panOffset.y);
     ctx.scale(zoom, zoom);
@@ -461,15 +442,15 @@ def:pub drawConnectionPoints(ctx: any, element: dict) -> None {
         return;
     }
     ctx.save();
+    ctx.fillStyle = "rgba(99, 102, 241, 0.3)";
+    ctx.strokeStyle = "#6366f1";
+    ctx.lineWidth = 1.5;
     i = 0;
     while i < points.length {
         cp = points[i];
         ctx.beginPath();
         ctx.arc(cp.x, cp.y, 5, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(99, 102, 241, 0.3)";
         ctx.fill();
-        ctx.strokeStyle = "#6366f1";
-        ctx.lineWidth = 1.5;
         ctx.stroke();
         i = i + 1;
     }

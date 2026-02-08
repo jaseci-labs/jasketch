@@ -1,5 +1,15 @@
 import from .canvas { drawElement, getElementBounds }
 
+def extractElements(selectedElements: list) -> list {
+    elements = [];
+    i = 0;
+    while i < selectedElements.length {
+        elements.push(selectedElements[i].element);
+        i = i + 1;
+    }
+    return elements;
+}
+
 def getSelectedElementsBounds(ctx: any, elements: list) -> dict {
     if elements.length == 0 {
         return {"x": 0, "y": 0, "width": 0, "height": 0};
@@ -29,40 +39,20 @@ def getSelectedElementsBounds(ctx: any, elements: list) -> dict {
     };
 }
 
-def:pub exportSelectionAsPNG(selectedElements: list, canvasRef: any) -> None {
-    if selectedElements.length == 0 {
-        return;
-    }
-
-    elements = [];
-    i = 0;
-    while i < selectedElements.length {
-        elements.push(selectedElements[i].element);
-        i = i + 1;
-    }
-
-    # Get bounds of selected elements
-    srcCanvas = canvasRef.current;
-    srcCtx = srcCanvas.getContext("2d");
-    bounds = getSelectedElementsBounds(srcCtx, elements);
-
+def renderToOffscreenCanvas(elements: list, bounds: dict, dpr: float) -> any {
     padding = 20;
     w = bounds.width + padding * 2;
     h = bounds.height + padding * 2;
 
-    # Create offscreen canvas
     offscreen = document.createElement("canvas");
-    dpr = window.devicePixelRatio or 1;
     offscreen.width = w * dpr;
     offscreen.height = h * dpr;
     ctx = offscreen.getContext("2d");
     ctx.scale(dpr, dpr);
 
-    # White background
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, w, h);
 
-    # Translate so elements draw at correct position
     ctx.save();
     ctx.translate(padding - bounds.x, padding - bounds.y);
     i = 0;
@@ -72,16 +62,33 @@ def:pub exportSelectionAsPNG(selectedElements: list, canvasRef: any) -> None {
     }
     ctx.restore();
 
-    # Download
+    return offscreen;
+}
+
+def downloadBlob(url: str, filename: str) -> None {
+    a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+def:pub exportSelectionAsPNG(selectedElements: list, canvasRef: any) -> None {
+    if selectedElements.length == 0 {
+        return;
+    }
+
+    elements = extractElements(selectedElements);
+    srcCtx = canvasRef.current.getContext("2d");
+    bounds = getSelectedElementsBounds(srcCtx, elements);
+    dpr = window.devicePixelRatio or 1;
+    offscreen = renderToOffscreenCanvas(elements, bounds, dpr);
+
     offscreen.toBlob(lambda blob: any -> None {
         url = URL.createObjectURL(blob);
-        a = document.createElement("a");
-        a.href = url;
-        a.download = "jasketch-export.png";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadBlob(url, "jasketch-export.png");
     });
 }
 
@@ -90,16 +97,8 @@ def:pub exportSelectionAsSVG(selectedElements: list, canvasRef: any) -> None {
         return;
     }
 
-    elements = [];
-    i = 0;
-    while i < selectedElements.length {
-        elements.push(selectedElements[i].element);
-        i = i + 1;
-    }
-
-    # Get bounds
-    srcCanvas = canvasRef.current;
-    srcCtx = srcCanvas.getContext("2d");
+    elements = extractElements(selectedElements);
+    srcCtx = canvasRef.current.getContext("2d");
     bounds = getSelectedElementsBounds(srcCtx, elements);
 
     padding = 20;
@@ -157,13 +156,7 @@ def:pub exportSelectionAsSVG(selectedElements: list, canvasRef: any) -> None {
 
     blob = Reflect.construct(Blob, [[svgContent], {"type": "image/svg+xml"}]);
     url = URL.createObjectURL(blob);
-    a = document.createElement("a");
-    a.href = url;
-    a.download = "jasketch-export.svg";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadBlob(url, "jasketch-export.svg");
 }
 
 def:pub exportSelectionAsPDF(selectedElements: list, canvasRef: any) -> None {
@@ -171,43 +164,11 @@ def:pub exportSelectionAsPDF(selectedElements: list, canvasRef: any) -> None {
         return;
     }
 
-    elements = [];
-    i = 0;
-    while i < selectedElements.length {
-        elements.push(selectedElements[i].element);
-        i = i + 1;
-    }
-
-    # Get bounds
-    srcCanvas = canvasRef.current;
-    srcCtx = srcCanvas.getContext("2d");
+    elements = extractElements(selectedElements);
+    srcCtx = canvasRef.current.getContext("2d");
     bounds = getSelectedElementsBounds(srcCtx, elements);
+    offscreen = renderToOffscreenCanvas(elements, bounds, 2);
 
-    padding = 20;
-    w = bounds.width + padding * 2;
-    h = bounds.height + padding * 2;
-
-    # Create offscreen canvas
-    offscreen = document.createElement("canvas");
-    dpr = 2;
-    offscreen.width = w * dpr;
-    offscreen.height = h * dpr;
-    ctx = offscreen.getContext("2d");
-    ctx.scale(dpr, dpr);
-
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.save();
-    ctx.translate(padding - bounds.x, padding - bounds.y);
-    i = 0;
-    while i < elements.length {
-        drawElement(ctx, elements[i]);
-        i = i + 1;
-    }
-    ctx.restore();
-
-    # Convert to PNG data URL, then open in new tab for printing/saving as PDF
     dataUrl = offscreen.toDataURL("image/png");
     printWindow = window.open("", "_blank");
     if printWindow {

@@ -1,5 +1,5 @@
 import from react { useRef, useEffect, useState }
-import from "..services.canvas" { drawElement, clearCanvas, applyViewportTransform, drawSelectionBox, drawBoxSelectionRect }
+import from "..services.canvas" { drawElement, applyViewportTransform, drawSelectionBox, drawBoxSelectionRect }
 import from "..constants.canvas" { CANVAS_DEFAULTS }
 
 def:pub useCanvas() -> dict {
@@ -25,8 +25,6 @@ def:pub useCanvas() -> dict {
         canvas.height = canvasSize.height * dpr;
         ctx.scale(dpr, dpr);
 
-        clearCanvas(ctx, canvasSize.width, canvasSize.height);
-
         ctx.save();
         applyViewportTransform(ctx, zoom, panOffset);
 
@@ -51,14 +49,6 @@ def:pub useCanvas() -> dict {
         }
 
         ctx.restore();
-    }
-
-    def getContext() -> any {
-        canvas = canvasRef.current;
-        if canvas {
-            return canvas.getContext("2d");
-        }
-        return None;
     }
 
     def initializeCanvas() -> None {
@@ -89,7 +79,6 @@ def:pub useCanvas() -> dict {
         "canvasSize": canvasSize,
         "setCanvasSize": setCanvasSize,
         "redrawCanvas": redrawCanvas,
-        "getContext": getContext,
         "initializeCanvas": initializeCanvas
     };
 }

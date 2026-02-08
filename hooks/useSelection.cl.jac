@@ -99,8 +99,6 @@ def:pub useSelection() -> dict {
             setSelectedElements(selected);
             if selected.length == 1 {
                 setSelectedElement(selected[0]);
-            } elif selected.length == 0 {
-                setSelectedElement(None);
             } else {
                 setSelectedElement(None);
             }

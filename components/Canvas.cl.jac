@@ -57,21 +57,8 @@ def:pub Canvas(props: dict) -> any {
                 selectionHook.setSelectedElements(allElements);
             }
             if not textInputHook.textInput and (e.key == "Delete" or e.key == "Backspace") {
-                if selectionHook.selectedElements.length > 0 {
-                    indices = [];
-                    i = 0;
-                    while i < selectionHook.selectedElements.length {
-                        indices.push(selectionHook.selectedElements[i].index);
-                        i = i + 1;
-                    }
-                    elementsHook.removeMultipleElements(indices);
-                    selectionHook.clearSelection();
-                    e.preventDefault();
-                } elif selectionHook.selectedElement {
-                    elementsHook.removeElement(selectionHook.selectedElement.index);
-                    selectionHook.clearSelection();
-                    e.preventDefault();
-                }
+                deleteSelected();
+                e.preventDefault();
             }
         }
 
@@ -91,26 +78,19 @@ def:pub Canvas(props: dict) -> any {
 
     useEffect(lambda -> any {
         def handlePaste(e: dict) -> None {
-            console.log("Paste event detected");
             if textInputHook.textInput {
-                console.log("Text input is active, ignoring paste");
                 return;
             }
             items = e.clipboardData.items;
-            console.log("Clipboard items:", items.length);
             i = 0;
             while i < items.length {
                 item = items[i];
-                console.log("Item type:", item.type);
                 if item.type.indexOf("image") != -1 {
-                    console.log("Image detected in clipboard");
                     blob = item.getAsFile();
                     reader = Reflect.construct(FileReader, []);
                     reader.onload = lambda event: any -> None {
-                        console.log("FileReader loaded image data");
                         img = Reflect.construct(Image, []);
                         img.onload = lambda -> None {
-                            console.log("Image loaded, dimensions:", img.width, "x", img.height);
                             newElement = {
                                 "type": "image",
                                 "x": 100,
@@ -120,7 +100,6 @@ def:pub Canvas(props: dict) -> any {
                                 "src": event.target.result
                             };
                             elementsHook.addElement(newElement);
-                            console.log("Image element added to canvas");
                         };
                         img.src = event.target.result;
                     };
@@ -212,16 +191,7 @@ def:pub Canvas(props: dict) -> any {
         }
     }
 
-    def handleContextMenu(e: dict) -> None {
-        e.preventDefault();
-        setContextMenu({
-            "x": e.clientX,
-            "y": e.clientY,
-            "hasSelection": selectionHook.selectedElement or selectionHook.selectedElements.length > 0
-        });
-    }
-
-    def handleDeleteFromMenu() -> None {
+    def deleteSelected() -> None {
         if selectionHook.selectedElements.length > 0 {
             indices = [];
             i = 0;
@@ -235,6 +205,19 @@ def:pub Canvas(props: dict) -> any {
             elementsHook.removeElement(selectionHook.selectedElement.index);
             selectionHook.clearSelection();
         }
+    }
+
+    def handleContextMenu(e: dict) -> None {
+        e.preventDefault();
+        setContextMenu({
+            "x": e.clientX,
+            "y": e.clientY,
+            "hasSelection": selectionHook.selectedElement or selectionHook.selectedElements.length > 0
+        });
+    }
+
+    def handleDeleteFromMenu() -> None {
+        deleteSelected();
         setContextMenu(None);
     }
 
