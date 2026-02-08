@@ -115,7 +115,7 @@ def:pub getResizeHandleAtPoint(point: dict, bounds: dict) -> str {
 def:pub isPointInElement(point: dict, element: dict) -> bool {
     if element.type == "text" {
         return isPointInText(point, element);
-    } elif element.type == "rectangle" {
+    } elif element.type == "rectangle" or element.type == "image" {
         return isPointInRectangle(point, element);
     } elif element.type == "circle" {
         return isPointInCircle(point, element);

@@ -8,8 +8,10 @@ import from "..hooks.useTextInput" { useTextInput }
 import from "..services.geometry" { getMousePosition, findNearestConnectionPoint }
 import from "..services.canvas" { drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
 import from "..services.collision" { getResizeHandleAtPoint }
+import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, exportSelectionAsPDF }
 import from .canvas.CanvasRenderer { CanvasRenderer }
 import from .canvas.TextInput { TextInput }
+import from .canvas.ContextMenu { ContextMenu }
 
 def:pub Canvas(props: dict) -> any {
     currentTool = props.currentTool or "freehand";
@@ -29,12 +31,11 @@ def:pub Canvas(props: dict) -> any {
     containerRef = canvasHook.containerRef;
     textInputRef = useRef(None);
     [spacePressed, setSpacePressed] = useState(False);
+    [contextMenu, setContextMenu] = useState(None);
 
     can with [elementsHook.elements, canvasHook.canvasSize, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd] entry {
         canvas = canvasRef.current;
         if canvas {
-            canvas.width = canvasHook.canvasSize.width;
-            canvas.height = canvasHook.canvasSize.height;
             canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd);
         }
     }
@@ -87,6 +88,54 @@ def:pub Canvas(props: dict) -> any {
             window.removeEventListener("keyup", handleKeyUp);
         };
     }, [selectionHook.selectedElement, selectionHook.selectedElements, textInputHook.textInput, elementsHook.elements]);
+
+    useEffect(lambda -> any {
+        def handlePaste(e: dict) -> None {
+            console.log("Paste event detected");
+            if textInputHook.textInput {
+                console.log("Text input is active, ignoring paste");
+                return;
+            }
+            items = e.clipboardData.items;
+            console.log("Clipboard items:", items.length);
+            i = 0;
+            while i < items.length {
+                item = items[i];
+                console.log("Item type:", item.type);
+                if item.type.indexOf("image") != -1 {
+                    console.log("Image detected in clipboard");
+                    blob = item.getAsFile();
+                    reader = Reflect.construct(FileReader, []);
+                    reader.onload = lambda event: any -> None {
+                        console.log("FileReader loaded image data");
+                        img = Reflect.construct(Image, []);
+                        img.onload = lambda -> None {
+                            console.log("Image loaded, dimensions:", img.width, "x", img.height);
+                            newElement = {
+                                "type": "image",
+                                "x": 100,
+                                "y": 100,
+                                "width": img.width,
+                                "height": img.height,
+                                "src": event.target.result
+                            };
+                            elementsHook.addElement(newElement);
+                            console.log("Image element added to canvas");
+                        };
+                        img.src = event.target.result;
+                    };
+                    reader.readAsDataURL(blob);
+                    e.preventDefault();
+                }
+                i = i + 1;
+            }
+        }
+
+        window.addEventListener("paste", handlePaste);
+        return lambda -> None {
+            window.removeEventListener("paste", handlePaste);
+        };
+    }, [textInputHook.textInput]);
 
     useEffect(lambda -> any {
         canvas = canvasRef.current;
@@ -163,7 +212,110 @@ def:pub Canvas(props: dict) -> any {
         }
     }
 
+    def handleContextMenu(e: dict) -> None {
+        e.preventDefault();
+        setContextMenu({
+            "x": e.clientX,
+            "y": e.clientY,
+            "hasSelection": selectionHook.selectedElement or selectionHook.selectedElements.length > 0
+        });
+    }
+
+    def handleDeleteFromMenu() -> None {
+        if selectionHook.selectedElements.length > 0 {
+            indices = [];
+            i = 0;
+            while i < selectionHook.selectedElements.length {
+                indices.push(selectionHook.selectedElements[i].index);
+                i = i + 1;
+            }
+            elementsHook.removeMultipleElements(indices);
+            selectionHook.clearSelection();
+        } elif selectionHook.selectedElement {
+            elementsHook.removeElement(selectionHook.selectedElement.index);
+            selectionHook.clearSelection();
+        }
+        setContextMenu(None);
+    }
+
+    def handleDuplicate() -> None {
+        if selectionHook.selectedElement {
+            original = selectionHook.selectedElement.element;
+            duplicate = Object.assign({}, original);
+            if original.type == "text" or original.type == "rectangle" or original.type == "circle" or original.type == "image" {
+                duplicate.x = original.x + 20;
+                duplicate.y = original.y + 20;
+            } elif original.type == "line" or original.type == "arrow" {
+                duplicate.x1 = original.x1 + 20;
+                duplicate.y1 = original.y1 + 20;
+                duplicate.x2 = original.x2 + 20;
+                duplicate.y2 = original.y2 + 20;
+            } elif original.type == "freehand" {
+                duplicate.points = original.points.map(lambda p: dict -> dict {
+                    return {"x": p.x + 20, "y": p.y + 20};
+                });
+            }
+            elementsHook.addElement(duplicate);
+        }
+        setContextMenu(None);
+    }
+
+    def handleBringToFront() -> None {
+        if selectionHook.selectedElement {
+            idx = selectionHook.selectedElement.index;
+            element = selectionHook.selectedElement.element;
+            elementsHook.removeElement(idx);
+            elementsHook.addElement(element);
+            selectionHook.clearSelection();
+        }
+        setContextMenu(None);
+    }
+
+    def handleSendToBack() -> None {
+        if selectionHook.selectedElement {
+            idx = selectionHook.selectedElement.index;
+            element = selectionHook.selectedElement.element;
+            newElements = [element].concat(elementsHook.elements.filter(lambda _: any, i: any -> bool {
+                return i != idx;
+            }));
+            elementsHook.setElements(newElements);
+            selectionHook.clearSelection();
+        }
+        setContextMenu(None);
+    }
+
+    def handleClearCanvas() -> None {
+        elementsHook.clearElements();
+        selectionHook.clearSelection();
+        setContextMenu(None);
+    }
+
+    def getExportElements() -> list {
+        if selectionHook.selectedElements.length > 0 {
+            return selectionHook.selectedElements;
+        } elif selectionHook.selectedElement {
+            return [selectionHook.selectedElement];
+        }
+        return [];
+    }
+
+    def handleExportPNG() -> None {
+        exportSelectionAsPNG(getExportElements(), canvasRef);
+        setContextMenu(None);
+    }
+
+    def handleExportSVG() -> None {
+        exportSelectionAsSVG(getExportElements(), canvasRef);
+        setContextMenu(None);
+    }
+
+    def handleExportPDF() -> None {
+        exportSelectionAsPDF(getExportElements(), canvasRef);
+        setContextMenu(None);
+    }
+
     def handleMouseDown(e: dict) -> None {
+        setContextMenu(None);
         pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
 
         if spacePressed or e.button == 1 {
@@ -265,7 +417,7 @@ def:pub Canvas(props: dict) -> any {
             deltaY = pos.y - selectionHook.dragStartPos.y;
             newElement = Object.assign({}, origEl);
 
-            if origEl.type == "rectangle" or origEl.type == "circle" {
+            if origEl.type == "rectangle" or origEl.type == "circle" or origEl.type == "image" {
                 if handle == "se" {
                     newElement.width = origEl.width + deltaX;
                     newElement.height = origEl.height + deltaY;
@@ -358,6 +510,8 @@ def:pub Canvas(props: dict) -> any {
             }
 
             elementsHook.updateElement(selectionHook.selectedElement.index, newElement);
+            # Update selection reference so selection box moves with element
+            selectionHook.setSelectedElement({"element": newElement, "index": selectionHook.selectedElement.index});
             return;
         }
 
@@ -373,7 +527,7 @@ def:pub Canvas(props: dict) -> any {
                     originalElement = selectedInfo.element;
                     newElement = Object.assign({}, originalElement);
 
-                    if originalElement.type == "text" or originalElement.type == "rectangle" or originalElement.type == "circle" {
+                    if originalElement.type == "text" or originalElement.type == "rectangle" or originalElement.type == "circle" or originalElement.type == "image" {
                         newElement.x = originalElement.x + deltaX;
                         newElement.y = originalElement.y + deltaY;
                     } elif originalElement.type == "line" or originalElement.type == "arrow" {
@@ -396,7 +550,7 @@ def:pub Canvas(props: dict) -> any {
                 element = selectionHook.selectedElement.element;
                 newElement = Object.assign({}, element);
 
-                if element.type == "text" or element.type == "rectangle" or element.type == "circle" {
+                if element.type == "text" or element.type == "rectangle" or element.type == "circle" or element.type == "image" {
                     newElement.x = pos.x - selectionHook.dragOffset.x;
                     newElement.y = pos.y - selectionHook.dragOffset.y;
                 } elif element.type == "line" or element.type == "arrow" {
@@ -415,6 +569,8 @@ def:pub Canvas(props: dict) -> any {
                 }
 
                 elementsHook.updateElement(selectionHook.selectedElement.index, newElement);
+                # Update selection reference so selection box moves with element
+                selectionHook.setSelectedElement({"element": newElement, "index": selectionHook.selectedElement.index});
                 return;
             }
         }
@@ -596,7 +752,7 @@ def:pub Canvas(props: dict) -> any {
     }
 
     return (
-        <div ref={containerRef} className="relative w-full h-full flex items-center justify-center overflow-hidden bg-white">
+        <div ref={containerRef} className="relative w-full h-full flex items-center justify-center overflow-hidden bg-white" onContextMenu={handleContextMenu}>
             <CanvasRenderer
                 canvasRef={canvasRef}
                 canvasSize={canvasHook.canvasSize}
@@ -620,6 +776,22 @@ def:pub Canvas(props: dict) -> any {
                 }}
                 onKeyDown={handleTextKeyDown}
                 onBlur={handleTextSubmit}
+            />
+
+            <ContextMenu
+                visible={contextMenu != None}
+                x={contextMenu and contextMenu.x or 0}
+                y={contextMenu and contextMenu.y or 0}
+                hasSelection={contextMenu and contextMenu.hasSelection or False}
+                onClose={lambda -> None { setContextMenu(None); }}
+                onDelete={handleDeleteFromMenu}
+                onDuplicate={handleDuplicate}
+                onBringToFront={handleBringToFront}
+                onSendToBack={handleSendToBack}
+                onClearCanvas={handleClearCanvas}
+                onExportPNG={handleExportPNG}
+                onExportSVG={handleExportSVG}
+                onExportPDF={handleExportPDF}
             />
         </div>
     );

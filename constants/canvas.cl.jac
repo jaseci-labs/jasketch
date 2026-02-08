@@ -19,6 +19,6 @@ def:pub DEFAULT_TOOL_SETTINGS() -> dict {
         "currentColor": "#1e1e1e",
         "currentStrokeWidth": 2,
         "currentFontSize": 24,
-        "currentFontFamily": "Inter"
+        "currentFontFamily": "Virgil"
     };
 }

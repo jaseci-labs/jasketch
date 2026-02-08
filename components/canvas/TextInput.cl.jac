@@ -30,6 +30,5 @@ def:pub TextInput(props: dict) -> any {
             "minHeight": "40px",
             "zIndex": "10"
         }}
-        placeholder="Type here..."
     />;
 }

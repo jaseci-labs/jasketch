@@ -1,10 +1,60 @@
 import from .geometry { calculateCircleRadius, getConnectionPoints }
 
+# Seeded random for consistent hand-drawn jitter per element
+def seedRandom(seed: float) -> float {
+    x = Math.sin(seed * 9301 + 49297) * 233280;
+    return x - Math.floor(x);
+}
+
+def jitter(seed: float, amount: float) -> float {
+    return (seedRandom(seed) - 0.5) * amount;
+}
+
+# Draw a hand-drawn line segment between two points using quadratic curves
+def sketchyLine(ctx: any, x1: float, y1: float, x2: float, y2: float, seed: float) -> None {
+    dx = x2 - x1;
+    dy = y2 - y1;
+    length = Math.sqrt(dx * dx + dy * dy);
+    wobble = Math.min(length * 0.05, 3);
+
+    # Use 2 control points for a subtle wobble
+    mx1 = x1 + dx * 0.33 + jitter(seed + 1, wobble * 2);
+    my1 = y1 + dy * 0.33 + jitter(seed + 2, wobble * 2);
+    mx2 = x1 + dx * 0.67 + jitter(seed + 3, wobble * 2);
+    my2 = y1 + dy * 0.67 + jitter(seed + 4, wobble * 2);
+
+    ctx.moveTo(x1 + jitter(seed + 5, wobble), y1 + jitter(seed + 6, wobble));
+    ctx.bezierCurveTo(mx1, my1, mx2, my2, x2 + jitter(seed + 7, wobble), y2 + jitter(seed + 8, wobble));
+}
+
 def:pub drawElement(ctx: any, element: dict) -> None {
     if element.type == "text" {
         drawTextElement(ctx, element);
+    } elif element.type == "image" {
+        drawImageElement(ctx, element);
     } else {
         drawShapeElement(ctx, element);
+    }
+}
+
+def:pub drawImageElement(ctx: any, element: dict) -> None {
+    if not element.imageObj {
+        img = Reflect.construct(Image, []);
+        img.src = element.src;
+        element.imageObj = img;
+    }
+    if element.imageObj.complete {
+        ctx.save();
+        ctx.shadowColor = "rgba(0, 0, 0, 0.1)";
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 3;
+        ctx.drawImage(element.imageObj, element.x, element.y, element.width, element.height);
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+        ctx.restore();
     }
 }
 
@@ -92,47 +142,112 @@ def:pub drawFreehand(ctx: any, element: dict) -> None {
 }
 
 def:pub drawRectangle(ctx: any, element: dict) -> None {
-    ctx.beginPath();
-    ctx.roundRect(element.x, element.y, element.width, element.height, 8);
-    ctx.stroke();
+    seed = element.x * 7 + element.y * 13 + element.width * 3 + element.height * 11;
+    x = element.x;
+    y = element.y;
+    w = element.width;
+    h = element.height;
+
+    # Draw 2 passes for a hand-drawn double-line effect
+    pass_i = 0;
+    while pass_i < 2 {
+        s = seed + pass_i * 100;
+        ctx.beginPath();
+        sketchyLine(ctx, x, y, x + w, y, s + 10);
+        sketchyLine(ctx, x + w, y, x + w, y + h, s + 20);
+        sketchyLine(ctx, x + w, y + h, x, y + h, s + 30);
+        sketchyLine(ctx, x, y + h, x, y, s + 40);
+        ctx.stroke();
+        pass_i = pass_i + 1;
+    }
+
     if element.fillColor and element.fillColor != "transparent" {
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
         ctx.fill();
     }
 }
 
 def:pub drawCircle(ctx: any, element: dict) -> None {
-    ctx.beginPath();
+    seed = element.x * 7 + element.y * 13 + element.width * 3 + element.height * 11;
+    cx = element.x + element.width / 2;
+    cy = element.y + element.height / 2;
     radius = calculateCircleRadius(element.width, element.height);
-    ctx.arc(element.x + element.width/2, element.y + element.height/2, radius, 0, 2 * Math.PI);
-    ctx.stroke();
+
+    # Draw hand-drawn circle using many small segments with jitter
+    pass_i = 0;
+    while pass_i < 2 {
+        ctx.beginPath();
+        segments = 36;
+        step = (Math.PI * 2) / segments;
+        j = 0;
+        while j <= segments {
+            angle = j * step;
+            r = radius + jitter(seed + j * 3 + pass_i * 200, radius * 0.04);
+            px = cx + r * Math.cos(angle);
+            py = cy + r * Math.sin(angle);
+            if j == 0 {
+                ctx.moveTo(px, py);
+            } else {
+                # Use control point for smooth wobble
+                prevAngle = (j - 0.5) * step;
+                cr = radius + jitter(seed + j * 3 + 1 + pass_i * 200, radius * 0.04);
+                cpx = cx + cr * Math.cos(prevAngle);
+                cpy = cy + cr * Math.sin(prevAngle);
+                ctx.quadraticCurveTo(cpx, cpy, px, py);
+            }
+            j = j + 1;
+        }
+        ctx.stroke();
+        pass_i = pass_i + 1;
+    }
+
     if element.fillColor and element.fillColor != "transparent" {
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
         ctx.fill();
     }
 }
 
 def:pub drawLine(ctx: any, element: dict) -> None {
-    ctx.beginPath();
-    ctx.moveTo(element.x1, element.y1);
-    ctx.lineTo(element.x2, element.y2);
-    ctx.stroke();
+    seed = element.x1 * 7 + element.y1 * 13 + element.x2 * 3 + element.y2 * 11;
+
+    # Draw 2 passes for hand-drawn effect
+    pass_i = 0;
+    while pass_i < 2 {
+        ctx.beginPath();
+        sketchyLine(ctx, element.x1, element.y1, element.x2, element.y2, seed + pass_i * 100);
+        ctx.stroke();
+        pass_i = pass_i + 1;
+    }
 }
 
 def:pub drawArrow(ctx: any, element: dict) -> None {
-    ctx.beginPath();
-    ctx.moveTo(element.x1, element.y1);
-    ctx.lineTo(element.x2, element.y2);
-    ctx.stroke();
+    seed = element.x1 * 7 + element.y1 * 13 + element.x2 * 3 + element.y2 * 11;
 
-    # Draw arrowhead
-    headLen = 12;
+    # Draw hand-drawn line (2 passes)
+    pass_i = 0;
+    while pass_i < 2 {
+        ctx.beginPath();
+        sketchyLine(ctx, element.x1, element.y1, element.x2, element.y2, seed + pass_i * 100);
+        ctx.stroke();
+        pass_i = pass_i + 1;
+    }
+
+    # Draw hand-drawn arrowhead
+    headLen = 14;
     angle = Math.atan2(element.y2 - element.y1, element.x2 - element.x1);
+    ax1 = element.x2 - headLen * Math.cos(angle - Math.PI / 6);
+    ay1 = element.y2 - headLen * Math.sin(angle - Math.PI / 6);
+    ax2 = element.x2 - headLen * Math.cos(angle + Math.PI / 6);
+    ay2 = element.y2 - headLen * Math.sin(angle + Math.PI / 6);
+
     ctx.beginPath();
-    ctx.moveTo(element.x2, element.y2);
-    ctx.lineTo(element.x2 - headLen * Math.cos(angle - Math.PI / 6), element.y2 - headLen * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(element.x2 - headLen * Math.cos(angle + Math.PI / 6), element.y2 - headLen * Math.sin(angle + Math.PI / 6));
-    ctx.closePath();
-    ctx.fillStyle = element.color;
-    ctx.fill();
+    sketchyLine(ctx, element.x2, element.y2, ax1, ay1, seed + 300);
+    ctx.stroke();
+    ctx.beginPath();
+    sketchyLine(ctx, element.x2, element.y2, ax2, ay2, seed + 400);
+    ctx.stroke();
 }
 
 def:pub drawPreview(ctx: any, tool: str, startPoint: dict, currentPoint: dict, color: str, strokeWidth: float) -> None {
@@ -145,36 +260,64 @@ def:pub drawPreview(ctx: any, tool: str, startPoint: dict, currentPoint: dict, c
     if tool == "rectangle" {
         w = currentPoint.x - startPoint.x;
         h = currentPoint.y - startPoint.y;
+        seed = startPoint.x * 7 + startPoint.y * 13;
         ctx.beginPath();
-        ctx.roundRect(startPoint.x, startPoint.y, w, h, 8);
+        sketchyLine(ctx, startPoint.x, startPoint.y, startPoint.x + w, startPoint.y, seed + 10);
+        sketchyLine(ctx, startPoint.x + w, startPoint.y, startPoint.x + w, startPoint.y + h, seed + 20);
+        sketchyLine(ctx, startPoint.x + w, startPoint.y + h, startPoint.x, startPoint.y + h, seed + 30);
+        sketchyLine(ctx, startPoint.x, startPoint.y + h, startPoint.x, startPoint.y, seed + 40);
         ctx.stroke();
     } elif tool == "circle" {
         w = currentPoint.x - startPoint.x;
         h = currentPoint.y - startPoint.y;
         radius = calculateCircleRadius(w, h);
+        cx = startPoint.x + w / 2;
+        cy = startPoint.y + h / 2;
+        seed = startPoint.x * 7 + startPoint.y * 13;
         ctx.beginPath();
-        ctx.arc(startPoint.x + w/2, startPoint.y + h/2, radius, 0, 2 * Math.PI);
+        segments = 36;
+        step = (Math.PI * 2) / segments;
+        j = 0;
+        while j <= segments {
+            angle = j * step;
+            r = radius + jitter(seed + j * 3, radius * 0.04);
+            px = cx + r * Math.cos(angle);
+            py = cy + r * Math.sin(angle);
+            if j == 0 {
+                ctx.moveTo(px, py);
+            } else {
+                prevAngle = (j - 0.5) * step;
+                cr = radius + jitter(seed + j * 3 + 1, radius * 0.04);
+                cpx = cx + cr * Math.cos(prevAngle);
+                cpy = cy + cr * Math.sin(prevAngle);
+                ctx.quadraticCurveTo(cpx, cpy, px, py);
+            }
+            j = j + 1;
+        }
         ctx.stroke();
     } elif tool == "line" {
+        seed = startPoint.x * 7 + startPoint.y * 13;
         ctx.beginPath();
-        ctx.moveTo(startPoint.x, startPoint.y);
-        ctx.lineTo(currentPoint.x, currentPoint.y);
+        sketchyLine(ctx, startPoint.x, startPoint.y, currentPoint.x, currentPoint.y, seed);
         ctx.stroke();
     } elif tool == "arrow" {
+        seed = startPoint.x * 7 + startPoint.y * 13;
         ctx.beginPath();
-        ctx.moveTo(startPoint.x, startPoint.y);
-        ctx.lineTo(currentPoint.x, currentPoint.y);
+        sketchyLine(ctx, startPoint.x, startPoint.y, currentPoint.x, currentPoint.y, seed);
         ctx.stroke();
         # Preview arrowhead
-        headLen = 12;
+        headLen = 14;
         angle = Math.atan2(currentPoint.y - startPoint.y, currentPoint.x - startPoint.x);
+        ax1 = currentPoint.x - headLen * Math.cos(angle - Math.PI / 6);
+        ay1 = currentPoint.y - headLen * Math.sin(angle - Math.PI / 6);
+        ax2 = currentPoint.x - headLen * Math.cos(angle + Math.PI / 6);
+        ay2 = currentPoint.y - headLen * Math.sin(angle + Math.PI / 6);
         ctx.beginPath();
-        ctx.moveTo(currentPoint.x, currentPoint.y);
-        ctx.lineTo(currentPoint.x - headLen * Math.cos(angle - Math.PI / 6), currentPoint.y - headLen * Math.sin(angle - Math.PI / 6));
-        ctx.lineTo(currentPoint.x - headLen * Math.cos(angle + Math.PI / 6), currentPoint.y - headLen * Math.sin(angle + Math.PI / 6));
-        ctx.closePath();
-        ctx.fillStyle = color;
-        ctx.fill();
+        sketchyLine(ctx, currentPoint.x, currentPoint.y, ax1, ay1, seed + 300);
+        ctx.stroke();
+        ctx.beginPath();
+        sketchyLine(ctx, currentPoint.x, currentPoint.y, ax2, ay2, seed + 400);
+        ctx.stroke();
     }
 
     ctx.globalAlpha = 1.0;
@@ -221,7 +364,7 @@ def:pub getElementBounds(ctx: any, element: dict) -> dict {
             "width": metrics.width + padding * 2,
             "height": textHeight + padding * 2
         };
-    } elif element.type == "rectangle" or element.type == "circle" {
+    } elif element.type == "rectangle" or element.type == "circle" or element.type == "image" {
         return {
             "x": element.x - padding,
             "y": element.y - padding,

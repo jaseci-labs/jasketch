@@ -10,20 +10,14 @@ def:pub CanvasRenderer(props: dict) -> any {
     onMouseUp = props.onMouseUp;
     onMouseLeave = props.onMouseLeave;
 
-    can with canvasSize entry {
-        canvas = canvasRef.current;
-        if canvas {
-            canvas.width = canvasSize.width;
-            canvas.height = canvasSize.height;
-        }
-    }
-
     return <canvas
         ref={canvasRef}
         className={"w-full h-full " + cursorClass}
         style={{
             "backgroundColor": "#ffffff",
-            "display": "block"
+            "display": "block",
+            "width": String(canvasSize.width) + "px",
+            "height": String(canvasSize.height) + "px"
         }}
         onClick={onClick}
         onDoubleClick={onDoubleClick}

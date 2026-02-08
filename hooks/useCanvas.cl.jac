@@ -18,7 +18,14 @@ def:pub useCanvas() -> dict {
         }
 
         ctx = canvas.getContext("2d");
-        clearCanvas(ctx, canvas.width, canvas.height);
+
+        # HiDPI fix: scale canvas for sharp rendering
+        dpr = window.devicePixelRatio or 1;
+        canvas.width = canvasSize.width * dpr;
+        canvas.height = canvasSize.height * dpr;
+        ctx.scale(dpr, dpr);
+
+        clearCanvas(ctx, canvasSize.width, canvasSize.height);
 
         ctx.save();
         applyViewportTransform(ctx, zoom, panOffset);

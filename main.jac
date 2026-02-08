@@ -14,7 +14,7 @@ cl {
         [currentColor, setCurrentColor] = useState("#1e1e1e");
         [currentStrokeWidth, setCurrentStrokeWidth] = useState(2);
         [currentFontSize, setCurrentFontSize] = useState(24);
-        [currentFontFamily, setCurrentFontFamily] = useState("Inter");
+        [currentFontFamily, setCurrentFontFamily] = useState("Virgil");
 
         return <div className="h-screen flex flex-col overflow-hidden bg-white">
             # Modern Header
