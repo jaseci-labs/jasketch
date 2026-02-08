@@ -1,2 +1,41 @@
-# jasketch
-jasketch — A lightweight web-based sketching and diagramming tool built on the Jaseci stack (Jaclang + Jac client), enabling real-time visual collaboration, freehand drawing, and idea mapping with backend intelligence and workflows.
+  # jasketch
+
+
+A Jac client-side application with React and TypeScript support.
+
+## Project Structure
+
+```
+jasketch/
+├── jac.toml              # Project configuration
+├── src/                  # Source files
+│   ├── app.jac           # Main application entry
+│   └── components/       # Reusable components
+│       └── Button.tsx    # Example TypeScript component
+├── assets/               # Static assets (images, fonts, etc.)
+└── build/                # Build output (generated)
+```
+
+## Getting Started
+
+Start the development server:
+
+```bash
+jac serve src/app.jac
+```
+
+## TypeScript Support
+
+Create TypeScript components in `src/components/` and import them in your Jac files:
+
+```jac
+cl import from "./components/Button.tsx" { Button }
+```
+
+## Adding Dependencies
+
+Add npm packages with the --cl flag:
+
+```bash
+jac add --cl react-router-dom
+```
