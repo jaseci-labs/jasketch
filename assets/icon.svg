@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0.3" y2="0.3">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.25)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="108" ry="108" fill="url(#bg)"/>
+  <!-- Subtle shine -->
+  <rect width="512" height="512" rx="108" ry="108" fill="url(#shine)"/>
+  <!-- Pencil body -->
+  <g transform="translate(256,256) rotate(-45) translate(-256,-256)">
+    <!-- Pencil shaft -->
+    <rect x="196" y="100" width="120" height="260" rx="6" fill="white" opacity="0.95"/>
+    <!-- Pencil stripe -->
+    <rect x="196" y="180" width="120" height="24" fill="#c4b5fd" opacity="0.7"/>
+    <rect x="196" y="220" width="120" height="24" fill="#c4b5fd" opacity="0.7"/>
+    <!-- Pencil tip (triangle) -->
+    <polygon points="196,360 316,360 256,420" fill="#fbbf24"/>
+    <!-- Pencil point -->
+    <polygon points="240,400 272,400 256,420" fill="#374151"/>
+    <!-- Eraser -->
+    <rect x="196" y="100" width="120" height="40" rx="6" fill="#f9a8d4" opacity="0.9"/>
+    <rect x="196" y="130" width="120" height="10" fill="#e5e7eb" opacity="0.5"/>
+  </g>
+  <!-- Small sketch line to suggest drawing -->
+  <path d="M340 370 Q360 340 380 355 Q400 370 420 345" stroke="white" stroke-width="8" fill="none" stroke-linecap="round" opacity="0.6"/>
+</svg>
