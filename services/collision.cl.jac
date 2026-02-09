@@ -1,4 +1,4 @@
-import from .geometry { calculateDistance, calculateCircleRadius, getTextDimensions }
+import from .geometry { calculateDistance, getTextDimensions }
 
 def:pub isPointInRectangle(point: dict, rect: dict) -> bool {
     return (
@@ -12,9 +12,27 @@ def:pub isPointInRectangle(point: dict, rect: dict) -> bool {
 def:pub isPointInCircle(point: dict, circle: dict) -> bool {
     centerX = circle.x + circle.width / 2;
     centerY = circle.y + circle.height / 2;
-    radius = calculateCircleRadius(circle.width, circle.height);
-    distance = calculateDistance(point, {"x": centerX, "y": centerY});
-    return distance <= radius;
+    rx = Math.abs(circle.width) / 2;
+    ry = Math.abs(circle.height) / 2;
+    if rx == 0 or ry == 0 {
+        return False;
+    }
+    dx = point.x - centerX;
+    dy = point.y - centerY;
+    return (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1;
+}
+
+def:pub isPointInDiamond(point: dict, diamond: dict) -> bool {
+    cx = diamond.x + diamond.width / 2;
+    cy = diamond.y + diamond.height / 2;
+    halfW = Math.abs(diamond.width) / 2;
+    halfH = Math.abs(diamond.height) / 2;
+    if halfW == 0 or halfH == 0 {
+        return False;
+    }
+    dx = Math.abs(point.x - cx) / halfW;
+    dy = Math.abs(point.y - cy) / halfH;
+    return (dx + dy) <= 1.0;
 }
 
 def:pub isPointNearLine(point: dict, line: dict, tolerance: float) -> bool {
@@ -119,6 +137,8 @@ def:pub isPointInElement(point: dict, element: dict) -> bool {
         return isPointInRectangle(point, element);
     } elif element.type == "circle" {
         return isPointInCircle(point, element);
+    } elif element.type == "diamond" {
+        return isPointInDiamond(point, element);
     } elif element.type == "line" or element.type == "arrow" {
         return isPointNearLine(point, element, 20.0);
     } elif element.type == "freehand" {

@@ -69,16 +69,103 @@ body {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Toolbar glassmorphism effect */
-.toolbar {
+/* Top bar glassmorphism */
+.topbar {
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* Sidebar glassmorphism */
+.sidebar {
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
 }
 
-/* Header glassmorphism effect */
-.header {
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
+/* Sidebar section label */
+.sidebar-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b7280;
+    display: block;
+}
+
+/* Custom range slider */
+.range-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: #e5e7eb;
+    border-radius: 2px;
+    outline: none;
+}
+
+.range-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #7c3aed;
+    border: 2px solid white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+.range-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+}
+
+.range-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #7c3aed;
+    border: 2px solid white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+}
+
+/* Custom color input */
+.color-input {
+    -webkit-appearance: none;
+    appearance: none;
+    border: none;
+    padding: 0;
+    background: none;
+}
+
+.color-input::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.color-input::-webkit-color-swatch {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+}
+
+.color-input::-moz-color-swatch {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+}
+
+/* Sidebar slide-in animation */
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.animate-slide-in {
+    animation: slideInLeft 0.2s ease-out;
 }
 
 /* Smooth transitions for interactive elements */
@@ -91,6 +178,15 @@ button, input, select, textarea {
     outline: 2px solid var(--primary-violet);
     outline-offset: 2px;
     border-radius: 8px;
+}
+
+/* Canvas text input - no border/outline, just cursor */
+.canvas-text-input,
+.canvas-text-input:focus,
+.canvas-text-input:focus-visible {
+    outline: none !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 
 /* Gradient text animation */

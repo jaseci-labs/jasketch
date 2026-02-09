@@ -20,8 +20,17 @@ def:pub calculateCircleRadius(width: float, height: float) -> float {
 }
 
 def:pub getTextDimensions(text: str, fontSize: float) -> dict {
-    textWidth = fontSize * text.length * 0.6;
-    textHeight = fontSize * 1.2;
+    lines = text.split(String.fromCharCode(10));
+    maxLen = 0;
+    i = 0;
+    while i < lines.length {
+        if lines[i].length > maxLen {
+            maxLen = lines[i].length;
+        }
+        i = i + 1;
+    }
+    textWidth = fontSize * maxLen * 0.6;
+    textHeight = lines.length * fontSize * 1.2;
     return {
         "width": textWidth,
         "height": textHeight
@@ -41,12 +50,22 @@ def:pub getConnectionPoints(element: dict) -> list {
     } elif element.type == "circle" {
         cx = element.x + element.width / 2;
         cy = element.y + element.height / 2;
-        radius = calculateCircleRadius(element.width, element.height);
+        rx = Math.abs(element.width) / 2;
+        ry = Math.abs(element.height) / 2;
         return [
-            {"x": cx, "y": cy - radius, "side": "top"},
-            {"x": cx + radius, "y": cy, "side": "right"},
-            {"x": cx, "y": cy + radius, "side": "bottom"},
-            {"x": cx - radius, "y": cy, "side": "left"}
+            {"x": cx, "y": cy - ry, "side": "top"},
+            {"x": cx + rx, "y": cy, "side": "right"},
+            {"x": cx, "y": cy + ry, "side": "bottom"},
+            {"x": cx - rx, "y": cy, "side": "left"}
+        ];
+    } elif element.type == "diamond" {
+        cx = element.x + element.width / 2;
+        cy = element.y + element.height / 2;
+        return [
+            {"x": cx, "y": element.y, "side": "top"},
+            {"x": element.x + element.width, "y": cy, "side": "right"},
+            {"x": cx, "y": element.y + element.height, "side": "bottom"},
+            {"x": element.x, "y": cy, "side": "left"}
         ];
     } elif element.type == "text" {
         dims = getTextDimensions(element.text, element.fontSize);

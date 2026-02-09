@@ -9,6 +9,7 @@ import from "..services.geometry" { getMousePosition, findNearestConnectionPoint
 import from "..services.canvas" { drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
 import from "..services.collision" { getResizeHandleAtPoint }
 import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, exportSelectionAsPDF }
+import from "..constants.tools" { TOOL_SHORTCUTS }
 import from .canvas.CanvasRenderer { CanvasRenderer }
 import from .canvas.TextInput { TextInput }
 import from .canvas.ContextMenu { ContextMenu }
@@ -19,6 +20,9 @@ def:pub Canvas(props: dict) -> any {
     currentStrokeWidth = props.currentStrokeWidth or 2;
     currentFontSize = props.currentFontSize or 24;
     currentFontFamily = props.currentFontFamily or "Virgil";
+    currentOpacity = props.currentOpacity or 1.0;
+    currentLineStyle = props.currentLineStyle or "solid";
+    currentFillColor = props.currentFillColor or "transparent";
 
     canvasHook = useCanvas();
     drawingState = useDrawingState();
@@ -37,6 +41,10 @@ def:pub Canvas(props: dict) -> any {
         canvas = canvasRef.current;
         if canvas {
             canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd);
+        }
+        # Notify parent of selection changes
+        if props.onSelectionChange {
+            props.onSelectionChange(selectionHook.selectedElement);
         }
     }
 
@@ -59,6 +67,24 @@ def:pub Canvas(props: dict) -> any {
             if not textInputHook.textInput and (e.key == "Delete" or e.key == "Backspace") {
                 deleteSelected();
                 e.preventDefault();
+            }
+            # Undo/Redo
+            if not textInputHook.textInput and (e.key == "z" or e.key == "Z") and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                if e.shiftKey {
+                    elementsHook.redo();
+                } else {
+                    elementsHook.undo();
+                }
+                selectionHook.clearSelection();
+            }
+            # Tool switching shortcuts
+            if not textInputHook.textInput and not e.ctrlKey and not e.metaKey and not e.shiftKey {
+                shortcuts = TOOL_SHORTCUTS();
+                toolForKey = shortcuts[e.key.toLowerCase()];
+                if toolForKey and props.onToolChange {
+                    props.onToolChange(toolForKey);
+                }
             }
         }
 
@@ -133,10 +159,85 @@ def:pub Canvas(props: dict) -> any {
         };
     }, [viewportHook.zoom, viewportHook.panOffset]);
 
+    # Expose internal functions via refs for cross-component communication
+    useEffect(lambda -> None {
+        if props.clearCanvasRef {
+            props.clearCanvasRef.current = lambda -> None {
+                elementsHook.clearElements();
+                selectionHook.clearSelection();
+            };
+        }
+        if props.addElementRef {
+            props.addElementRef.current = lambda element: any -> None {
+                elementsHook.addElement(element);
+            };
+        }
+        if props.updateElementRef {
+            props.updateElementRef.current = lambda index: any, changes: any -> None {
+                element = elementsHook.elements[index];
+                if element {
+                    newElement = Object.assign({}, element, changes);
+                    elementsHook.updateElement(index, newElement);
+                    selectionHook.setSelectedElement({"element": newElement, "index": index});
+                }
+            };
+        }
+    }, [elementsHook.elements]);
+
     def handleCanvasClick(e: dict) -> None {
         if currentTool == "text" {
+            # Submit any existing text first
+            if textInputHook.textInput {
+                handleTextSubmit();
+            }
             pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
-            textInputHook.startTextInput(pos.x, pos.y);
+
+            # Check if clicking on an existing text element -> edit it
+            elementInfo = selectionHook.findElementAtPoint(pos, elementsHook.elements);
+            if elementInfo and elementInfo.element.type == "text" {
+                element = elementInfo.element;
+                textInputHook.startTextInput(element.x, element.y, element.text);
+                elementsHook.removeElement(elementInfo.index);
+                selectionHook.clearSelection();
+                setTimeout(lambda -> None {
+                    if textInputRef.current {
+                        textInputRef.current.focus();
+                        textInputRef.current.select();
+                    }
+                }, 10);
+            } else {
+                # Click on empty space -> new text
+                textInputHook.startTextInput(pos.x, pos.y, "");
+                setTimeout(lambda -> None {
+                    if textInputRef.current {
+                        textInputRef.current.focus();
+                    }
+                }, 10);
+            }
+        }
+    }
+
+    def handleCanvasDoubleClick(e: dict) -> None {
+        pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
+        elementInfo = selectionHook.findElementAtPoint(pos, elementsHook.elements);
+
+        if elementInfo and elementInfo.element.type == "text" {
+            # Double-click on existing text -> edit it
+            element = elementInfo.element;
+            textInputHook.startTextInput(element.x, element.y, element.text);
+            elementsHook.removeElement(elementInfo.index);
+            selectionHook.clearSelection();
+
+            setTimeout(lambda -> None {
+                if textInputRef.current {
+                    textInputRef.current.focus();
+                    textInputRef.current.select();
+                }
+            }, 10);
+        } elif not elementInfo {
+            # Double-click on empty canvas -> start text input
+            selectionHook.clearSelection();
+            textInputHook.startTextInput(pos.x, pos.y, "");
             setTimeout(lambda -> None {
                 if textInputRef.current {
                     textInputRef.current.focus();
@@ -145,29 +246,11 @@ def:pub Canvas(props: dict) -> any {
         }
     }
 
-    def handleCanvasDoubleClick(e: dict) -> None {
-        if currentTool == "select" {
-            pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
-            elementInfo = selectionHook.findElementAtPoint(pos, elementsHook.elements);
-
-            if elementInfo and elementInfo.element.type == "text" {
-                element = elementInfo.element;
-                textInputHook.startTextInput(element.x, element.y, element.text);
-                elementsHook.removeElement(elementInfo.index);
-                selectionHook.clearSelection();
-
-                setTimeout(lambda -> None {
-                    if textInputRef.current {
-                        textInputRef.current.focus();
-                        textInputRef.current.select();
-                    }
-                }, 10);
-            }
-        }
-    }
-
     def handleTextSubmit() -> None {
-        if textInputHook.textInput and textInputHook.hasContent() {
+        if not textInputHook.textInput {
+            return;
+        }
+        if textInputHook.hasContent() {
             newElement = {
                 "type": "text",
                 "x": textInputHook.textInput.x,
@@ -175,7 +258,8 @@ def:pub Canvas(props: dict) -> any {
                 "text": textInputHook.textInput.text,
                 "color": currentColor,
                 "fontSize": currentFontSize,
-                "fontFamily": currentFontFamily
+                "fontFamily": currentFontFamily,
+                "opacity": currentOpacity
             };
             elementsHook.addElement(newElement);
         }
@@ -184,11 +268,10 @@ def:pub Canvas(props: dict) -> any {
 
     def handleTextKeyDown(e: dict) -> None {
         if e.key == "Escape" {
-            textInputHook.cancelTextInput();
-        } elif e.key == "Enter" and not e.shiftKey {
-            e.preventDefault();
             handleTextSubmit();
         }
+        # Enter adds newlines naturally (textarea default behavior)
+        # Escape finishes editing
     }
 
     def deleteSelected() -> None {
@@ -225,7 +308,7 @@ def:pub Canvas(props: dict) -> any {
         if selectionHook.selectedElement {
             original = selectionHook.selectedElement.element;
             duplicate = Object.assign({}, original);
-            if original.type == "text" or original.type == "rectangle" or original.type == "circle" or original.type == "image" {
+            if original.type == "text" or original.type == "rectangle" or original.type == "circle" or original.type == "image" or original.type == "diamond" {
                 duplicate.x = original.x + 20;
                 duplicate.y = original.y + 20;
             } elif original.type == "line" or original.type == "arrow" {
@@ -400,7 +483,7 @@ def:pub Canvas(props: dict) -> any {
             deltaY = pos.y - selectionHook.dragStartPos.y;
             newElement = Object.assign({}, origEl);
 
-            if origEl.type == "rectangle" or origEl.type == "circle" or origEl.type == "image" {
+            if origEl.type == "rectangle" or origEl.type == "circle" or origEl.type == "image" or origEl.type == "diamond" {
                 if handle == "se" {
                     newElement.width = origEl.width + deltaX;
                     newElement.height = origEl.height + deltaY;
@@ -492,8 +575,7 @@ def:pub Canvas(props: dict) -> any {
                 }
             }
 
-            elementsHook.updateElement(selectionHook.selectedElement.index, newElement);
-            # Update selection reference so selection box moves with element
+            elementsHook.updateElementSilent(selectionHook.selectedElement.index, newElement);
             selectionHook.setSelectedElement({"element": newElement, "index": selectionHook.selectedElement.index});
             return;
         }
@@ -510,7 +592,7 @@ def:pub Canvas(props: dict) -> any {
                     originalElement = selectedInfo.element;
                     newElement = Object.assign({}, originalElement);
 
-                    if originalElement.type == "text" or originalElement.type == "rectangle" or originalElement.type == "circle" or originalElement.type == "image" {
+                    if originalElement.type == "text" or originalElement.type == "rectangle" or originalElement.type == "circle" or originalElement.type == "image" or originalElement.type == "diamond" {
                         newElement.x = originalElement.x + deltaX;
                         newElement.y = originalElement.y + deltaY;
                     } elif originalElement.type == "line" or originalElement.type == "arrow" {
@@ -527,13 +609,13 @@ def:pub Canvas(props: dict) -> any {
                     updates.push({"index": selectedInfo.index, "element": newElement});
                     i = i + 1;
                 }
-                elementsHook.updateMultipleElements(updates);
+                elementsHook.updateMultipleElementsSilent(updates);
                 return;
             } elif selectionHook.selectedElement {
                 element = selectionHook.selectedElement.element;
                 newElement = Object.assign({}, element);
 
-                if element.type == "text" or element.type == "rectangle" or element.type == "circle" or element.type == "image" {
+                if element.type == "text" or element.type == "rectangle" or element.type == "circle" or element.type == "image" or element.type == "diamond" {
                     newElement.x = pos.x - selectionHook.dragOffset.x;
                     newElement.y = pos.y - selectionHook.dragOffset.y;
                 } elif element.type == "line" or element.type == "arrow" {
@@ -551,8 +633,7 @@ def:pub Canvas(props: dict) -> any {
                     });
                 }
 
-                elementsHook.updateElement(selectionHook.selectedElement.index, newElement);
-                # Update selection reference so selection box moves with element
+                elementsHook.updateElementSilent(selectionHook.selectedElement.index, newElement);
                 selectionHook.setSelectedElement({"element": newElement, "index": selectionHook.selectedElement.index});
                 return;
             }
@@ -611,7 +692,7 @@ def:pub Canvas(props: dict) -> any {
                 ei = 0;
                 while ei < elementsHook.elements.length {
                     el = elementsHook.elements[ei];
-                    if el.type == "rectangle" or el.type == "circle" or el.type == "text" {
+                    if el.type == "rectangle" or el.type == "circle" or el.type == "text" or el.type == "diamond" {
                         drawConnectionPoints(ctx, el);
                     }
                     ei = ei + 1;
@@ -632,6 +713,7 @@ def:pub Canvas(props: dict) -> any {
 
     def handleMouseUp(e: dict) -> None {
         if selectionHook.isResizing {
+            elementsHook.commitToHistory();
             selectionHook.stopResizing();
             return;
         }
@@ -641,6 +723,9 @@ def:pub Canvas(props: dict) -> any {
             return;
         }
 
+        if selectionHook.isDragging {
+            elementsHook.commitToHistory();
+        }
         selectionHook.stopDragging();
         viewportHook.stopPanning();
 
@@ -659,7 +744,9 @@ def:pub Canvas(props: dict) -> any {
                     "type": "freehand",
                     "points": drawingState.currentPath,
                     "color": currentColor,
-                    "strokeWidth": currentStrokeWidth
+                    "strokeWidth": currentStrokeWidth,
+                    "lineStyle": currentLineStyle,
+                    "opacity": currentOpacity
                 };
             }
             drawingState.setCurrentPath([]);
@@ -674,7 +761,24 @@ def:pub Canvas(props: dict) -> any {
                 "height": h,
                 "color": currentColor,
                 "strokeWidth": currentStrokeWidth,
-                "fillColor": "transparent"
+                "fillColor": currentFillColor,
+                "lineStyle": currentLineStyle,
+                "opacity": currentOpacity
+            };
+        } elif currentTool == "diamond" {
+            w = pos.x - drawingState.startPoint.x;
+            h = pos.y - drawingState.startPoint.y;
+            newElement = {
+                "type": "diamond",
+                "x": drawingState.startPoint.x,
+                "y": drawingState.startPoint.y,
+                "width": w,
+                "height": h,
+                "color": currentColor,
+                "strokeWidth": currentStrokeWidth,
+                "fillColor": currentFillColor,
+                "lineStyle": currentLineStyle,
+                "opacity": currentOpacity
             };
         } elif currentTool == "circle" {
             w = pos.x - drawingState.startPoint.x;
@@ -687,10 +791,11 @@ def:pub Canvas(props: dict) -> any {
                 "height": h,
                 "color": currentColor,
                 "strokeWidth": currentStrokeWidth,
-                "fillColor": "transparent"
+                "fillColor": currentFillColor,
+                "lineStyle": currentLineStyle,
+                "opacity": currentOpacity
             };
         } elif currentTool == "line" or currentTool == "arrow" {
-            # Snap endpoint to connection point
             endPos = pos;
             snap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
             if snap {
@@ -703,7 +808,9 @@ def:pub Canvas(props: dict) -> any {
                 "x2": endPos.x,
                 "y2": endPos.y,
                 "color": currentColor,
-                "strokeWidth": currentStrokeWidth
+                "strokeWidth": currentStrokeWidth,
+                "lineStyle": currentLineStyle,
+                "opacity": currentOpacity
             };
         }
 
@@ -754,6 +861,8 @@ def:pub Canvas(props: dict) -> any {
                 currentColor={currentColor}
                 currentFontSize={currentFontSize}
                 currentFontFamily={currentFontFamily}
+                zoom={viewportHook.zoom}
+                panOffset={viewportHook.panOffset}
                 onTextChange={lambda e: any -> None {
                     textInputHook.updateTextContent(e.target.value);
                 }}

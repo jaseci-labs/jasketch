@@ -3,11 +3,11 @@ import from react { useState }
 def:pub useTextInput() -> dict {
     [textInput, setTextInput] = useState(None);
 
-    def startTextInput(x: float, y: float, initialText: str = "") -> None {
+    def startTextInput(x: float, y: float, initialText: str) -> None {
         setTextInput({
             "x": x,
             "y": y,
-            "text": initialText
+            "text": initialText or ""
         });
     }
 
