@@ -21,8 +21,8 @@ def:pub useCanvas() -> dict {
 
         # HiDPI fix: scale canvas for sharp rendering
         dpr = window.devicePixelRatio or 1;
-        canvas.width = canvasSize.width * dpr;
-        canvas.height = canvasSize.height * dpr;
+        canvas.width = Math.round(canvasSize.width * dpr);
+        canvas.height = Math.round(canvasSize.height * dpr);
         ctx.scale(dpr, dpr);
 
         ctx.save();
@@ -55,8 +55,8 @@ def:pub useCanvas() -> dict {
         if containerRef.current {
             rect = containerRef.current.getBoundingClientRect();
             setCanvasSize({
-                "width": rect.width,
-                "height": rect.height
+                "width": Math.round(rect.width),
+                "height": Math.round(rect.height)
             });
         }
     }

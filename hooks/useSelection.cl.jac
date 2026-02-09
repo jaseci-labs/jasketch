@@ -110,7 +110,7 @@ def:pub useSelection() -> dict {
     }
 
     def isElementInBox(element: dict, minX: float, minY: float, maxX: float, maxY: float) -> bool {
-        if element.type == "text" or element.type == "rectangle" or element.type == "circle" or element.type == "image" {
+        if element.type == "text" or element.type == "rectangle" or element.type == "circle" or element.type == "diamond" or element.type == "image" {
             elemX = element.x;
             elemY = element.y;
             return elemX >= minX and elemX <= maxX and elemY >= minY and elemY <= maxY;

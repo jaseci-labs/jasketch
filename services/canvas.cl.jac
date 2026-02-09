@@ -1,4 +1,4 @@
-import from .geometry { calculateCircleRadius, getConnectionPoints }
+import from .geometry { getConnectionPoints }
 
 # Seeded random for consistent hand-drawn jitter per element
 def seedRandom(seed: float) -> float {
@@ -45,6 +45,7 @@ def:pub drawImageElement(ctx: any, element: dict) -> None {
     }
     if element.imageObj.complete {
         ctx.save();
+        ctx.globalAlpha = element.opacity or 1.0;
         ctx.shadowColor = "rgba(0, 0, 0, 0.1)";
         ctx.shadowBlur = 6;
         ctx.shadowOffsetX = 0;
@@ -56,6 +57,7 @@ def:pub drawImageElement(ctx: any, element: dict) -> None {
 
 def:pub drawTextElement(ctx: any, element: dict) -> None {
     ctx.save();
+    ctx.globalAlpha = element.opacity or 1.0;
     ctx.font = element.fontSize + "px " + element.fontFamily;
     ctx.fillStyle = element.color;
     ctx.textBaseline = "top";
@@ -64,7 +66,7 @@ def:pub drawTextElement(ctx: any, element: dict) -> None {
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 1;
 
-    lines = element.text.split("\n");
+    lines = element.text.split(String.fromCharCode(10));
     lines.forEach(lambda line: any, index: any -> None {
         ctx.fillText(line, element.x, element.y + (index * element.fontSize * 1.2));
     });
@@ -73,6 +75,7 @@ def:pub drawTextElement(ctx: any, element: dict) -> None {
 
 def:pub drawShapeElement(ctx: any, element: dict) -> None {
     ctx.save();
+    ctx.globalAlpha = element.opacity or 1.0;
     ctx.strokeStyle = element.color;
     ctx.lineWidth = element.strokeWidth;
     ctx.fillStyle = element.fillColor or "transparent";
@@ -83,12 +86,24 @@ def:pub drawShapeElement(ctx: any, element: dict) -> None {
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 2;
 
+    # Apply line style
+    lineStyle = element.lineStyle or "solid";
+    if lineStyle == "dashed" {
+        ctx.setLineDash([12, 6]);
+    } elif lineStyle == "dotted" {
+        ctx.setLineDash([3, 6]);
+    } else {
+        ctx.setLineDash([]);
+    }
+
     if element.type == "freehand" {
         drawFreehand(ctx, element);
     } elif element.type == "rectangle" {
         drawRectangle(ctx, element);
     } elif element.type == "circle" {
         drawCircle(ctx, element);
+    } elif element.type == "diamond" {
+        drawDiamond(ctx, element);
     } elif element.type == "line" {
         drawLine(ctx, element);
     } elif element.type == "arrow" {
@@ -157,9 +172,10 @@ def:pub drawCircle(ctx: any, element: dict) -> None {
     seed = element.x * 7 + element.y * 13 + element.width * 3 + element.height * 11;
     cx = element.x + element.width / 2;
     cy = element.y + element.height / 2;
-    radius = calculateCircleRadius(element.width, element.height);
+    rx = Math.abs(element.width) / 2;
+    ry = Math.abs(element.height) / 2;
 
-    # Draw hand-drawn circle using many small segments with jitter
+    # Draw hand-drawn ellipse using many small segments with jitter
     pass_i = 0;
     while pass_i < 2 {
         ctx.beginPath();
@@ -168,17 +184,18 @@ def:pub drawCircle(ctx: any, element: dict) -> None {
         j = 0;
         while j <= segments {
             angle = j * step;
-            r = radius + jitter(seed + j * 3 + pass_i * 200, radius * 0.04);
-            px = cx + r * Math.cos(angle);
-            py = cy + r * Math.sin(angle);
+            jRx = rx + jitter(seed + j * 3 + pass_i * 200, rx * 0.04);
+            jRy = ry + jitter(seed + j * 3 + 1 + pass_i * 200, ry * 0.04);
+            px = cx + jRx * Math.cos(angle);
+            py = cy + jRy * Math.sin(angle);
             if j == 0 {
                 ctx.moveTo(px, py);
             } else {
-                # Use control point for smooth wobble
                 prevAngle = (j - 0.5) * step;
-                cr = radius + jitter(seed + j * 3 + 1 + pass_i * 200, radius * 0.04);
-                cpx = cx + cr * Math.cos(prevAngle);
-                cpy = cy + cr * Math.sin(prevAngle);
+                cpJRx = rx + jitter(seed + j * 3 + 2 + pass_i * 200, rx * 0.04);
+                cpJRy = ry + jitter(seed + j * 3 + 3 + pass_i * 200, ry * 0.04);
+                cpx = cx + cpJRx * Math.cos(prevAngle);
+                cpy = cy + cpJRy * Math.sin(prevAngle);
                 ctx.quadraticCurveTo(cpx, cpy, px, py);
             }
             j = j + 1;
@@ -189,7 +206,40 @@ def:pub drawCircle(ctx: any, element: dict) -> None {
 
     if element.fillColor and element.fillColor != "transparent" {
         ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+}
+
+def:pub drawDiamond(ctx: any, element: dict) -> None {
+    seed = element.x * 7 + element.y * 13 + element.width * 3 + element.height * 11;
+    x = element.x;
+    y = element.y;
+    w = element.width;
+    h = element.height;
+    cx = x + w / 2;
+    cy = y + h / 2;
+
+    # Draw 2 passes for a hand-drawn double-line effect
+    pass_i = 0;
+    while pass_i < 2 {
+        s = seed + pass_i * 100;
+        ctx.beginPath();
+        sketchyLine(ctx, cx, y, x + w, cy, s + 10);
+        sketchyLine(ctx, x + w, cy, cx, y + h, s + 20);
+        sketchyLine(ctx, cx, y + h, x, cy, s + 30);
+        sketchyLine(ctx, x, cy, cx, y, s + 40);
+        ctx.stroke();
+        pass_i = pass_i + 1;
+    }
+
+    if element.fillColor and element.fillColor != "transparent" {
+        ctx.beginPath();
+        ctx.moveTo(cx, y);
+        ctx.lineTo(x + w, cy);
+        ctx.lineTo(cx, y + h);
+        ctx.lineTo(x, cy);
+        ctx.closePath();
         ctx.fill();
     }
 }
@@ -255,7 +305,8 @@ def:pub drawPreview(ctx: any, tool: str, startPoint: dict, currentPoint: dict, c
     } elif tool == "circle" {
         w = currentPoint.x - startPoint.x;
         h = currentPoint.y - startPoint.y;
-        radius = calculateCircleRadius(w, h);
+        rx = Math.abs(w) / 2;
+        ry = Math.abs(h) / 2;
         cx = startPoint.x + w / 2;
         cy = startPoint.y + h / 2;
         seed = startPoint.x * 7 + startPoint.y * 13;
@@ -265,20 +316,36 @@ def:pub drawPreview(ctx: any, tool: str, startPoint: dict, currentPoint: dict, c
         j = 0;
         while j <= segments {
             angle = j * step;
-            r = radius + jitter(seed + j * 3, radius * 0.04);
-            px = cx + r * Math.cos(angle);
-            py = cy + r * Math.sin(angle);
+            jRx = rx + jitter(seed + j * 3, rx * 0.04);
+            jRy = ry + jitter(seed + j * 3 + 1, ry * 0.04);
+            px = cx + jRx * Math.cos(angle);
+            py = cy + jRy * Math.sin(angle);
             if j == 0 {
                 ctx.moveTo(px, py);
             } else {
                 prevAngle = (j - 0.5) * step;
-                cr = radius + jitter(seed + j * 3 + 1, radius * 0.04);
-                cpx = cx + cr * Math.cos(prevAngle);
-                cpy = cy + cr * Math.sin(prevAngle);
+                cpJRx = rx + jitter(seed + j * 3 + 2, rx * 0.04);
+                cpJRy = ry + jitter(seed + j * 3 + 3, ry * 0.04);
+                cpx = cx + cpJRx * Math.cos(prevAngle);
+                cpy = cy + cpJRy * Math.sin(prevAngle);
                 ctx.quadraticCurveTo(cpx, cpy, px, py);
             }
             j = j + 1;
         }
+        ctx.stroke();
+    } elif tool == "diamond" {
+        w = currentPoint.x - startPoint.x;
+        h = currentPoint.y - startPoint.y;
+        x = startPoint.x;
+        y = startPoint.y;
+        cx = x + w / 2;
+        cy = y + h / 2;
+        seed = startPoint.x * 7 + startPoint.y * 13;
+        ctx.beginPath();
+        sketchyLine(ctx, cx, y, x + w, cy, seed + 10);
+        sketchyLine(ctx, x + w, cy, cx, y + h, seed + 20);
+        sketchyLine(ctx, cx, y + h, x, cy, seed + 30);
+        sketchyLine(ctx, x, cy, cx, y, seed + 40);
         ctx.stroke();
     } elif tool == "line" {
         seed = startPoint.x * 7 + startPoint.y * 13;
@@ -336,16 +403,24 @@ def:pub getElementBounds(ctx: any, element: dict) -> dict {
     padding = 5;
     if element.type == "text" {
         ctx.font = element.fontSize + "px " + element.fontFamily;
-        metrics = ctx.measureText(element.text);
-        lines = element.text.split("\n");
+        lines = element.text.split(String.fromCharCode(10));
+        maxWidth = 0;
+        li = 0;
+        while li < lines.length {
+            lineWidth = ctx.measureText(lines[li]).width;
+            if lineWidth > maxWidth {
+                maxWidth = lineWidth;
+            }
+            li = li + 1;
+        }
         textHeight = lines.length * element.fontSize * 1.2;
         return {
             "x": element.x - padding,
             "y": element.y - padding,
-            "width": metrics.width + padding * 2,
+            "width": maxWidth + padding * 2,
             "height": textHeight + padding * 2
         };
-    } elif element.type == "rectangle" or element.type == "circle" or element.type == "image" {
+    } elif element.type == "rectangle" or element.type == "circle" or element.type == "image" or element.type == "diamond" {
         return {
             "x": element.x - padding,
             "y": element.y - padding,

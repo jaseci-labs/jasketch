@@ -115,18 +115,36 @@ def:pub exportSelectionAsSVG(selectedElements: list, canvasRef: any) -> None {
     i = 0;
     while i < elements.length {
         el = elements[i];
+        # Build stroke-dasharray attribute from lineStyle
+        dashAttr = "";
+        if el.lineStyle == "dashed" {
+            dashAttr = " stroke-dasharray=\"12,6\"";
+        } elif el.lineStyle == "dotted" {
+            dashAttr = " stroke-dasharray=\"3,6\"";
+        }
+
+        fillVal = el.fillColor or "transparent";
+
         if el.type == "rectangle" {
-            svgParts.push("<rect x=\"" + String(el.x) + "\" y=\"" + String(el.y) + "\" width=\"" + String(el.width) + "\" height=\"" + String(el.height) + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" fill=\"" + (el.fillColor or "transparent") + "\" rx=\"8\"/>");
+            svgParts.push("<rect x=\"" + String(el.x) + "\" y=\"" + String(el.y) + "\" width=\"" + String(el.width) + "\" height=\"" + String(el.height) + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" fill=\"" + fillVal + "\" rx=\"8\"" + dashAttr + "/>");
+        } elif el.type == "diamond" {
+            cx = el.x + el.width / 2;
+            cy = el.y + el.height / 2;
+            top = String(cx) + "," + String(el.y);
+            right = String(el.x + el.width) + "," + String(cy);
+            bottom = String(cx) + "," + String(el.y + el.height);
+            left = String(el.x) + "," + String(cy);
+            svgParts.push("<polygon points=\"" + top + " " + right + " " + bottom + " " + left + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" fill=\"" + fillVal + "\"" + dashAttr + "/>");
         } elif el.type == "circle" {
             cx = el.x + el.width / 2;
             cy = el.y + el.height / 2;
             rx = Math.abs(el.width) / 2;
             ry = Math.abs(el.height) / 2;
-            svgParts.push("<ellipse cx=\"" + String(cx) + "\" cy=\"" + String(cy) + "\" rx=\"" + String(rx) + "\" ry=\"" + String(ry) + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" fill=\"" + (el.fillColor or "transparent") + "\"/>");
+            svgParts.push("<ellipse cx=\"" + String(cx) + "\" cy=\"" + String(cy) + "\" rx=\"" + String(rx) + "\" ry=\"" + String(ry) + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" fill=\"" + fillVal + "\"" + dashAttr + "/>");
         } elif el.type == "line" {
-            svgParts.push("<line x1=\"" + String(el.x1) + "\" y1=\"" + String(el.y1) + "\" x2=\"" + String(el.x2) + "\" y2=\"" + String(el.y2) + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" stroke-linecap=\"round\"/>");
+            svgParts.push("<line x1=\"" + String(el.x1) + "\" y1=\"" + String(el.y1) + "\" x2=\"" + String(el.x2) + "\" y2=\"" + String(el.y2) + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" stroke-linecap=\"round\"" + dashAttr + "/>");
         } elif el.type == "arrow" {
-            svgParts.push("<line x1=\"" + String(el.x1) + "\" y1=\"" + String(el.y1) + "\" x2=\"" + String(el.x2) + "\" y2=\"" + String(el.y2) + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" stroke-linecap=\"round\"/>");
+            svgParts.push("<line x1=\"" + String(el.x1) + "\" y1=\"" + String(el.y1) + "\" x2=\"" + String(el.x2) + "\" y2=\"" + String(el.y2) + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" stroke-linecap=\"round\"" + dashAttr + "/>");
             headLen = 14;
             angle = Math.atan2(el.y2 - el.y1, el.x2 - el.x1);
             ax1 = el.x2 - headLen * Math.cos(angle - Math.PI / 6);
@@ -143,7 +161,7 @@ def:pub exportSelectionAsSVG(selectedElements: list, canvasRef: any) -> None {
                 d = d + " L " + String(el.points[pi].x) + " " + String(el.points[pi].y);
                 pi = pi + 1;
             }
-            svgParts.push("<path d=\"" + d + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>");
+            svgParts.push("<path d=\"" + d + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"" + dashAttr + "/>");
         } elif el.type == "image" and el.src {
             svgParts.push("<image x=\"" + String(el.x) + "\" y=\"" + String(el.y) + "\" width=\"" + String(el.width) + "\" height=\"" + String(el.height) + "\" href=\"" + el.src + "\"/>");
         }

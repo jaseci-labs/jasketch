@@ -25,3 +25,8 @@ base_route_app = "app"
 [plugins.client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[plugins.client.app_meta_data]
+title = "JaSketch"
+icon = ".assets/icon.png"
+author = "Jaseci"
