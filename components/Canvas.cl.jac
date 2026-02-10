@@ -14,7 +14,7 @@ import from .canvas.CanvasRenderer { CanvasRenderer }
 import from .canvas.TextInput { TextInput }
 import from .canvas.ContextMenu { ContextMenu }
 
-def:pub Canvas(props: dict) -> any {
+def:pub Canvas(props: dict) -> JsxElement {
     currentTool = props.currentTool or "freehand";
     currentColor = props.currentColor or "#000000";
     currentStrokeWidth = props.currentStrokeWidth or 2;
@@ -582,8 +582,8 @@ def:pub Canvas(props: dict) -> any {
 
         if selectionHook.isDragging and currentTool == "select" {
             if selectionHook.selectedElements.length > 1 and selectionHook.dragStartPos {
-                deltaX = pos.x - selectionHook.dragStartPos.x;
-                deltaY = pos.y - selectionHook.dragStartPos.y;
+                multiDx = pos.x - selectionHook.dragStartPos.x;
+                multiDy = pos.y - selectionHook.dragStartPos.y;
 
                 updates = [];
                 i = 0;
@@ -593,16 +593,16 @@ def:pub Canvas(props: dict) -> any {
                     newElement = Object.assign({}, originalElement);
 
                     if originalElement.type == "text" or originalElement.type == "rectangle" or originalElement.type == "circle" or originalElement.type == "image" or originalElement.type == "diamond" {
-                        newElement.x = originalElement.x + deltaX;
-                        newElement.y = originalElement.y + deltaY;
+                        newElement.x = originalElement.x + multiDx;
+                        newElement.y = originalElement.y + multiDy;
                     } elif originalElement.type == "line" or originalElement.type == "arrow" {
-                        newElement.x1 = originalElement.x1 + deltaX;
-                        newElement.y1 = originalElement.y1 + deltaY;
-                        newElement.x2 = originalElement.x2 + deltaX;
-                        newElement.y2 = originalElement.y2 + deltaY;
+                        newElement.x1 = originalElement.x1 + multiDx;
+                        newElement.y1 = originalElement.y1 + multiDy;
+                        newElement.x2 = originalElement.x2 + multiDx;
+                        newElement.y2 = originalElement.y2 + multiDy;
                     } elif originalElement.type == "freehand" {
                         newElement.points = originalElement.points.map(lambda point: dict -> dict {
-                            return {"x": point.x + deltaX, "y": point.y + deltaY};
+                            return {"x": point.x + multiDx, "y": point.y + multiDy};
                         });
                     }
 
@@ -619,17 +619,17 @@ def:pub Canvas(props: dict) -> any {
                     newElement.x = pos.x - selectionHook.dragOffset.x;
                     newElement.y = pos.y - selectionHook.dragOffset.y;
                 } elif element.type == "line" or element.type == "arrow" {
-                    deltaX = pos.x - selectionHook.dragOffset.x - element.x1;
-                    deltaY = pos.y - selectionHook.dragOffset.y - element.y1;
-                    newElement.x1 = element.x1 + deltaX;
-                    newElement.y1 = element.y1 + deltaY;
-                    newElement.x2 = element.x2 + deltaX;
-                    newElement.y2 = element.y2 + deltaY;
+                    lineDx = pos.x - selectionHook.dragOffset.x - element.x1;
+                    lineDy = pos.y - selectionHook.dragOffset.y - element.y1;
+                    newElement.x1 = element.x1 + lineDx;
+                    newElement.y1 = element.y1 + lineDy;
+                    newElement.x2 = element.x2 + lineDx;
+                    newElement.y2 = element.y2 + lineDy;
                 } elif element.type == "freehand" {
-                    deltaX = pos.x - selectionHook.dragOffset.x - element.points[0].x;
-                    deltaY = pos.y - selectionHook.dragOffset.y - element.points[0].y;
+                    fhDx = pos.x - selectionHook.dragOffset.x - element.points[0].x;
+                    fhDy = pos.y - selectionHook.dragOffset.y - element.points[0].y;
                     newElement.points = element.points.map(lambda point: dict -> dict {
-                        return {"x": point.x + deltaX, "y": point.y + deltaY};
+                        return {"x": point.x + fhDx, "y": point.y + fhDy};
                     });
                 }
 
@@ -677,13 +677,13 @@ def:pub Canvas(props: dict) -> any {
 
             ctx.restore();
         } else {
-            canvas = canvasRef.current;
-            ctx = canvas.getContext("2d");
+            previewCanvas = canvasRef.current;
+            previewCtx = previewCanvas.getContext("2d");
             canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd);
 
-            ctx.save();
-            ctx.translate(viewportHook.panOffset.x, viewportHook.panOffset.y);
-            ctx.scale(viewportHook.zoom, viewportHook.zoom);
+            previewCtx.save();
+            previewCtx.translate(viewportHook.panOffset.x, viewportHook.panOffset.y);
+            previewCtx.scale(viewportHook.zoom, viewportHook.zoom);
 
             # For line/arrow, show connection points and snap endpoint
             previewEnd = pos;
@@ -693,7 +693,7 @@ def:pub Canvas(props: dict) -> any {
                 while ei < elementsHook.elements.length {
                     el = elementsHook.elements[ei];
                     if el.type == "rectangle" or el.type == "circle" or el.type == "text" or el.type == "diamond" {
-                        drawConnectionPoints(ctx, el);
+                        drawConnectionPoints(previewCtx, el);
                     }
                     ei = ei + 1;
                 }
@@ -702,12 +702,12 @@ def:pub Canvas(props: dict) -> any {
                 snap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
                 if snap {
                     previewEnd = snap.point;
-                    drawSnapIndicator(ctx, snap.point);
+                    drawSnapIndicator(previewCtx, snap.point);
                 }
             }
 
-            drawPreview(ctx, currentTool, drawingState.startPoint, previewEnd, currentColor, currentStrokeWidth);
-            ctx.restore();
+            drawPreview(previewCtx, currentTool, drawingState.startPoint, previewEnd, currentColor, currentStrokeWidth);
+            previewCtx.restore();
         }
     }
 
@@ -766,14 +766,14 @@ def:pub Canvas(props: dict) -> any {
                 "opacity": currentOpacity
             };
         } elif currentTool == "diamond" {
-            w = pos.x - drawingState.startPoint.x;
-            h = pos.y - drawingState.startPoint.y;
+            dw = pos.x - drawingState.startPoint.x;
+            dh = pos.y - drawingState.startPoint.y;
             newElement = {
                 "type": "diamond",
                 "x": drawingState.startPoint.x,
                 "y": drawingState.startPoint.y,
-                "width": w,
-                "height": h,
+                "width": dw,
+                "height": dh,
                 "color": currentColor,
                 "strokeWidth": currentStrokeWidth,
                 "fillColor": currentFillColor,
@@ -781,14 +781,14 @@ def:pub Canvas(props: dict) -> any {
                 "opacity": currentOpacity
             };
         } elif currentTool == "circle" {
-            w = pos.x - drawingState.startPoint.x;
-            h = pos.y - drawingState.startPoint.y;
+            cw = pos.x - drawingState.startPoint.x;
+            ch = pos.y - drawingState.startPoint.y;
             newElement = {
                 "type": "circle",
                 "x": drawingState.startPoint.x,
                 "y": drawingState.startPoint.y,
-                "width": w,
-                "height": h,
+                "width": cw,
+                "height": ch,
                 "color": currentColor,
                 "strokeWidth": currentStrokeWidth,
                 "fillColor": currentFillColor,

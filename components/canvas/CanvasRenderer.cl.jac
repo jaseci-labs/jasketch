@@ -1,4 +1,4 @@
-def:pub CanvasRenderer(props: dict) -> any {
+def:pub CanvasRenderer(props: dict) -> JsxElement {
     canvasRef = props.canvasRef;
     canvasSize = props.canvasSize;
     cursorClass = props.cursorClass or "cursor-crosshair";

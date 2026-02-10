@@ -1,4 +1,4 @@
-def:pub Header() -> any {
+def:pub Header(props: dict) -> JsxElement {
     return <header className="backdrop-blur-md bg-white/90 border-b border-gray-200/60 flex-shrink-0">
         <div className="px-4 py-2 flex items-center justify-between">
             <div className="flex items-center gap-3">

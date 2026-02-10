@@ -128,19 +128,19 @@ def:pub exportSelectionAsSVG(selectedElements: list, canvasRef: any) -> None {
         if el.type == "rectangle" {
             svgParts.push("<rect x=\"" + String(el.x) + "\" y=\"" + String(el.y) + "\" width=\"" + String(el.width) + "\" height=\"" + String(el.height) + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" fill=\"" + fillVal + "\" rx=\"8\"" + dashAttr + "/>");
         } elif el.type == "diamond" {
-            cx = el.x + el.width / 2;
-            cy = el.y + el.height / 2;
-            top = String(cx) + "," + String(el.y);
-            right = String(el.x + el.width) + "," + String(cy);
-            bottom = String(cx) + "," + String(el.y + el.height);
-            left = String(el.x) + "," + String(cy);
+            dCx = el.x + el.width / 2;
+            dCy = el.y + el.height / 2;
+            top = String(dCx) + "," + String(el.y);
+            right = String(el.x + el.width) + "," + String(dCy);
+            bottom = String(dCx) + "," + String(el.y + el.height);
+            left = String(el.x) + "," + String(dCy);
             svgParts.push("<polygon points=\"" + top + " " + right + " " + bottom + " " + left + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" fill=\"" + fillVal + "\"" + dashAttr + "/>");
         } elif el.type == "circle" {
-            cx = el.x + el.width / 2;
-            cy = el.y + el.height / 2;
-            rx = Math.abs(el.width) / 2;
-            ry = Math.abs(el.height) / 2;
-            svgParts.push("<ellipse cx=\"" + String(cx) + "\" cy=\"" + String(cy) + "\" rx=\"" + String(rx) + "\" ry=\"" + String(ry) + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" fill=\"" + fillVal + "\"" + dashAttr + "/>");
+            eCx = el.x + el.width / 2;
+            eCy = el.y + el.height / 2;
+            eRx = Math.abs(el.width) / 2;
+            eRy = Math.abs(el.height) / 2;
+            svgParts.push("<ellipse cx=\"" + String(eCx) + "\" cy=\"" + String(eCy) + "\" rx=\"" + String(eRx) + "\" ry=\"" + String(eRy) + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" fill=\"" + fillVal + "\"" + dashAttr + "/>");
         } elif el.type == "line" {
             svgParts.push("<line x1=\"" + String(el.x1) + "\" y1=\"" + String(el.y1) + "\" x2=\"" + String(el.x2) + "\" y2=\"" + String(el.y2) + "\" stroke=\"" + el.color + "\" stroke-width=\"" + String(el.strokeWidth) + "\" stroke-linecap=\"round\"" + dashAttr + "/>");
         } elif el.type == "arrow" {

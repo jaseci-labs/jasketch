@@ -1,4 +1,4 @@
-def:pub ContextMenu(props: dict) -> any {
+def:pub ContextMenu(props: dict) -> JsxElement {
     visible = props.visible or False;
     x = props.x or 0;
     y = props.y or 0;

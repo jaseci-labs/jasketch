@@ -1,7 +1,7 @@
 import from "..constants.colors" { PRESET_COLORS }
 import from "..constants.fonts" { FONTS, FONT_SIZES }
 
-def:pub ToolIcon(props: dict) -> any {
+def:pub ToolIcon(props: dict) -> JsxElement {
     toolId = props.toolId;
     color = props.color or "currentColor";
     size = props.size or 18;
@@ -43,7 +43,7 @@ def:pub ToolIcon(props: dict) -> any {
     return <span>{toolId}</span>;
 }
 
-def:pub Toolbar(props: dict) -> any {
+def:pub Toolbar(props: dict) -> JsxElement {
     currentTool = props.currentTool or "freehand";
     currentColor = props.currentColor or "#1e1e1e";
     currentStrokeWidth = props.currentStrokeWidth or 2;
