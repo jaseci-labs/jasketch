@@ -39,43 +39,43 @@ def:pub getTextDimensions(text: str, fontSize: float) -> dict {
 
 def:pub getConnectionPoints(element: dict) -> list {
     if element.type == "rectangle" {
-        cx = element.x + element.width / 2;
-        cy = element.y + element.height / 2;
+        rCx = element.x + element.width / 2;
+        rCy = element.y + element.height / 2;
         return [
-            {"x": cx, "y": element.y, "side": "top"},
-            {"x": element.x + element.width, "y": cy, "side": "right"},
-            {"x": cx, "y": element.y + element.height, "side": "bottom"},
-            {"x": element.x, "y": cy, "side": "left"}
+            {"x": rCx, "y": element.y, "side": "top"},
+            {"x": element.x + element.width, "y": rCy, "side": "right"},
+            {"x": rCx, "y": element.y + element.height, "side": "bottom"},
+            {"x": element.x, "y": rCy, "side": "left"}
         ];
     } elif element.type == "circle" {
-        cx = element.x + element.width / 2;
-        cy = element.y + element.height / 2;
-        rx = Math.abs(element.width) / 2;
-        ry = Math.abs(element.height) / 2;
+        eCx = element.x + element.width / 2;
+        eCy = element.y + element.height / 2;
+        eRx = Math.abs(element.width) / 2;
+        eRy = Math.abs(element.height) / 2;
         return [
-            {"x": cx, "y": cy - ry, "side": "top"},
-            {"x": cx + rx, "y": cy, "side": "right"},
-            {"x": cx, "y": cy + ry, "side": "bottom"},
-            {"x": cx - rx, "y": cy, "side": "left"}
+            {"x": eCx, "y": eCy - eRy, "side": "top"},
+            {"x": eCx + eRx, "y": eCy, "side": "right"},
+            {"x": eCx, "y": eCy + eRy, "side": "bottom"},
+            {"x": eCx - eRx, "y": eCy, "side": "left"}
         ];
     } elif element.type == "diamond" {
-        cx = element.x + element.width / 2;
-        cy = element.y + element.height / 2;
+        dCx = element.x + element.width / 2;
+        dCy = element.y + element.height / 2;
         return [
-            {"x": cx, "y": element.y, "side": "top"},
-            {"x": element.x + element.width, "y": cy, "side": "right"},
-            {"x": cx, "y": element.y + element.height, "side": "bottom"},
-            {"x": element.x, "y": cy, "side": "left"}
+            {"x": dCx, "y": element.y, "side": "top"},
+            {"x": element.x + element.width, "y": dCy, "side": "right"},
+            {"x": dCx, "y": element.y + element.height, "side": "bottom"},
+            {"x": element.x, "y": dCy, "side": "left"}
         ];
     } elif element.type == "text" {
         dims = getTextDimensions(element.text, element.fontSize);
-        cx = element.x + dims.width / 2;
-        cy = element.y + dims.height / 2;
+        tCx = element.x + dims.width / 2;
+        tCy = element.y + dims.height / 2;
         return [
-            {"x": cx, "y": element.y, "side": "top"},
-            {"x": element.x + dims.width, "y": cy, "side": "right"},
-            {"x": cx, "y": element.y + dims.height, "side": "bottom"},
-            {"x": element.x, "y": cy, "side": "left"}
+            {"x": tCx, "y": element.y, "side": "top"},
+            {"x": element.x + dims.width, "y": tCy, "side": "right"},
+            {"x": tCx, "y": element.y + dims.height, "side": "bottom"},
+            {"x": element.x, "y": tCy, "side": "left"}
         ];
     }
     return [];

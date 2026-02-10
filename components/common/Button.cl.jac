@@ -1,6 +1,6 @@
 import from react { useState, useEffect }
 
-def:pub Button(props: dict) -> any {
+def:pub Button(props: dict) -> JsxElement {
     label = props.label;
     title = props.title or label;
     variant = props.variant or "primary";

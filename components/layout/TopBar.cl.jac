@@ -1,6 +1,6 @@
 import from react { useRef }
 
-def ToolIcon(props: dict) -> any {
+def ToolIcon(props: dict) -> JsxElement {
     toolId = props.toolId;
     color = props.color or "currentColor";
     size = props.size or 18;
@@ -52,7 +52,7 @@ def ToolIcon(props: dict) -> any {
     return <span>{toolId}</span>;
 }
 
-def:pub TopBar(props: dict) -> any {
+def:pub TopBar(props: dict) -> JsxElement {
     currentTool = props.currentTool or "freehand";
     onToolChange = props.onToolChange;
     onImageLoad = props.onImageLoad;

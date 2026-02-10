@@ -1,4 +1,4 @@
-def:pub TextInput(props: dict) -> any {
+def:pub TextInput(props: dict) -> JsxElement {
     textInput = props.textInput;
     textInputRef = props.textInputRef;
     currentColor = props.currentColor or "#000000";

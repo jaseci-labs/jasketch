@@ -293,69 +293,69 @@ def:pub drawPreview(ctx: any, tool: str, startPoint: dict, currentPoint: dict, c
     ctx.globalAlpha = 0.6;
 
     if tool == "rectangle" {
-        w = currentPoint.x - startPoint.x;
-        h = currentPoint.y - startPoint.y;
-        seed = startPoint.x * 7 + startPoint.y * 13;
+        rw = currentPoint.x - startPoint.x;
+        rh = currentPoint.y - startPoint.y;
+        rSeed = startPoint.x * 7 + startPoint.y * 13;
         ctx.beginPath();
-        sketchyLine(ctx, startPoint.x, startPoint.y, startPoint.x + w, startPoint.y, seed + 10);
-        sketchyLine(ctx, startPoint.x + w, startPoint.y, startPoint.x + w, startPoint.y + h, seed + 20);
-        sketchyLine(ctx, startPoint.x + w, startPoint.y + h, startPoint.x, startPoint.y + h, seed + 30);
-        sketchyLine(ctx, startPoint.x, startPoint.y + h, startPoint.x, startPoint.y, seed + 40);
+        sketchyLine(ctx, startPoint.x, startPoint.y, startPoint.x + rw, startPoint.y, rSeed + 10);
+        sketchyLine(ctx, startPoint.x + rw, startPoint.y, startPoint.x + rw, startPoint.y + rh, rSeed + 20);
+        sketchyLine(ctx, startPoint.x + rw, startPoint.y + rh, startPoint.x, startPoint.y + rh, rSeed + 30);
+        sketchyLine(ctx, startPoint.x, startPoint.y + rh, startPoint.x, startPoint.y, rSeed + 40);
         ctx.stroke();
     } elif tool == "circle" {
-        w = currentPoint.x - startPoint.x;
-        h = currentPoint.y - startPoint.y;
-        rx = Math.abs(w) / 2;
-        ry = Math.abs(h) / 2;
-        cx = startPoint.x + w / 2;
-        cy = startPoint.y + h / 2;
-        seed = startPoint.x * 7 + startPoint.y * 13;
+        ew = currentPoint.x - startPoint.x;
+        eh = currentPoint.y - startPoint.y;
+        eRx = Math.abs(ew) / 2;
+        eRy = Math.abs(eh) / 2;
+        eCx = startPoint.x + ew / 2;
+        eCy = startPoint.y + eh / 2;
+        eSeed = startPoint.x * 7 + startPoint.y * 13;
         ctx.beginPath();
         segments = 36;
         step = (Math.PI * 2) / segments;
         j = 0;
         while j <= segments {
             angle = j * step;
-            jRx = rx + jitter(seed + j * 3, rx * 0.04);
-            jRy = ry + jitter(seed + j * 3 + 1, ry * 0.04);
-            px = cx + jRx * Math.cos(angle);
-            py = cy + jRy * Math.sin(angle);
+            jRx = eRx + jitter(eSeed + j * 3, eRx * 0.04);
+            jRy = eRy + jitter(eSeed + j * 3 + 1, eRy * 0.04);
+            px = eCx + jRx * Math.cos(angle);
+            py = eCy + jRy * Math.sin(angle);
             if j == 0 {
                 ctx.moveTo(px, py);
             } else {
                 prevAngle = (j - 0.5) * step;
-                cpJRx = rx + jitter(seed + j * 3 + 2, rx * 0.04);
-                cpJRy = ry + jitter(seed + j * 3 + 3, ry * 0.04);
-                cpx = cx + cpJRx * Math.cos(prevAngle);
-                cpy = cy + cpJRy * Math.sin(prevAngle);
+                cpJRx = eRx + jitter(eSeed + j * 3 + 2, eRx * 0.04);
+                cpJRy = eRy + jitter(eSeed + j * 3 + 3, eRy * 0.04);
+                cpx = eCx + cpJRx * Math.cos(prevAngle);
+                cpy = eCy + cpJRy * Math.sin(prevAngle);
                 ctx.quadraticCurveTo(cpx, cpy, px, py);
             }
             j = j + 1;
         }
         ctx.stroke();
     } elif tool == "diamond" {
-        w = currentPoint.x - startPoint.x;
-        h = currentPoint.y - startPoint.y;
-        x = startPoint.x;
-        y = startPoint.y;
-        cx = x + w / 2;
-        cy = y + h / 2;
-        seed = startPoint.x * 7 + startPoint.y * 13;
+        diamW = currentPoint.x - startPoint.x;
+        diamH = currentPoint.y - startPoint.y;
+        diamX = startPoint.x;
+        diamY = startPoint.y;
+        diamCx = diamX + diamW / 2;
+        diamCy = diamY + diamH / 2;
+        diamSeed = startPoint.x * 7 + startPoint.y * 13;
         ctx.beginPath();
-        sketchyLine(ctx, cx, y, x + w, cy, seed + 10);
-        sketchyLine(ctx, x + w, cy, cx, y + h, seed + 20);
-        sketchyLine(ctx, cx, y + h, x, cy, seed + 30);
-        sketchyLine(ctx, x, cy, cx, y, seed + 40);
+        sketchyLine(ctx, diamCx, diamY, diamX + diamW, diamCy, diamSeed + 10);
+        sketchyLine(ctx, diamX + diamW, diamCy, diamCx, diamY + diamH, diamSeed + 20);
+        sketchyLine(ctx, diamCx, diamY + diamH, diamX, diamCy, diamSeed + 30);
+        sketchyLine(ctx, diamX, diamCy, diamCx, diamY, diamSeed + 40);
         ctx.stroke();
     } elif tool == "line" {
-        seed = startPoint.x * 7 + startPoint.y * 13;
+        lineSeed = startPoint.x * 7 + startPoint.y * 13;
         ctx.beginPath();
-        sketchyLine(ctx, startPoint.x, startPoint.y, currentPoint.x, currentPoint.y, seed);
+        sketchyLine(ctx, startPoint.x, startPoint.y, currentPoint.x, currentPoint.y, lineSeed);
         ctx.stroke();
     } elif tool == "arrow" {
-        seed = startPoint.x * 7 + startPoint.y * 13;
+        arrowSeed = startPoint.x * 7 + startPoint.y * 13;
         ctx.beginPath();
-        sketchyLine(ctx, startPoint.x, startPoint.y, currentPoint.x, currentPoint.y, seed);
+        sketchyLine(ctx, startPoint.x, startPoint.y, currentPoint.x, currentPoint.y, arrowSeed);
         ctx.stroke();
         # Preview arrowhead
         headLen = 14;
@@ -365,10 +365,10 @@ def:pub drawPreview(ctx: any, tool: str, startPoint: dict, currentPoint: dict, c
         ax2 = currentPoint.x - headLen * Math.cos(angle + Math.PI / 6);
         ay2 = currentPoint.y - headLen * Math.sin(angle + Math.PI / 6);
         ctx.beginPath();
-        sketchyLine(ctx, currentPoint.x, currentPoint.y, ax1, ay1, seed + 300);
+        sketchyLine(ctx, currentPoint.x, currentPoint.y, ax1, ay1, arrowSeed + 300);
         ctx.stroke();
         ctx.beginPath();
-        sketchyLine(ctx, currentPoint.x, currentPoint.y, ax2, ay2, seed + 400);
+        sketchyLine(ctx, currentPoint.x, currentPoint.y, ax2, ay2, arrowSeed + 400);
         ctx.stroke();
     }
 
@@ -428,43 +428,43 @@ def:pub getElementBounds(ctx: any, element: dict) -> dict {
             "height": element.height + padding * 2
         };
     } elif element.type == "line" or element.type == "arrow" {
-        minX = Math.min(element.x1, element.x2);
-        minY = Math.min(element.y1, element.y2);
-        maxX = Math.max(element.x1, element.x2);
-        maxY = Math.max(element.y1, element.y2);
+        lMinX = Math.min(element.x1, element.x2);
+        lMinY = Math.min(element.y1, element.y2);
+        lMaxX = Math.max(element.x1, element.x2);
+        lMaxY = Math.max(element.y1, element.y2);
         return {
-            "x": minX - padding,
-            "y": minY - padding,
-            "width": (maxX - minX) + padding * 2,
-            "height": (maxY - minY) + padding * 2
+            "x": lMinX - padding,
+            "y": lMinY - padding,
+            "width": (lMaxX - lMinX) + padding * 2,
+            "height": (lMaxY - lMinY) + padding * 2
         };
     } elif element.type == "freehand" {
         if element.points.length > 0 {
-            minX = element.points[0].x;
-            minY = element.points[0].y;
-            maxX = element.points[0].x;
-            maxY = element.points[0].y;
+            fMinX = element.points[0].x;
+            fMinY = element.points[0].y;
+            fMaxX = element.points[0].x;
+            fMaxY = element.points[0].y;
 
             element.points.forEach(lambda point: dict -> None {
-                if point.x < minX {
-                    minX = point.x;
+                if point.x < fMinX {
+                    fMinX = point.x;
                 }
-                if point.y < minY {
-                    minY = point.y;
+                if point.y < fMinY {
+                    fMinY = point.y;
                 }
-                if point.x > maxX {
-                    maxX = point.x;
+                if point.x > fMaxX {
+                    fMaxX = point.x;
                 }
-                if point.y > maxY {
-                    maxY = point.y;
+                if point.y > fMaxY {
+                    fMaxY = point.y;
                 }
             });
 
             return {
-                "x": minX - padding,
-                "y": minY - padding,
-                "width": (maxX - minX) + padding * 2,
-                "height": (maxY - minY) + padding * 2
+                "x": fMinX - padding,
+                "y": fMinY - padding,
+                "width": (fMaxX - fMinX) + padding * 2,
+                "height": (fMaxY - fMinY) + padding * 2
             };
         }
     }

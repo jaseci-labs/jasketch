@@ -8,7 +8,7 @@ cl {
     import from .components.Canvas { Canvas }
     import ".styles.css";
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         # Drawing tool state
         [currentTool, setCurrentTool] = useState("freehand");
         [currentColor, setCurrentColor] = useState("#1971c2");
