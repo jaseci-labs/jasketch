@@ -81,7 +81,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             # Tool switching shortcuts
             if not textInputHook.textInput and not e.ctrlKey and not e.metaKey and not e.shiftKey {
                 shortcuts = TOOL_SHORTCUTS();
-                toolForKey = shortcuts[e.key.toLowerCase()];
+                toolForKey = shortcuts[e.key];
                 if toolForKey and props.onToolChange {
                     props.onToolChange(toolForKey);
                 }
@@ -745,7 +745,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                     "points": drawingState.currentPath,
                     "color": currentColor,
                     "strokeWidth": currentStrokeWidth,
-                    "lineStyle": currentLineStyle,
+                    "lineStyle": "solid",
                     "opacity": currentOpacity
                 };
             }

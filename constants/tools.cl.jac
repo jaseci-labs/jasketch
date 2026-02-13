@@ -13,14 +13,14 @@ def:pub TOOLS() -> list {
 
 def:pub TOOL_SHORTCUTS() -> dict {
     return {
-        "v": "select",
-        "p": "freehand",
-        "l": "line",
-        "a": "arrow",
-        "r": "rectangle",
-        "d": "diamond",
-        "o": "circle",
-        "t": "text"
+        "1": "select",
+        "2": "freehand",
+        "3": "line",
+        "4": "arrow",
+        "5": "rectangle",
+        "6": "diamond",
+        "7": "circle",
+        "8": "text"
     };
 }
 

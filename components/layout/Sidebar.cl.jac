@@ -91,7 +91,9 @@ def:pub Sidebar(props: dict) -> JsxElement {
             showColor = True;
             showStroke = True;
             showOpacity = True;
-            showLineStyle = True;
+            if currentTool != "freehand" {
+                showLineStyle = True;
+            }
             if currentTool == "rectangle" or currentTool == "circle" or currentTool == "diamond" {
                 showFillColor = True;
             }

@@ -60,15 +60,26 @@ def:pub TopBar(props: dict) -> JsxElement {
 
     toolIds = ["select", "freehand", "line", "arrow", "rectangle", "diamond", "circle", "text", "image"];
     toolLabels = {
-        "select": "Select (V)",
-        "freehand": "Pencil (P)",
-        "line": "Line (L)",
-        "arrow": "Arrow (A)",
-        "rectangle": "Rectangle (R)",
-        "diamond": "Diamond (D)",
-        "circle": "Ellipse (O)",
-        "text": "Text (T)",
+        "select": "Select",
+        "freehand": "Pencil",
+        "line": "Line",
+        "arrow": "Arrow",
+        "rectangle": "Rectangle",
+        "diamond": "Diamond",
+        "circle": "Ellipse",
+        "text": "Text",
         "image": "Image"
+    };
+    toolShortcuts = {
+        "select": "1",
+        "freehand": "2",
+        "line": "3",
+        "arrow": "4",
+        "rectangle": "5",
+        "diamond": "6",
+        "circle": "7",
+        "text": "8",
+        "image": ""
     };
 
     def handleToolClick(toolId: str) -> None {
@@ -106,7 +117,7 @@ def:pub TopBar(props: dict) -> JsxElement {
     }
 
     return <header className="topbar bg-white/90 border-b border-gray-200/60 flex-shrink-0">
-        <div className="h-12 px-4 flex items-center justify-between">
+        <div className="h-14 px-4 flex items-center justify-between">
             # Logo
             <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-sm overflow-hidden">
@@ -129,13 +140,15 @@ def:pub TopBar(props: dict) -> JsxElement {
             <div className="flex items-center gap-0.5 bg-gray-50 rounded-xl px-1.5 py-1 border border-gray-200/60">
                 {toolIds.map(lambda toolId: any -> any {
                     isActive = currentTool == toolId and toolId != "image";
+                    shortcut = toolShortcuts[toolId];
                     return <button
                         key={toolId}
                         onClick={lambda -> None { handleToolClick(toolId); }}
-                        title={toolLabels[toolId]}
-                        className={"w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 " + (isActive and "bg-white text-violet-700 shadow-sm ring-1 ring-violet-200" or "text-gray-400 hover:bg-white/80 hover:text-gray-600")}
+                        title={toolLabels[toolId] + (shortcut and (" (" + shortcut + ")") or "")}
+                        className={"w-9 h-11 rounded-lg flex flex-col items-center justify-center gap-0 transition-all duration-150 " + (isActive and "bg-white text-violet-700 shadow-sm ring-1 ring-violet-200" or "text-gray-400 hover:bg-white/80 hover:text-gray-600")}
                     >
-                        <ToolIcon toolId={toolId} size={18} color={isActive and "#7c3aed" or "currentColor"} />
+                        <ToolIcon toolId={toolId} size={16} color={isActive and "#7c3aed" or "currentColor"} />
+                        {shortcut and <span className={"text-[9px] leading-none font-medium mt-0.5 " + (isActive and "text-violet-500" or "text-gray-300")}>{shortcut}</span> or None}
                     </button>;
                 })}
             </div>
