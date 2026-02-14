@@ -20,7 +20,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Jac packages from PyPI
-RUN pip install --no-cache-dir jaclang==0.10.0 jac-client==0.2.16
+RUN pip install --no-cache-dir jaclang==0.10.1 jac-client==0.2.17 jac-scale==0.1.8
 
 # Install Bun (required for jac client-side dependencies)
 RUN curl -fsSL https://bun.sh/install | bash && \
@@ -52,4 +52,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/ || exit 1
 
 # Run the application
-CMD ["jac", "start"]
+CMD ["jac", "start", "--client", "pwa"]
