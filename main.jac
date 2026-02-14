@@ -88,6 +88,13 @@ cl {
                         onToolChange={lambda tool: any -> None { setCurrentTool(tool); }}
                     />
                 </div>
+
+                # Powered by badge
+                <div className="absolute bottom-3 right-4 z-10 pointer-events-none">
+                    <span className="text-xs tracking-wide text-gray-400 font-semibold">
+                        {"Powered by Jaseci"}
+                    </span>
+                </div>
             </div>
         </div>;
     }
