@@ -27,6 +27,7 @@ def:pub useSelection() -> dict {
 
     def startDragging(elementInfo: dict, mousePos: dict) -> None {
         setSelectedElement(elementInfo);
+        setSelectedElements([]);
         setIsDragging(True);
         setDragStartPos(mousePos);
 
@@ -69,6 +70,25 @@ def:pub useSelection() -> dict {
         stopResizing();
     }
 
+    def addToSelection(elementInfo: dict) -> None {
+        newList = selectedElements.slice();
+        newList.push(elementInfo);
+        setSelectedElements(newList);
+        setSelectedElement(None);
+    }
+
+    def removeFromSelection(index: int) -> None {
+        newList = selectedElements.filter(lambda sel: dict -> bool {
+            return sel.index != index;
+        });
+        setSelectedElements(newList);
+        if newList.length == 1 {
+            setSelectedElement(newList[0]);
+        } elif newList.length == 0 {
+            setSelectedElement(None);
+        }
+    }
+
     def startBoxSelection(point: dict) -> None {
         setIsBoxSelecting(True);
         setBoxStart(point);
@@ -109,25 +129,38 @@ def:pub useSelection() -> dict {
         setBoxEnd(None);
     }
 
-    def isElementInBox(element: dict, minX: float, minY: float, maxX: float, maxY: float) -> bool {
+    def isElementInBox(element: dict, boxMinX: float, boxMinY: float, boxMaxX: float, boxMaxY: float) -> bool {
+        # Check if element's bounding box overlaps with selection box
         if element.type == "text" or element.type == "rectangle" or element.type == "circle" or element.type == "diamond" or element.type == "image" {
-            elemX = element.x;
-            elemY = element.y;
-            return elemX >= minX and elemX <= maxX and elemY >= minY and elemY <= maxY;
+            shL = Math.min(element.x, element.x + (element.width or 0));
+            shR = Math.max(element.x, element.x + (element.width or 0));
+            shT = Math.min(element.y, element.y + (element.height or 0));
+            shB = Math.max(element.y, element.y + (element.height or 0));
+            return shL <= boxMaxX and shR >= boxMinX and shT <= boxMaxY and shB >= boxMinY;
         } elif element.type == "line" or element.type == "arrow" {
-            x1InBox = element.x1 >= minX and element.x1 <= maxX and element.y1 >= minY and element.y1 <= maxY;
-            x2InBox = element.x2 >= minX and element.x2 <= maxX and element.y2 >= minY and element.y2 <= maxY;
-            return x1InBox or x2InBox;
+            lnL = Math.min(element.x1, element.x2);
+            lnR = Math.max(element.x1, element.x2);
+            lnT = Math.min(element.y1, element.y2);
+            lnB = Math.max(element.y1, element.y2);
+            return lnL <= boxMaxX and lnR >= boxMinX and lnT <= boxMaxY and lnB >= boxMinY;
         } elif element.type == "freehand" {
-            i = 0;
-            while i < element.points.length {
-                point = element.points[i];
-                if point.x >= minX and point.x <= maxX and point.y >= minY and point.y <= maxY {
-                    return True;
-                }
-                i = i + 1;
+            if not element.points or element.points.length == 0 {
+                return False;
             }
-            return False;
+            fhL = element.points[0].x;
+            fhR = element.points[0].x;
+            fhT = element.points[0].y;
+            fhB = element.points[0].y;
+            fi = 1;
+            while fi < element.points.length {
+                pt = element.points[fi];
+                if pt.x < fhL { fhL = pt.x; }
+                if pt.x > fhR { fhR = pt.x; }
+                if pt.y < fhT { fhT = pt.y; }
+                if pt.y > fhB { fhB = pt.y; }
+                fi = fi + 1;
+            }
+            return fhL <= boxMaxX and fhR >= boxMinX and fhT <= boxMaxY and fhB >= boxMinY;
         }
         return False;
     }
@@ -156,6 +189,8 @@ def:pub useSelection() -> dict {
         "stopDragging": stopDragging,
         "stopResizing": stopResizing,
         "clearSelection": clearSelection,
+        "addToSelection": addToSelection,
+        "removeFromSelection": removeFromSelection,
         "startBoxSelection": startBoxSelection,
         "updateBoxSelection": updateBoxSelection,
         "finishBoxSelection": finishBoxSelection

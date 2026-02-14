@@ -67,7 +67,9 @@ def:pub Sidebar(props: dict) -> JsxElement {
             showColor = True;
             showStroke = True;
             showOpacity = True;
-            showLineStyle = True;
+            if elType != "freehand" {
+                showLineStyle = True;
+            }
             activeColor = sel.color;
             activeStrokeWidth = sel.strokeWidth;
             activeOpacity = sel.opacity or 1.0;

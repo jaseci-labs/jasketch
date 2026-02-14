@@ -36,6 +36,14 @@ def:pub Canvas(props: dict) -> JsxElement {
     textInputRef = useRef(None);
     [spacePressed, setSpacePressed] = useState(False);
     [contextMenu, setContextMenu] = useState(None);
+    clipboardRef = useRef([]);
+    selectedElementRef = useRef(None);
+    selectedElementsRef = useRef([]);
+    altDragCopiedRef = useRef(False);
+
+    # Keep refs in sync with selection state
+    selectedElementRef.current = selectionHook.selectedElement;
+    selectedElementsRef.current = selectionHook.selectedElements;
 
     can with [elementsHook.elements, canvasHook.canvasSize, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd] entry {
         canvas = canvasRef.current;
@@ -78,6 +86,65 @@ def:pub Canvas(props: dict) -> JsxElement {
                 }
                 selectionHook.clearSelection();
             }
+            # Copy (use refs for always-current selection state)
+            if not textInputHook.textInput and (e.key == "c" or e.key == "C") and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                curMulti = selectedElementsRef.current;
+                curSingle = selectedElementRef.current;
+                if curMulti and curMulti.length > 0 {
+                    copied = [];
+                    ci = 0;
+                    while ci < curMulti.length {
+                        copied.push(Object.assign({}, curMulti[ci].element));
+                        ci = ci + 1;
+                    }
+                    clipboardRef.current = copied;
+                } elif curSingle and curSingle.element {
+                    clipboardRef.current = [Object.assign({}, curSingle.element)];
+                }
+            }
+            # Paste
+            if not textInputHook.textInput and (e.key == "v" or e.key == "V") and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                if clipboardRef.current.length > 0 {
+                    newElements = [];
+                    pi = 0;
+                    while pi < clipboardRef.current.length {
+                        original = clipboardRef.current[pi];
+                        newEl = Object.assign({}, original);
+                        if newEl.type == "text" or newEl.type == "rectangle" or newEl.type == "circle" or newEl.type == "image" or newEl.type == "diamond" {
+                            newEl.x = original.x + 20;
+                            newEl.y = original.y + 20;
+                        } elif newEl.type == "line" or newEl.type == "arrow" {
+                            newEl.x1 = original.x1 + 20;
+                            newEl.y1 = original.y1 + 20;
+                            newEl.x2 = original.x2 + 20;
+                            newEl.y2 = original.y2 + 20;
+                        } elif newEl.type == "freehand" {
+                            newEl.points = original.points.map(lambda pt: dict -> dict {
+                                return {"x": pt.x + 20, "y": pt.y + 20};
+                            });
+                        }
+                        newElements.push(newEl);
+                        pi = pi + 1;
+                    }
+                    baseIndex = elementsHook.elements.length;
+                    elementsHook.addMultipleElements(newElements);
+                    # Auto-select pasted elements
+                    pastedSelection = [];
+                    psi = 0;
+                    while psi < newElements.length {
+                        pastedSelection.push({"element": newElements[psi], "index": baseIndex + psi});
+                        psi = psi + 1;
+                    }
+                    selectionHook.setSelectedElements(pastedSelection);
+                    if pastedSelection.length == 1 {
+                        selectionHook.setSelectedElement(pastedSelection[0]);
+                    } else {
+                        selectionHook.setSelectedElement(None);
+                    }
+                }
+            }
             # Tool switching shortcuts
             if not textInputHook.textInput and not e.ctrlKey and not e.metaKey and not e.shiftKey {
                 shortcuts = TOOL_SHORTCUTS();
@@ -100,7 +167,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             window.removeEventListener("keydown", handleKeyDown);
             window.removeEventListener("keyup", handleKeyUp);
         };
-    }, [selectionHook.selectedElement, selectionHook.selectedElements, textInputHook.textInput, elementsHook.elements]);
+    }, [textInputHook.textInput, elementsHook.elements]);
 
     useEffect(lambda -> any {
         def handlePaste(e: dict) -> None {
@@ -275,17 +342,19 @@ def:pub Canvas(props: dict) -> JsxElement {
     }
 
     def deleteSelected() -> None {
-        if selectionHook.selectedElements.length > 0 {
-            indices = [];
-            i = 0;
-            while i < selectionHook.selectedElements.length {
-                indices.push(selectionHook.selectedElements[i].index);
-                i = i + 1;
+        curMulti = selectedElementsRef.current;
+        curSingle = selectedElementRef.current;
+        if curMulti and curMulti.length > 0 {
+            delIndices = [];
+            di = 0;
+            while di < curMulti.length {
+                delIndices.push(curMulti[di].index);
+                di = di + 1;
             }
-            elementsHook.removeMultipleElements(indices);
+            elementsHook.removeMultipleElements(delIndices);
             selectionHook.clearSelection();
-        } elif selectionHook.selectedElement {
-            elementsHook.removeElement(selectionHook.selectedElement.index);
+        } elif curSingle {
+            elementsHook.removeElement(curSingle.index);
             selectionHook.clearSelection();
         }
     }
@@ -304,24 +373,47 @@ def:pub Canvas(props: dict) -> JsxElement {
         setContextMenu(None);
     }
 
+    def offsetElement(original: dict, dx: float, dy: float) -> dict {
+        dup = Object.assign({}, original);
+        if original.type == "text" or original.type == "rectangle" or original.type == "circle" or original.type == "image" or original.type == "diamond" {
+            dup.x = original.x + dx;
+            dup.y = original.y + dy;
+        } elif original.type == "line" or original.type == "arrow" {
+            dup.x1 = original.x1 + dx;
+            dup.y1 = original.y1 + dy;
+            dup.x2 = original.x2 + dx;
+            dup.y2 = original.y2 + dy;
+        } elif original.type == "freehand" {
+            dup.points = original.points.map(lambda p: dict -> dict {
+                return {"x": p.x + dx, "y": p.y + dy};
+            });
+        }
+        return dup;
+    }
+
     def handleDuplicate() -> None {
-        if selectionHook.selectedElement {
-            original = selectionHook.selectedElement.element;
-            duplicate = Object.assign({}, original);
-            if original.type == "text" or original.type == "rectangle" or original.type == "circle" or original.type == "image" or original.type == "diamond" {
-                duplicate.x = original.x + 20;
-                duplicate.y = original.y + 20;
-            } elif original.type == "line" or original.type == "arrow" {
-                duplicate.x1 = original.x1 + 20;
-                duplicate.y1 = original.y1 + 20;
-                duplicate.x2 = original.x2 + 20;
-                duplicate.y2 = original.y2 + 20;
-            } elif original.type == "freehand" {
-                duplicate.points = original.points.map(lambda p: dict -> dict {
-                    return {"x": p.x + 20, "y": p.y + 20};
-                });
+        curMultiDup = selectedElementsRef.current;
+        curSingleDup = selectedElementRef.current;
+        if curMultiDup and curMultiDup.length > 0 {
+            dups = [];
+            ddi = 0;
+            while ddi < curMultiDup.length {
+                dups.push(offsetElement(curMultiDup[ddi].element, 20, 20));
+                ddi = ddi + 1;
             }
-            elementsHook.addElement(duplicate);
+            dupBase = elementsHook.elements.length;
+            elementsHook.addMultipleElements(dups);
+            dupSel = [];
+            dsi = 0;
+            while dsi < dups.length {
+                dupSel.push({"element": dups[dsi], "index": dupBase + dsi});
+                dsi = dsi + 1;
+            }
+            selectionHook.setSelectedElements(dupSel);
+            selectionHook.setSelectedElement(None);
+        } elif curSingleDup and curSingleDup.element {
+            singleDup = offsetElement(curSingleDup.element, 20, 20);
+            elementsHook.addElement(singleDup);
         }
         setContextMenu(None);
     }
@@ -416,22 +508,53 @@ def:pub Canvas(props: dict) -> JsxElement {
 
             elementInfo = selectionHook.findElementAtPoint(pos, elementsHook.elements);
             if elementInfo {
-                isInSelection = False;
-                if selectionHook.selectedElements.length > 0 {
-                    i = 0;
-                    while i < selectionHook.selectedElements.length {
-                        if selectionHook.selectedElements[i].index == elementInfo.index {
-                            isInSelection = True;
-                        }
-                        i = i + 1;
-                    }
-                }
+                altDragCopiedRef.current = False;
 
-                if isInSelection {
-                    selectionHook.setIsDragging(True);
-                    selectionHook.setDragStartPos(pos);
+                if e.shiftKey {
+                    # Shift+Click: toggle element in multi-selection
+                    isAlreadySelected = False;
+                    si = 0;
+                    while si < selectionHook.selectedElements.length {
+                        if selectionHook.selectedElements[si].index == elementInfo.index {
+                            isAlreadySelected = True;
+                        }
+                        si = si + 1;
+                    }
+
+                    if isAlreadySelected {
+                        selectionHook.removeFromSelection(elementInfo.index);
+                    } else {
+                        # Build the full list in one go to avoid stale state
+                        newMulti = selectionHook.selectedElements.slice();
+                        # If there's a single selectedElement not yet in the list, include it
+                        if selectionHook.selectedElement and newMulti.length == 0 {
+                            newMulti.push(selectionHook.selectedElement);
+                        }
+                        newMulti.push(elementInfo);
+                        selectionHook.setSelectedElements(newMulti);
+                        selectionHook.setSelectedElement(None);
+                    }
                 } else {
-                    selectionHook.startDragging(elementInfo, pos);
+                    # Normal click (no Shift)
+                    isInMulti = False;
+                    if selectionHook.selectedElements.length > 0 {
+                        mi = 0;
+                        while mi < selectionHook.selectedElements.length {
+                            if selectionHook.selectedElements[mi].index == elementInfo.index {
+                                isInMulti = True;
+                            }
+                            mi = mi + 1;
+                        }
+                    }
+
+                    if isInMulti {
+                        # Clicking on element already in multi-selection: start group drag
+                        selectionHook.setIsDragging(True);
+                        selectionHook.setDragStartPos(pos);
+                    } else {
+                        # Clicking on new element: single-select it
+                        selectionHook.startDragging(elementInfo, pos);
+                    }
                 }
             } else {
                 selectionHook.clearSelection();
@@ -581,6 +704,39 @@ def:pub Canvas(props: dict) -> JsxElement {
         }
 
         if selectionHook.isDragging and currentTool == "select" {
+            # Alt+Drag to duplicate: clone originals in place, then drag copies
+            if e.altKey and not altDragCopiedRef.current {
+                if selectionHook.selectedElements.length > 1 {
+                    clones = [];
+                    aci = 0;
+                    while aci < selectionHook.selectedElements.length {
+                        clones.push(Object.assign({}, selectionHook.selectedElements[aci].element));
+                        aci = aci + 1;
+                    }
+                    altBase = elementsHook.elements.length;
+                    elementsHook.addMultipleElements(clones);
+                    # Point selection to the new copies (at end of array)
+                    newSel = [];
+                    nsi = 0;
+                    while nsi < clones.length {
+                        newSel.push({"element": clones[nsi], "index": altBase + nsi});
+                        nsi = nsi + 1;
+                    }
+                    selectionHook.setSelectedElements(newSel);
+                    selectionHook.setDragStartPos(pos);
+                    altDragCopiedRef.current = True;
+                    return;
+                } elif selectionHook.selectedElement {
+                    singleClone = Object.assign({}, selectionHook.selectedElement.element);
+                    altSingleBase = elementsHook.elements.length;
+                    elementsHook.addElement(singleClone);
+                    selectionHook.setSelectedElement({"element": singleClone, "index": altSingleBase});
+                    selectionHook.setSelectedElements([]);
+                    altDragCopiedRef.current = True;
+                    return;
+                }
+            }
+
             if selectionHook.selectedElements.length > 1 and selectionHook.dragStartPos {
                 multiDx = pos.x - selectionHook.dragStartPos.x;
                 multiDy = pos.y - selectionHook.dragStartPos.y;
@@ -650,6 +806,10 @@ def:pub Canvas(props: dict) -> JsxElement {
             canvas = canvasRef.current;
             ctx = canvas.getContext("2d");
 
+            # Redraw everything first (clears canvas)
+            canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd);
+
+            # Draw the in-progress freehand path on top
             ctx.save();
             ctx.translate(viewportHook.panOffset.x, viewportHook.panOffset.y);
             ctx.scale(viewportHook.zoom, viewportHook.zoom);
@@ -658,21 +818,22 @@ def:pub Canvas(props: dict) -> JsxElement {
             ctx.lineWidth = currentStrokeWidth;
             ctx.lineCap = "round";
             ctx.lineJoin = "round";
+            ctx.setLineDash([]);
             ctx.beginPath();
 
-            pathLen = drawingState.currentPath.length;
-            if pathLen >= 2 {
-                prev = drawingState.currentPath[pathLen - 2];
-                last = drawingState.currentPath[pathLen - 1];
-                midX = (last.x + pos.x) / 2;
-                midY = (last.y + pos.y) / 2;
-                ctx.moveTo(last.x, last.y);
-                ctx.quadraticCurveTo(last.x, last.y, midX, midY);
+            if newPath.length >= 2 {
+                ctx.moveTo(newPath[0].x, newPath[0].y);
+                fpi = 1;
+                while fpi < newPath.length {
+                    fpMidX = (newPath[fpi - 1].x + newPath[fpi].x) / 2;
+                    fpMidY = (newPath[fpi - 1].y + newPath[fpi].y) / 2;
+                    ctx.quadraticCurveTo(newPath[fpi - 1].x, newPath[fpi - 1].y, fpMidX, fpMidY);
+                    fpi = fpi + 1;
+                }
                 ctx.stroke();
-            } elif pathLen == 1 {
-                ctx.moveTo(drawingState.currentPath[0].x, drawingState.currentPath[0].y);
-                ctx.lineTo(pos.x, pos.y);
-                ctx.stroke();
+            } elif newPath.length == 1 {
+                ctx.arc(newPath[0].x, newPath[0].y, currentStrokeWidth / 2, 0, Math.PI * 2);
+                ctx.fill();
             }
 
             ctx.restore();

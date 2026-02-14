@@ -27,6 +27,11 @@ def:pub useElements() -> dict {
         setElements(newElements);
     }
 
+    def addMultipleElements(newItems: list) -> None {
+        newElements = elements.concat(newItems);
+        setElements(newElements);
+    }
+
     def updateElement(index: int, newElement: dict) -> None {
         newElements = elements.slice();
         newElements[index] = newElement;
@@ -111,6 +116,7 @@ def:pub useElements() -> dict {
         "elements": elements,
         "setElements": setElements,
         "addElement": addElement,
+        "addMultipleElements": addMultipleElements,
         "updateElement": updateElement,
         "updateElementSilent": updateElementSilent,
         "updateMultipleElements": updateMultipleElements,
