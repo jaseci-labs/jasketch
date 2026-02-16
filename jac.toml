@@ -30,3 +30,11 @@ lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 title = "JaSketch"
 icon = ".assets/icon.png"
 author = "Jaseci"
+
+[plugins.client.pwa]
+theme_color = "#000000"
+background_color = "#ffffff"
+# cache_name = "jac-pwa-cache-v1"
+# [plugins.client.pwa.manifest]
+# name = "My App"
+# short_name = "App"
