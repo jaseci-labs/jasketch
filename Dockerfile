@@ -31,6 +31,7 @@ RUN curl -fsSL https://bun.sh/install | bash && \
 COPY . /app
 
 # Install client-side npm dependencies and project dependencies
+RUN jac clean --all --force
 RUN jac add --npm && jac install
 
 # Set environment variables
