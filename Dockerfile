@@ -33,7 +33,7 @@ COPY . /app
 # Install client-side npm dependencies and project dependencies
 RUN jac clean --all --force
 RUN jac add --npm && jac install
-
+RUN jac setup pwa
 # Set environment variables
 ENV PORT=8000 \
     HOST=0.0.0.0 \
