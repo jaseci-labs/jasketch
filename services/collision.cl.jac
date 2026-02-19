@@ -36,6 +36,20 @@ def:pub isPointInDiamond(point: dict, diamond: dict) -> bool {
 }
 
 def:pub isPointNearLine(point: dict, line: dict, tolerance: float) -> bool {
+    if line.bendX != None and line.bendX != undefined {
+        t = 0;
+        while t <= 1.0 {
+            bx = (1 - t) * (1 - t) * line.x1 + 2 * (1 - t) * t * line.bendX + t * t * line.x2;
+            by = (1 - t) * (1 - t) * line.y1 + 2 * (1 - t) * t * line.bendY + t * t * line.y2;
+            dist = Math.sqrt((point.x - bx) * (point.x - bx) + (point.y - by) * (point.y - by));
+            if dist <= tolerance {
+                return True;
+            }
+            t = t + 0.05;
+        }
+        return False;
+    }
+
     dist1 = calculateDistance(point, {"x": line.x1, "y": line.y1});
     dist2 = calculateDistance(point, {"x": line.x2, "y": line.y2});
 
@@ -50,6 +64,23 @@ def:pub isPointNearLine(point: dict, line: dict, tolerance: float) -> bool {
     }
 
     return False;
+}
+
+def:pub getBendHandleAtPoint(point: dict, element: dict) -> bool {
+    if element.type != "line" and element.type != "arrow" {
+        return False;
+    }
+    handleX = 0;
+    handleY = 0;
+    if element.bendX != None and element.bendX != undefined {
+        handleX = element.bendX;
+        handleY = element.bendY;
+    } else {
+        handleX = (element.x1 + element.x2) / 2;
+        handleY = (element.y1 + element.y2) / 2;
+    }
+    dist = Math.sqrt((point.x - handleX) * (point.x - handleX) + (point.y - handleY) * (point.y - handleY));
+    return dist <= 8;
 }
 
 def:pub isPointInText(point: dict, textElement: dict) -> bool {

@@ -11,6 +11,10 @@ def:pub ContextMenu(props: dict) -> JsxElement {
     onExportPNG = props.onExportPNG;
     onExportSVG = props.onExportSVG;
     onExportPDF = props.onExportPDF;
+    onPaste = props.onPaste;
+    onCopyCanvasPNG = props.onCopyCanvasPNG;
+    onCopyCanvasSVG = props.onCopyCanvasSVG;
+    onSelectAll = props.onSelectAll;
     hasSelection = props.hasSelection or False;
 
     if not visible {
@@ -75,13 +79,44 @@ def:pub ContextMenu(props: dict) -> JsxElement {
                 <span>Export as PDF</span>
             </button>
             <div className="h-px bg-gray-200 my-1"></div>
+            <button
+                onClick={onClearCanvas}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+            >
+                <span>🗑️</span>
+                <span>Clear Canvas</span>
+            </button>
         </div> or None}
-        <button
-            onClick={onClearCanvas}
-            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
-        >
-            <span>🗑️</span>
-            <span>Clear Canvas</span>
-        </button>
+        {not hasSelection and <div>
+            <button
+                onClick={onPaste}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
+            >
+                <span>Paste</span>
+                <span className="text-xs text-gray-400">Ctrl+V</span>
+            </button>
+            <div className="h-px bg-gray-200 my-1"></div>
+            <button
+                onClick={onCopyCanvasPNG}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
+            >
+                <span>Copy to clipboard as PNG</span>
+                <span className="text-xs text-gray-400">Shift+Alt+C</span>
+            </button>
+            <button
+                onClick={onCopyCanvasSVG}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
+            >
+                <span>Copy to clipboard as SVG</span>
+            </button>
+            <div className="h-px bg-gray-200 my-1"></div>
+            <button
+                onClick={onSelectAll}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
+            >
+                <span>Select all</span>
+                <span className="text-xs text-gray-400">Ctrl+A</span>
+            </button>
+        </div> or None}
     </div>;
 }

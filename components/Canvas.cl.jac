@@ -7,8 +7,8 @@ import from "..hooks.useViewport" { useViewport }
 import from "..hooks.useTextInput" { useTextInput }
 import from "..services.geometry" { getMousePosition, findNearestConnectionPoint }
 import from "..services.canvas" { drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
-import from "..services.collision" { getResizeHandleAtPoint }
-import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, exportSelectionAsPDF }
+import from "..services.collision" { getResizeHandleAtPoint, getBendHandleAtPoint }
+import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, exportSelectionAsPDF, copyCanvasAsPNG, copyCanvasAsSVG }
 import from "..constants.tools" { TOOL_SHORTCUTS }
 import from .canvas.CanvasRenderer { CanvasRenderer }
 import from .canvas.TextInput { TextInput }
@@ -36,16 +36,21 @@ def:pub Canvas(props: dict) -> JsxElement {
     textInputRef = useRef(None);
     [spacePressed, setSpacePressed] = useState(False);
     [contextMenu, setContextMenu] = useState(None);
+    [toastMessage, setToastMessage] = useState(None);
     clipboardRef = useRef([]);
     selectedElementRef = useRef(None);
     selectedElementsRef = useRef([]);
     altDragCopiedRef = useRef(False);
+    drawingStateRef = useRef(drawingState);
+    [isDraggingBend, setIsDraggingBend] = useState(False);
+    [bendDragElement, setBendDragElement] = useState(None);
 
     # Keep refs in sync with selection state
     selectedElementRef.current = selectionHook.selectedElement;
     selectedElementsRef.current = selectionHook.selectedElements;
+    drawingStateRef.current = drawingState;
 
-    can with [elementsHook.elements, canvasHook.canvasSize, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd] entry {
+    can with [elementsHook.elements, canvasHook.canvasSize, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, drawingState.isDrawing] entry {
         canvas = canvasRef.current;
         if canvas {
             canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd);
@@ -72,6 +77,12 @@ def:pub Canvas(props: dict) -> JsxElement {
                 }
                 selectionHook.setSelectedElements(allElements);
             }
+            if not textInputHook.textInput and e.key == "Escape" {
+                if drawingStateRef.current.isDrawing {
+                    drawingStateRef.current.setIsDrawing(False);
+                    drawingStateRef.current.setStartPoint(None);
+                }
+            }
             if not textInputHook.textInput and (e.key == "Delete" or e.key == "Backspace") {
                 deleteSelected();
                 e.preventDefault();
@@ -86,8 +97,17 @@ def:pub Canvas(props: dict) -> JsxElement {
                 }
                 selectionHook.clearSelection();
             }
-            # Copy (use refs for always-current selection state)
-            if not textInputHook.textInput and (e.key == "c" or e.key == "C") and (e.ctrlKey or e.metaKey) {
+            if not textInputHook.textInput and (e.key == "y" or e.key == "Y") and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                elementsHook.redo();
+                selectionHook.clearSelection();
+            }
+            if not textInputHook.textInput and (e.key == "c" or e.key == "C") and e.shiftKey and e.altKey {
+                e.preventDefault();
+                copyCanvasAsPNG(elementsHook.elements, canvasRef, lambda -> None {
+                    showToast("Copied as PNG");
+                });
+            } elif not textInputHook.textInput and (e.key == "c" or e.key == "C") and (e.ctrlKey or e.metaKey) {
                 e.preventDefault();
                 curMulti = selectedElementsRef.current;
                 curSingle = selectedElementRef.current;
@@ -103,50 +123,44 @@ def:pub Canvas(props: dict) -> JsxElement {
                     clipboardRef.current = [Object.assign({}, curSingle.element)];
                 }
             }
-            # Paste
             if not textInputHook.textInput and (e.key == "v" or e.key == "V") and (e.ctrlKey or e.metaKey) {
                 e.preventDefault();
-                if clipboardRef.current.length > 0 {
-                    newElements = [];
-                    pi = 0;
-                    while pi < clipboardRef.current.length {
-                        original = clipboardRef.current[pi];
-                        newEl = Object.assign({}, original);
-                        if newEl.type == "text" or newEl.type == "rectangle" or newEl.type == "circle" or newEl.type == "image" or newEl.type == "diamond" {
-                            newEl.x = original.x + 20;
-                            newEl.y = original.y + 20;
-                        } elif newEl.type == "line" or newEl.type == "arrow" {
-                            newEl.x1 = original.x1 + 20;
-                            newEl.y1 = original.y1 + 20;
-                            newEl.x2 = original.x2 + 20;
-                            newEl.y2 = original.y2 + 20;
-                        } elif newEl.type == "freehand" {
-                            newEl.points = original.points.map(lambda pt: dict -> dict {
-                                return {"x": pt.x + 20, "y": pt.y + 20};
-                            });
-                        }
-                        newElements.push(newEl);
-                        pi = pi + 1;
-                    }
-                    baseIndex = elementsHook.elements.length;
-                    elementsHook.addMultipleElements(newElements);
-                    # Auto-select pasted elements
-                    pastedSelection = [];
-                    psi = 0;
-                    while psi < newElements.length {
-                        pastedSelection.push({"element": newElements[psi], "index": baseIndex + psi});
-                        psi = psi + 1;
-                    }
-                    selectionHook.setSelectedElements(pastedSelection);
-                    if pastedSelection.length == 1 {
-                        selectionHook.setSelectedElement(pastedSelection[0]);
-                    } else {
-                        selectionHook.setSelectedElement(None);
-                    }
+                pasteFromSystemClipboard();
+            }
+            if not textInputHook.textInput and (e.key == "d" or e.key == "D") and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                handleDuplicate();
+            }
+            if not textInputHook.textInput and e.key == "]" and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                handleBringToFront();
+            }
+            if not textInputHook.textInput and e.key == "[" and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                handleSendToBack();
+            }
+            if not textInputHook.textInput and (e.key == "=" or e.key == "+") and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                canvas = canvasRef.current;
+                if canvas {
+                    rect = canvas.getBoundingClientRect();
+                    viewportHook.handleZoom(-1, rect.left + rect.width / 2, rect.top + rect.height / 2, canvas);
                 }
             }
-            # Tool switching shortcuts
-            if not textInputHook.textInput and not e.ctrlKey and not e.metaKey and not e.shiftKey {
+            if not textInputHook.textInput and e.key == "-" and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                canvas = canvasRef.current;
+                if canvas {
+                    rect = canvas.getBoundingClientRect();
+                    viewportHook.handleZoom(1, rect.left + rect.width / 2, rect.top + rect.height / 2, canvas);
+                }
+            }
+            if not textInputHook.textInput and e.key == "0" and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                viewportHook.setZoom(1);
+                viewportHook.setPanOffset({"x": 0, "y": 0});
+            }
+            if not textInputHook.textInput and not e.ctrlKey and not e.metaKey and not e.shiftKey and not e.altKey {
                 shortcuts = TOOL_SHORTCUTS();
                 toolForKey = shortcuts[e.key];
                 if toolForKey and props.onToolChange {
@@ -168,46 +182,6 @@ def:pub Canvas(props: dict) -> JsxElement {
             window.removeEventListener("keyup", handleKeyUp);
         };
     }, [textInputHook.textInput, elementsHook.elements]);
-
-    useEffect(lambda -> any {
-        def handlePaste(e: dict) -> None {
-            if textInputHook.textInput {
-                return;
-            }
-            items = e.clipboardData.items;
-            i = 0;
-            while i < items.length {
-                item = items[i];
-                if item.type.indexOf("image") != -1 {
-                    blob = item.getAsFile();
-                    reader = Reflect.construct(FileReader, []);
-                    reader.onload = lambda event: any -> None {
-                        img = Reflect.construct(Image, []);
-                        img.onload = lambda -> None {
-                            newElement = {
-                                "type": "image",
-                                "x": 100,
-                                "y": 100,
-                                "width": img.width,
-                                "height": img.height,
-                                "src": event.target.result
-                            };
-                            elementsHook.addElement(newElement);
-                        };
-                        img.src = event.target.result;
-                    };
-                    reader.readAsDataURL(blob);
-                    e.preventDefault();
-                }
-                i = i + 1;
-            }
-        }
-
-        window.addEventListener("paste", handlePaste);
-        return lambda -> None {
-            window.removeEventListener("paste", handlePaste);
-        };
-    }, [textInputHook.textInput]);
 
     useEffect(lambda -> any {
         canvas = canvasRef.current;
@@ -383,6 +357,10 @@ def:pub Canvas(props: dict) -> JsxElement {
             dup.y1 = original.y1 + dy;
             dup.x2 = original.x2 + dx;
             dup.y2 = original.y2 + dy;
+            if original.bendX != None and original.bendX != undefined {
+                dup.bendX = original.bendX + dx;
+                dup.bendY = original.bendY + dy;
+            }
         } elif original.type == "freehand" {
             dup.points = original.points.map(lambda p: dict -> dict {
                 return {"x": p.x + dx, "y": p.y + dy};
@@ -472,6 +450,166 @@ def:pub Canvas(props: dict) -> JsxElement {
         setContextMenu(None);
     }
 
+    def pasteInternalClipboard() -> None {
+        if clipboardRef.current.length > 0 {
+            newElements = [];
+            pi = 0;
+            while pi < clipboardRef.current.length {
+                original = clipboardRef.current[pi];
+                newEl = Object.assign({}, original);
+                if newEl.type == "text" or newEl.type == "rectangle" or newEl.type == "circle" or newEl.type == "image" or newEl.type == "diamond" {
+                    newEl.x = original.x + 20;
+                    newEl.y = original.y + 20;
+                } elif newEl.type == "line" or newEl.type == "arrow" {
+                    newEl.x1 = original.x1 + 20;
+                    newEl.y1 = original.y1 + 20;
+                    newEl.x2 = original.x2 + 20;
+                    newEl.y2 = original.y2 + 20;
+                    if original.bendX != None and original.bendX != undefined {
+                        newEl.bendX = original.bendX + 20;
+                        newEl.bendY = original.bendY + 20;
+                    }
+                } elif newEl.type == "freehand" {
+                    newEl.points = original.points.map(lambda pt: dict -> dict {
+                        return {"x": pt.x + 20, "y": pt.y + 20};
+                    });
+                }
+                newElements.push(newEl);
+                pi = pi + 1;
+            }
+            baseIndex = elementsHook.elements.length;
+            elementsHook.addMultipleElements(newElements);
+            pastedSelection = [];
+            psi = 0;
+            while psi < newElements.length {
+                pastedSelection.push({"element": newElements[psi], "index": baseIndex + psi});
+                psi = psi + 1;
+            }
+            selectionHook.setSelectedElements(pastedSelection);
+            if pastedSelection.length == 1 {
+                selectionHook.setSelectedElement(pastedSelection[0]);
+            } else {
+                selectionHook.setSelectedElement(None);
+            }
+        }
+    }
+
+    def pasteFromSystemClipboard() -> None {
+        if clipboardRef.current.length > 0 {
+            pasteInternalClipboard();
+            return;
+        }
+        navigator.clipboard.read()
+            .then(lambda clipItems: any -> None {
+                foundImage = False;
+                foundText = False;
+                ci = 0;
+                while ci < clipItems.length {
+                    clipItem = clipItems[ci];
+                    clipTypes = clipItem.types;
+                    ti = 0;
+                    while ti < clipTypes.length {
+                        if clipTypes[ti] == "image/png" or clipTypes[ti] == "image/jpeg" {
+                            foundImage = True;
+                            clipItem.getType(clipTypes[ti]).then(lambda blob: any -> None {
+                                reader = Reflect.construct(FileReader, []);
+                                reader.onload = lambda event: any -> None {
+                                    img = Reflect.construct(Image, []);
+                                    img.onload = lambda -> None {
+                                        pasteImgElement = {
+                                            "type": "image",
+                                            "x": 100,
+                                            "y": 100,
+                                            "width": img.width,
+                                            "height": img.height,
+                                            "src": event.target.result
+                                        };
+                                        elementsHook.addElement(pasteImgElement);
+                                    };
+                                    img.src = event.target.result;
+                                };
+                                reader.readAsDataURL(blob);
+                            });
+                            return;
+                        }
+                        ti = ti + 1;
+                    }
+                    ci = ci + 1;
+                }
+                if not foundImage {
+                    ci = 0;
+                    while ci < clipItems.length {
+                        clipItem = clipItems[ci];
+                        clipTypes = clipItem.types;
+                        ti = 0;
+                        while ti < clipTypes.length {
+                            if clipTypes[ti] == "text/plain" {
+                                foundText = True;
+                                clipItem.getType("text/plain").then(lambda blob: any -> None {
+                                    blob.text().then(lambda txt: str -> None {
+                                        if txt.length > 0 {
+                                            pasteTxtElement = {
+                                                "type": "text",
+                                                "x": 100,
+                                                "y": 100,
+                                                "text": txt,
+                                                "fontSize": 20,
+                                                "fontFamily": "sans-serif",
+                                                "color": "#000000",
+                                                "strokeWidth": 1
+                                            };
+                                            elementsHook.addElement(pasteTxtElement);
+                                        }
+                                    });
+                                });
+                                return;
+                            }
+                            ti = ti + 1;
+                        }
+                        ci = ci + 1;
+                    }
+                }
+            })
+            .catch(lambda err: any -> None {
+                console.log("System clipboard not available");
+            });
+    }
+
+    def handlePasteFromMenu() -> None {
+        setContextMenu(None);
+        pasteFromSystemClipboard();
+    }
+
+    def showToast(msg: str) -> None {
+        setToastMessage(msg);
+        setTimeout(lambda -> None { setToastMessage(None); }, 2000);
+    }
+
+    def handleCopyCanvasAsPNG() -> None {
+        copyCanvasAsPNG(elementsHook.elements, canvasRef, lambda -> None {
+            showToast("Copied as PNG");
+        });
+        setContextMenu(None);
+    }
+
+    def handleCopyCanvasAsSVG() -> None {
+        copyCanvasAsSVG(elementsHook.elements, canvasRef, lambda -> None {
+            showToast("Copied as SVG");
+        });
+        setContextMenu(None);
+    }
+
+    def handleSelectAll() -> None {
+        allElements = [];
+        idx = 0;
+        while idx < elementsHook.elements.length {
+            allElements.push({"element": elementsHook.elements[idx], "index": idx});
+            idx = idx + 1;
+        }
+        selectionHook.setSelectedElements(allElements);
+        setContextMenu(None);
+    }
+
     def handleMouseDown(e: dict) -> None {
         setContextMenu(None);
         pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
@@ -489,17 +627,24 @@ def:pub Canvas(props: dict) -> JsxElement {
                 return;
             }
 
-            # Check if clicking on a resize handle of selected element
             if selectionHook.selectedElement and selectionHook.selectedElement.element {
+                selEl = selectionHook.selectedElement.element;
+                if (selEl.type == "line" or selEl.type == "arrow") and getBendHandleAtPoint(pos, selEl) {
+                    setIsDraggingBend(True);
+                    setBendDragElement(Object.assign({}, selEl));
+                    selectionHook.setDragStartPos(pos);
+                    return;
+                }
+
                 canvas = canvasRef.current;
                 if canvas {
                     ctx = canvas.getContext("2d");
-                    bounds = getElementBounds(ctx, selectionHook.selectedElement.element);
+                    bounds = getElementBounds(ctx, selEl);
                     handle = getResizeHandleAtPoint(pos, bounds);
                     if handle {
                         selectionHook.setIsResizing(True);
                         selectionHook.setResizeHandle(handle);
-                        selectionHook.setResizeStartElement(Object.assign({}, selectionHook.selectedElement.element));
+                        selectionHook.setResizeStartElement(Object.assign({}, selEl));
                         selectionHook.setDragStartPos(pos);
                         return;
                     }
@@ -567,19 +712,41 @@ def:pub Canvas(props: dict) -> JsxElement {
             return;
         }
 
-        drawingState.setIsDrawing(True);
-
-        # Snap start point to connection point for line/arrow tools
         if currentTool == "line" or currentTool == "arrow" {
-            snap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
-            if snap {
-                drawingState.setStartPoint(snap.point);
+            if drawingState.isDrawing and drawingState.startPoint {
+                endPos = pos;
+                endSnap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
+                if endSnap {
+                    endPos = endSnap.point;
+                }
+                lineElement = {
+                    "type": currentTool,
+                    "x1": drawingState.startPoint.x,
+                    "y1": drawingState.startPoint.y,
+                    "x2": endPos.x,
+                    "y2": endPos.y,
+                    "color": currentColor,
+                    "strokeWidth": currentStrokeWidth,
+                    "lineStyle": currentLineStyle,
+                    "opacity": currentOpacity
+                };
+                elementsHook.addElement(lineElement);
+                drawingState.setIsDrawing(False);
+                drawingState.setStartPoint(None);
             } else {
-                drawingState.setStartPoint(pos);
+                startSnap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
+                if startSnap {
+                    drawingState.setStartPoint(startSnap.point);
+                } else {
+                    drawingState.setStartPoint(pos);
+                }
+                drawingState.setIsDrawing(True);
             }
-        } else {
-            drawingState.setStartPoint(pos);
+            return;
         }
+
+        drawingState.setIsDrawing(True);
+        drawingState.setStartPoint(pos);
 
         if currentTool == "freehand" {
             drawingState.setCurrentPath([pos]);
@@ -591,6 +758,15 @@ def:pub Canvas(props: dict) -> JsxElement {
 
         if viewportHook.isPanning {
             viewportHook.handlePan(e.movementX, e.movementY);
+            return;
+        }
+
+        if isDraggingBend and selectionHook.selectedElement {
+            selIdx = selectionHook.selectedElement.index;
+            updatedEl = Object.assign({}, elementsHook.elements[selIdx]);
+            updatedEl.bendX = pos.x;
+            updatedEl.bendY = pos.y;
+            elementsHook.updateElement(selIdx, updatedEl);
             return;
         }
 
@@ -638,15 +814,29 @@ def:pub Canvas(props: dict) -> JsxElement {
                 if handle == "nw" or handle == "w" or handle == "sw" {
                     newElement.x1 = origEl.x1 + deltaX;
                     newElement.y1 = origEl.y1 + deltaY;
+                    if origEl.bendX != None and origEl.bendX != undefined {
+                        newElement.bendX = origEl.bendX + deltaX * 0.5;
+                        newElement.bendY = origEl.bendY + deltaY * 0.5;
+                    }
                 } elif handle == "ne" or handle == "e" or handle == "se" {
                     newElement.x2 = origEl.x2 + deltaX;
                     newElement.y2 = origEl.y2 + deltaY;
+                    if origEl.bendX != None and origEl.bendX != undefined {
+                        newElement.bendX = origEl.bendX + deltaX * 0.5;
+                        newElement.bendY = origEl.bendY + deltaY * 0.5;
+                    }
                 } elif handle == "n" {
                     newElement.y1 = origEl.y1 + deltaY;
                     newElement.y2 = origEl.y2 + deltaY;
+                    if origEl.bendX != None and origEl.bendX != undefined {
+                        newElement.bendY = origEl.bendY + deltaY;
+                    }
                 } elif handle == "s" {
                     newElement.y1 = origEl.y1 + deltaY;
                     newElement.y2 = origEl.y2 + deltaY;
+                    if origEl.bendX != None and origEl.bendX != undefined {
+                        newElement.bendY = origEl.bendY + deltaY;
+                    }
                 }
             } elif origEl.type == "text" {
                 # Scale font size proportionally
@@ -756,6 +946,10 @@ def:pub Canvas(props: dict) -> JsxElement {
                         newElement.y1 = originalElement.y1 + multiDy;
                         newElement.x2 = originalElement.x2 + multiDx;
                         newElement.y2 = originalElement.y2 + multiDy;
+                        if originalElement.bendX != None and originalElement.bendX != undefined {
+                            newElement.bendX = originalElement.bendX + multiDx;
+                            newElement.bendY = originalElement.bendY + multiDy;
+                        }
                     } elif originalElement.type == "freehand" {
                         newElement.points = originalElement.points.map(lambda point: dict -> dict {
                             return {"x": point.x + multiDx, "y": point.y + multiDy};
@@ -781,6 +975,10 @@ def:pub Canvas(props: dict) -> JsxElement {
                     newElement.y1 = element.y1 + lineDy;
                     newElement.x2 = element.x2 + lineDx;
                     newElement.y2 = element.y2 + lineDy;
+                    if element.bendX != None and element.bendX != undefined {
+                        newElement.bendX = element.bendX + lineDx;
+                        newElement.bendY = element.bendY + lineDy;
+                    }
                 } elif element.type == "freehand" {
                     fhDx = pos.x - selectionHook.dragOffset.x - element.points[0].x;
                     fhDy = pos.y - selectionHook.dragOffset.y - element.points[0].y;
@@ -873,6 +1071,18 @@ def:pub Canvas(props: dict) -> JsxElement {
     }
 
     def handleMouseUp(e: dict) -> None {
+        if isDraggingBend {
+            elementsHook.commitToHistory();
+            setIsDraggingBend(False);
+            setBendDragElement(None);
+            if selectionHook.selectedElement {
+                bendIdx = selectionHook.selectedElement.index;
+                updatedBendEl = elementsHook.elements[bendIdx];
+                selectionHook.setSelectedElement({"element": updatedBendEl, "index": bendIdx});
+            }
+            return;
+        }
+
         if selectionHook.isResizing {
             elementsHook.commitToHistory();
             selectionHook.stopResizing();
@@ -891,6 +1101,10 @@ def:pub Canvas(props: dict) -> JsxElement {
         viewportHook.stopPanning();
 
         if not drawingState.isDrawing {
+            return;
+        }
+
+        if currentTool == "line" or currentTool == "arrow" {
             return;
         }
 
@@ -956,23 +1170,6 @@ def:pub Canvas(props: dict) -> JsxElement {
                 "lineStyle": currentLineStyle,
                 "opacity": currentOpacity
             };
-        } elif currentTool == "line" or currentTool == "arrow" {
-            endPos = pos;
-            snap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
-            if snap {
-                endPos = snap.point;
-            }
-            newElement = {
-                "type": currentTool,
-                "x1": drawingState.startPoint.x,
-                "y1": drawingState.startPoint.y,
-                "x2": endPos.x,
-                "y2": endPos.y,
-                "color": currentColor,
-                "strokeWidth": currentStrokeWidth,
-                "lineStyle": currentLineStyle,
-                "opacity": currentOpacity
-            };
         }
 
         if newElement {
@@ -981,10 +1178,13 @@ def:pub Canvas(props: dict) -> JsxElement {
     }
 
     def handleMouseLeave() -> None {
-        drawingState.setIsDrawing(False);
+        if not (currentTool == "line" or currentTool == "arrow") {
+            drawingState.setIsDrawing(False);
+        }
         selectionHook.stopDragging();
         selectionHook.stopResizing();
         viewportHook.stopPanning();
+        setIsDraggingBend(False);
     }
 
     cursorClass = "cursor-crosshair";
@@ -1045,7 +1245,45 @@ def:pub Canvas(props: dict) -> JsxElement {
                 onExportPNG={handleExportPNG}
                 onExportSVG={handleExportSVG}
                 onExportPDF={handleExportPDF}
+                onPaste={handlePasteFromMenu}
+                onCopyCanvasPNG={handleCopyCanvasAsPNG}
+                onCopyCanvasSVG={handleCopyCanvasAsSVG}
+                onSelectAll={handleSelectAll}
             />
+
+            <div className="absolute bottom-3 left-3 flex items-center bg-white border border-gray-200 rounded-lg shadow-sm z-40 select-none">
+                <button
+                    className="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded-l-lg text-sm font-medium"
+                    onClick={lambda -> None {
+                        zoomCanvas = canvasRef.current;
+                        if zoomCanvas {
+                            zoomRect = zoomCanvas.getBoundingClientRect();
+                            viewportHook.handleZoom(1, zoomRect.left + zoomRect.width / 2, zoomRect.top + zoomRect.height / 2, zoomCanvas);
+                        }
+                    }}
+                >-</button>
+                <button
+                    className="px-2 py-1 text-gray-600 hover:bg-gray-100 text-xs min-w-[48px] text-center"
+                    onClick={lambda -> None {
+                        viewportHook.setZoom(1);
+                        viewportHook.setPanOffset({"x": 0, "y": 0});
+                    }}
+                >{String(Math.round(viewportHook.zoom * 100)) + "%"}</button>
+                <button
+                    className="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded-r-lg text-sm font-medium"
+                    onClick={lambda -> None {
+                        ziCanvas = canvasRef.current;
+                        if ziCanvas {
+                            ziRect = ziCanvas.getBoundingClientRect();
+                            viewportHook.handleZoom(-1, ziRect.left + ziRect.width / 2, ziRect.top + ziRect.height / 2, ziCanvas);
+                        }
+                    }}
+                >+</button>
+            </div>
+
+            {toastMessage and <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm z-50 pointer-events-none animate-fade-in">
+                {toastMessage}
+            </div> or None}
         </div>
     );
 }
