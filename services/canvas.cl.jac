@@ -244,14 +244,23 @@ def:pub drawDiamond(ctx: any, element: dict) -> None {
     }
 }
 
+def sketchyCurve(ctx: any, x1: float, y1: float, cpx: float, cpy: float, x2: float, y2: float, seed: float) -> None {
+    wobble = Math.min(Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)) * 0.03, 2);
+    ctx.moveTo(x1 + jitter(seed + 1, wobble), y1 + jitter(seed + 2, wobble));
+    ctx.quadraticCurveTo(cpx + jitter(seed + 3, wobble), cpy + jitter(seed + 4, wobble), x2 + jitter(seed + 5, wobble), y2 + jitter(seed + 6, wobble));
+}
+
 def:pub drawLine(ctx: any, element: dict) -> None {
     seed = element.x1 * 7 + element.y1 * 13 + element.x2 * 3 + element.y2 * 11;
 
-    # Draw 2 passes for hand-drawn effect
     pass_i = 0;
     while pass_i < 2 {
         ctx.beginPath();
-        sketchyLine(ctx, element.x1, element.y1, element.x2, element.y2, seed + pass_i * 100);
+        if element.bendX != None and element.bendX != undefined {
+            sketchyCurve(ctx, element.x1, element.y1, element.bendX, element.bendY, element.x2, element.y2, seed + pass_i * 100);
+        } else {
+            sketchyLine(ctx, element.x1, element.y1, element.x2, element.y2, seed + pass_i * 100);
+        }
         ctx.stroke();
         pass_i = pass_i + 1;
     }
@@ -260,22 +269,29 @@ def:pub drawLine(ctx: any, element: dict) -> None {
 def:pub drawArrow(ctx: any, element: dict) -> None {
     seed = element.x1 * 7 + element.y1 * 13 + element.x2 * 3 + element.y2 * 11;
 
-    # Draw hand-drawn line (2 passes)
     pass_i = 0;
     while pass_i < 2 {
         ctx.beginPath();
-        sketchyLine(ctx, element.x1, element.y1, element.x2, element.y2, seed + pass_i * 100);
+        if element.bendX != None and element.bendX != undefined {
+            sketchyCurve(ctx, element.x1, element.y1, element.bendX, element.bendY, element.x2, element.y2, seed + pass_i * 100);
+        } else {
+            sketchyLine(ctx, element.x1, element.y1, element.x2, element.y2, seed + pass_i * 100);
+        }
         ctx.stroke();
         pass_i = pass_i + 1;
     }
 
-    # Draw hand-drawn arrowhead
     headLen = 14;
-    angle = Math.atan2(element.y2 - element.y1, element.x2 - element.x1);
-    ax1 = element.x2 - headLen * Math.cos(angle - Math.PI / 6);
-    ay1 = element.y2 - headLen * Math.sin(angle - Math.PI / 6);
-    ax2 = element.x2 - headLen * Math.cos(angle + Math.PI / 6);
-    ay2 = element.y2 - headLen * Math.sin(angle + Math.PI / 6);
+    arrowAngle = 0;
+    if element.bendX != None and element.bendX != undefined {
+        arrowAngle = Math.atan2(element.y2 - element.bendY, element.x2 - element.bendX);
+    } else {
+        arrowAngle = Math.atan2(element.y2 - element.y1, element.x2 - element.x1);
+    }
+    ax1 = element.x2 - headLen * Math.cos(arrowAngle - Math.PI / 6);
+    ay1 = element.y2 - headLen * Math.sin(arrowAngle - Math.PI / 6);
+    ax2 = element.x2 - headLen * Math.cos(arrowAngle + Math.PI / 6);
+    ay2 = element.y2 - headLen * Math.sin(arrowAngle + Math.PI / 6);
 
     ctx.beginPath();
     sketchyLine(ctx, element.x2, element.y2, ax1, ay1, seed + 300);
@@ -432,6 +448,12 @@ def:pub getElementBounds(ctx: any, element: dict) -> dict {
         lMinY = Math.min(element.y1, element.y2);
         lMaxX = Math.max(element.x1, element.x2);
         lMaxY = Math.max(element.y1, element.y2);
+        if element.bendX != None and element.bendX != undefined {
+            if element.bendX < lMinX { lMinX = element.bendX; }
+            if element.bendY < lMinY { lMinY = element.bendY; }
+            if element.bendX > lMaxX { lMaxX = element.bendX; }
+            if element.bendY > lMaxY { lMaxY = element.bendY; }
+        }
         return {
             "x": lMinX - padding,
             "y": lMinY - padding,
@@ -506,6 +528,25 @@ def:pub drawSelectionBox(ctx: any, element: dict) -> None {
         ctx.fill();
         ctx.stroke();
         i = i + 1;
+    }
+
+    if (element.type == "line" or element.type == "arrow") {
+        bendHandleX = 0;
+        bendHandleY = 0;
+        if element.bendX != None and element.bendX != undefined {
+            bendHandleX = element.bendX;
+            bendHandleY = element.bendY;
+        } else {
+            bendHandleX = (element.x1 + element.x2) / 2;
+            bendHandleY = (element.y1 + element.y2) / 2;
+        }
+        ctx.beginPath();
+        ctx.arc(bendHandleX, bendHandleY, 5, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+        ctx.strokeStyle = "#6366f1";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
     }
 
     ctx.restore();
