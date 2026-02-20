@@ -15,107 +15,79 @@ def:pub ContextMenu(props: dict) -> JsxElement {
     onCopyCanvasPNG = props.onCopyCanvasPNG;
     onCopyCanvasSVG = props.onCopyCanvasSVG;
     onSelectAll = props.onSelectAll;
+    onGroup = props.onGroup;
+    onUngroup = props.onUngroup;
     hasSelection = props.hasSelection or False;
+    canGroup = props.canGroup or False;
+    canUngroup = props.canUngroup or False;
 
     if not visible {
         return None;
     }
 
+    itemClass = "w-full px-3 py-1.5 text-left text-[13px] text-gray-700 hover:bg-gray-50 flex items-center justify-between transition-colors";
+    dangerClass = "w-full px-3 py-1.5 text-left text-[13px] text-red-600 hover:bg-red-50 flex items-center justify-between transition-colors";
+    shortcutClass = "text-[11px] text-gray-400 ml-6";
+    dividerClass = "h-px bg-gray-100 my-0.5";
+
     return <div
-        className="fixed bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[180px] z-50"
+        className="fixed bg-white rounded-lg shadow-[0_6px_24px_rgba(0,0,0,0.15)] border border-gray-200/80 py-1 min-w-[200px] z-50"
         style={{"left": String(x) + "px", "top": String(y) + "px"}}
         onMouseLeave={onClose}
     >
         {hasSelection and <div>
-            <button
-                onClick={onDelete}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
-            >
-                <span>🗑️</span>
-                <span>Delete</span>
-            </button>
-            <button
-                onClick={onDuplicate}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-            >
-                <span>📋</span>
+            <button onClick={onDuplicate} className={itemClass}>
                 <span>Duplicate</span>
+                <span className={shortcutClass}>Ctrl+D</span>
             </button>
-            <div className="h-px bg-gray-200 my-1"></div>
-            <button
-                onClick={onBringToFront}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-            >
-                <span>⬆️</span>
-                <span>Bring to Front</span>
+            <button onClick={onDelete} className={dangerClass}>
+                <span>Delete</span>
+                <span className={shortcutClass}>Del</span>
             </button>
-            <button
-                onClick={onSendToBack}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-            >
-                <span>⬇️</span>
-                <span>Send to Back</span>
+            <div className={dividerClass}></div>
+            <button onClick={onBringToFront} className={itemClass}>
+                <span>Bring to front</span>
             </button>
-            <div className="h-px bg-gray-200 my-1"></div>
-            <button
-                onClick={onExportPNG}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-            >
-                <span>🖼️</span>
+            <button onClick={onSendToBack} className={itemClass}>
+                <span>Send to back</span>
+            </button>
+            {(canGroup or canUngroup) and <div className={dividerClass}></div> or None}
+            {canGroup and <button onClick={onGroup} className={itemClass}>
+                <span>Group</span>
+                <span className={shortcutClass}>Ctrl+G</span>
+            </button> or None}
+            {canUngroup and <button onClick={onUngroup} className={itemClass}>
+                <span>Ungroup</span>
+                <span className={shortcutClass}>Ctrl+Shift+G</span>
+            </button> or None}
+            <div className={dividerClass}></div>
+            <button onClick={onExportPNG} className={itemClass}>
                 <span>Export as PNG</span>
             </button>
-            <button
-                onClick={onExportSVG}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-            >
-                <span>📐</span>
+            <button onClick={onExportSVG} className={itemClass}>
                 <span>Export as SVG</span>
             </button>
-            <button
-                onClick={onExportPDF}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-            >
-                <span>📄</span>
+            <button onClick={onExportPDF} className={itemClass}>
                 <span>Export as PDF</span>
-            </button>
-            <div className="h-px bg-gray-200 my-1"></div>
-            <button
-                onClick={onClearCanvas}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
-            >
-                <span>🗑️</span>
-                <span>Clear Canvas</span>
             </button>
         </div> or None}
         {not hasSelection and <div>
-            <button
-                onClick={onPaste}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
-            >
+            <button onClick={onPaste} className={itemClass}>
                 <span>Paste</span>
-                <span className="text-xs text-gray-400">Ctrl+V</span>
+                <span className={shortcutClass}>Ctrl+V</span>
             </button>
-            <div className="h-px bg-gray-200 my-1"></div>
-            <button
-                onClick={onCopyCanvasPNG}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
-            >
-                <span>Copy to clipboard as PNG</span>
-                <span className="text-xs text-gray-400">Shift+Alt+C</span>
+            <div className={dividerClass}></div>
+            <button onClick={onCopyCanvasPNG} className={itemClass}>
+                <span>Copy as PNG</span>
+                <span className={shortcutClass}>Shift+Alt+C</span>
             </button>
-            <button
-                onClick={onCopyCanvasSVG}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
-            >
-                <span>Copy to clipboard as SVG</span>
+            <button onClick={onCopyCanvasSVG} className={itemClass}>
+                <span>Copy as SVG</span>
             </button>
-            <div className="h-px bg-gray-200 my-1"></div>
-            <button
-                onClick={onSelectAll}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
-            >
+            <div className={dividerClass}></div>
+            <button onClick={onSelectAll} className={itemClass}>
                 <span>Select all</span>
-                <span className="text-xs text-gray-400">Ctrl+A</span>
+                <span className={shortcutClass}>Ctrl+A</span>
             </button>
         </div> or None}
     </div>;

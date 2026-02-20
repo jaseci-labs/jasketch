@@ -79,7 +79,7 @@ def:pub TopBar(props: dict) -> JsxElement {
         "diamond": "6",
         "circle": "7",
         "text": "8",
-        "image": ""
+        "image": "9"
     };
 
     def handleToolClick(toolId: str) -> None {
@@ -116,11 +116,11 @@ def:pub TopBar(props: dict) -> JsxElement {
         }
     }
 
-    return <header className="topbar bg-white/90 border-b border-gray-200/60 flex-shrink-0">
-        <div className="h-14 px-4 flex items-center justify-between">
+    return <header className="topbar bg-gray-50/95 border-b border-gray-200 flex-shrink-0">
+        <div className="h-12 px-4 flex items-center justify-between">
             # Logo
             <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-sm overflow-hidden">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-sm overflow-hidden">
                     <svg width="36" height="36" viewBox="0 0 512 512">
                         <g transform="translate(256,256) rotate(-45) translate(-256,-256)">
                             <rect x="196" y="100" width="120" height="260" rx="6" fill="white" opacity="0.95"/>
@@ -133,11 +133,11 @@ def:pub TopBar(props: dict) -> JsxElement {
                         <path d="M340 370 Q360 340 380 355 Q400 370 420 345" stroke="white" strokeWidth="8" fill="none" strokeLinecap="round" opacity="0.6"/>
                     </svg>
                 </div>
-                <span className="text-base font-bold text-gray-800 tracking-tight">JaSketch</span>
+                <span className="text-sm font-bold text-gray-800 tracking-tight">JaSketch</span>
             </div>
 
             # Tool buttons
-            <div className="flex items-center gap-0.5 bg-gray-50 rounded-xl px-1.5 py-1 border border-gray-200/60">
+            <div className="flex items-center gap-0.5 bg-white rounded-lg px-1.5 py-1 border border-gray-200/80 shadow-sm">
                 {toolIds.map(lambda toolId: any -> any {
                     isActive = currentTool == toolId and toolId != "image";
                     shortcut = toolShortcuts[toolId];
@@ -145,16 +145,16 @@ def:pub TopBar(props: dict) -> JsxElement {
                         key={toolId}
                         onClick={lambda -> None { handleToolClick(toolId); }}
                         title={toolLabels[toolId] + (shortcut and (" (" + shortcut + ")") or "")}
-                        className={"w-9 h-11 rounded-lg flex flex-col items-center justify-center gap-0 transition-all duration-150 " + (isActive and "bg-white text-violet-700 shadow-sm ring-1 ring-violet-200" or "text-gray-400 hover:bg-white/80 hover:text-gray-600")}
+                        className={"w-9 h-10 rounded-md flex flex-col items-center justify-center gap-0 transition-all duration-150 " + (isActive and "bg-violet-50 text-violet-700 ring-1 ring-violet-200/80" or "text-gray-400 hover:bg-gray-50 hover:text-gray-600")}
                     >
-                        <ToolIcon toolId={toolId} size={16} color={isActive and "#7c3aed" or "currentColor"} />
-                        {shortcut and <span className={"text-[9px] leading-none font-medium mt-0.5 " + (isActive and "text-violet-500" or "text-gray-300")}>{shortcut}</span> or None}
+                        <ToolIcon toolId={toolId} size={18} color={isActive and "#7c3aed" or "currentColor"} />
+                        {shortcut and <span className={"text-[8px] leading-none font-medium mt-0.5 " + (isActive and "text-violet-500" or "text-gray-300")}>{shortcut}</span> or None}
                     </button>;
                 })}
             </div>
 
             # Help text
-            <span className="text-[10px] text-gray-400 hidden sm:block">Space+drag to pan | Scroll to zoom</span>
+            <span className="text-[10px] text-gray-400 hidden sm:block">Scroll to pan | Ctrl+scroll to zoom</span>
         </div>
 
         # Hidden file input

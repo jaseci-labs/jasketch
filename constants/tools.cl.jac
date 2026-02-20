@@ -7,7 +7,8 @@ def:pub TOOLS() -> list {
         {"id": "rectangle", "label": "Rectangle"},
         {"id": "diamond", "label": "Diamond"},
         {"id": "circle", "label": "Ellipse"},
-        {"id": "text", "label": "Text"}
+        {"id": "text", "label": "Text"},
+        {"id": "image", "label": "Image"}
     ];
 }
 

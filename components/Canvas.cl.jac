@@ -61,6 +61,48 @@ def:pub Canvas(props: dict) -> JsxElement {
         }
     }
 
+    def triggerImageUpload() -> None {
+        imgInput = document.createElement("input");
+        imgInput.type = "file";
+        imgInput.accept = "image/*";
+        imgInput.onchange = lambda evt: any -> None {
+            imgFile = evt.target.files[0];
+            if imgFile {
+                imgReader = Reflect.construct(FileReader, []);
+                imgReader.onload = lambda loadEvt: any -> None {
+                    imgObj = Reflect.construct(Image, []);
+                    imgObj.onload = lambda -> None {
+                        canvas = canvasRef.current;
+                        centerX = 0;
+                        centerY = 0;
+                        if canvas {
+                            rect = canvas.getBoundingClientRect();
+                            centerX = (rect.width / 2 - viewportHook.panOffset.x) / viewportHook.zoom;
+                            centerY = (rect.height / 2 - viewportHook.panOffset.y) / viewportHook.zoom;
+                        }
+                        imgElement = {
+                            "type": "image",
+                            "x": centerX - imgObj.width / 2,
+                            "y": centerY - imgObj.height / 2,
+                            "width": imgObj.width,
+                            "height": imgObj.height,
+                            "src": loadEvt.target.result
+                        };
+                        elementsHook.addElement(imgElement);
+                        imgIdx = elementsHook.elements.length;
+                        selectionHook.setSelectedElement({"element": imgElement, "index": imgIdx});
+                        if props.onToolChange {
+                            props.onToolChange("select");
+                        }
+                    };
+                    imgObj.src = loadEvt.target.result;
+                };
+                imgReader.readAsDataURL(imgFile);
+            }
+        };
+        imgInput.click();
+    }
+
     useEffect(lambda -> any {
         def handleKeyDown(e: dict) -> None {
             if e.key == " " and not textInputHook.textInput {
@@ -101,6 +143,15 @@ def:pub Canvas(props: dict) -> JsxElement {
                 e.preventDefault();
                 elementsHook.redo();
                 selectionHook.clearSelection();
+            }
+            # Group / Ungroup
+            if not textInputHook.textInput and (e.key == "g" or e.key == "G") and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                if e.shiftKey {
+                    handleUngroup();
+                } else {
+                    handleGroup();
+                }
             }
             if not textInputHook.textInput and (e.key == "c" or e.key == "C") and e.shiftKey and e.altKey {
                 e.preventDefault();
@@ -161,10 +212,14 @@ def:pub Canvas(props: dict) -> JsxElement {
                 viewportHook.setPanOffset({"x": 0, "y": 0});
             }
             if not textInputHook.textInput and not e.ctrlKey and not e.metaKey and not e.shiftKey and not e.altKey {
-                shortcuts = TOOL_SHORTCUTS();
-                toolForKey = shortcuts[e.key];
-                if toolForKey and props.onToolChange {
-                    props.onToolChange(toolForKey);
+                if e.key == "9" {
+                    triggerImageUpload();
+                } else {
+                    shortcuts = TOOL_SHORTCUTS();
+                    toolForKey = shortcuts[e.key];
+                    if toolForKey and props.onToolChange {
+                        props.onToolChange(toolForKey);
+                    }
                 }
             }
         }
@@ -191,7 +246,22 @@ def:pub Canvas(props: dict) -> JsxElement {
 
         def handleWheel(e: dict) -> None {
             e.preventDefault();
-            viewportHook.handleZoom(e.deltaY, e.clientX, e.clientY, canvas);
+            if e.ctrlKey or e.metaKey {
+                # Ctrl + wheel / pinch-to-zoom on trackpad: zoom
+                viewportHook.handleZoom(e.deltaY, e.clientX, e.clientY, canvas);
+            } else {
+                # Two-finger scroll on trackpad provides both deltaX and deltaY
+                # Mouse wheel: deltaY only (deltaX is 0)
+                # Shift + mouse wheel: swap to horizontal
+                panX = -(e.deltaX or 0);
+                panY = -(e.deltaY or 0);
+                if e.shiftKey and panX == 0 {
+                    # Shift + mouse wheel with no deltaX: use deltaY for horizontal
+                    panX = panY;
+                    panY = 0;
+                }
+                viewportHook.handlePan(panX, panY);
+            }
         }
 
         canvas.addEventListener("wheel", handleWheel, {"passive": False});
@@ -227,9 +297,13 @@ def:pub Canvas(props: dict) -> JsxElement {
 
     def handleCanvasClick(e: dict) -> None {
         if currentTool == "text" {
-            # Submit any existing text first
             if textInputHook.textInput {
+                # Active text input — submit it and switch to select
                 handleTextSubmit();
+                if props.onToolChange {
+                    props.onToolChange("select");
+                }
+                return;
             }
             pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
 
@@ -292,7 +366,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             return;
         }
         if textInputHook.hasContent() {
-            newElement = {
+            textEl = {
                 "type": "text",
                 "x": textInputHook.textInput.x,
                 "y": textInputHook.textInput.y,
@@ -302,9 +376,14 @@ def:pub Canvas(props: dict) -> JsxElement {
                 "fontFamily": currentFontFamily,
                 "opacity": currentOpacity
             };
-            elementsHook.addElement(newElement);
+            elementsHook.addElement(textEl);
+            newTextIdx = elementsHook.elements.length;
+            selectionHook.setSelectedElement({"element": textEl, "index": newTextIdx});
         }
         textInputHook.cancelTextInput();
+        if props.onToolChange {
+            props.onToolChange("select");
+        }
     }
 
     def handleTextKeyDown(e: dict) -> None {
@@ -335,10 +414,33 @@ def:pub Canvas(props: dict) -> JsxElement {
 
     def handleContextMenu(e: dict) -> None {
         e.preventDefault();
+        hasSel = selectionHook.selectedElement or selectionHook.selectedElements.length > 0;
+        # Determine if we can group (2+ elements selected)
+        ctxCanGroup = False;
+        ctxCanUngroup = False;
+        if selectionHook.selectedElements.length > 1 {
+            ctxCanGroup = True;
+        }
+        # Check if any selected element has a groupId
+        ctxAllSelected = [];
+        if selectionHook.selectedElements.length > 0 {
+            ctxAllSelected = selectionHook.selectedElements;
+        } elif selectionHook.selectedElement {
+            ctxAllSelected = [selectionHook.selectedElement];
+        }
+        ctxi = 0;
+        while ctxi < ctxAllSelected.length {
+            if ctxAllSelected[ctxi].element and ctxAllSelected[ctxi].element.groupId {
+                ctxCanUngroup = True;
+            }
+            ctxi = ctxi + 1;
+        }
         setContextMenu({
             "x": e.clientX,
             "y": e.clientY,
-            "hasSelection": selectionHook.selectedElement or selectionHook.selectedElements.length > 0
+            "hasSelection": hasSel,
+            "canGroup": ctxCanGroup,
+            "canUngroup": ctxCanUngroup
         });
     }
 
@@ -416,6 +518,92 @@ def:pub Canvas(props: dict) -> JsxElement {
             }));
             elementsHook.setElements(newElements);
             selectionHook.clearSelection();
+        }
+        setContextMenu(None);
+    }
+
+    def handleGroup() -> None {
+        allSelected = [];
+        if selectionHook.selectedElements.length > 1 {
+            allSelected = selectionHook.selectedElements;
+        } elif selectionHook.selectedElement {
+            # Single selected, nothing to group
+            setContextMenu(None);
+            return;
+        }
+        if allSelected.length < 2 {
+            setContextMenu(None);
+            return;
+        }
+        groupId = "g_" + String(Date.now()) + "_" + String(Math.floor(Math.random() * 10000));
+        newElements = elementsHook.elements.slice();
+        gi = 0;
+        while gi < allSelected.length {
+            idx = allSelected[gi].index;
+            updated = Object.assign({}, newElements[idx]);
+            updated.groupId = groupId;
+            newElements[idx] = updated;
+            gi = gi + 1;
+        }
+        elementsHook.setElements(newElements);
+        # Refresh selectedElements with updated elements
+        newSel = [];
+        gsi = 0;
+        while gsi < allSelected.length {
+            selIdx = allSelected[gsi].index;
+            newSel.push({"element": newElements[selIdx], "index": selIdx});
+            gsi = gsi + 1;
+        }
+        selectionHook.setSelectedElements(newSel);
+        setContextMenu(None);
+    }
+
+    def handleUngroup() -> None {
+        allSelected = [];
+        if selectionHook.selectedElements.length > 0 {
+            allSelected = selectionHook.selectedElements;
+        } elif selectionHook.selectedElement {
+            allSelected = [selectionHook.selectedElement];
+        }
+        if allSelected.length == 0 {
+            setContextMenu(None);
+            return;
+        }
+        # Collect all groupIds from selected elements
+        groupIdsToRemove = {};
+        ugi = 0;
+        while ugi < allSelected.length {
+            el = allSelected[ugi].element;
+            if el.groupId {
+                groupIdsToRemove[el.groupId] = True;
+            }
+            ugi = ugi + 1;
+        }
+        # Remove groupId from ALL elements that share those groupIds
+        newElements = elementsHook.elements.slice();
+        rei = 0;
+        while rei < newElements.length {
+            if newElements[rei].groupId and groupIdsToRemove[newElements[rei].groupId] {
+                updated = Object.assign({}, newElements[rei]);
+                updated.groupId = None;
+                newElements[rei] = updated;
+            }
+            rei = rei + 1;
+        }
+        elementsHook.setElements(newElements);
+        # Refresh selection
+        newSel = [];
+        ursi = 0;
+        while ursi < allSelected.length {
+            selIdx = allSelected[ursi].index;
+            newSel.push({"element": newElements[selIdx], "index": selIdx});
+            ursi = ursi + 1;
+        }
+        if newSel.length > 1 {
+            selectionHook.setSelectedElements(newSel);
+        } elif newSel.length == 1 {
+            selectionHook.setSelectedElement(newSel[0]);
+            selectionHook.setSelectedElements([]);
         }
         setContextMenu(None);
     }
@@ -696,6 +884,21 @@ def:pub Canvas(props: dict) -> JsxElement {
                         # Clicking on element already in multi-selection: start group drag
                         selectionHook.setIsDragging(True);
                         selectionHook.setDragStartPos(pos);
+                    } elif elementInfo.element.groupId {
+                        # Clicking on a grouped element: select all group members
+                        clickedGroupId = elementInfo.element.groupId;
+                        groupMembers = [];
+                        gmi = 0;
+                        while gmi < elementsHook.elements.length {
+                            if elementsHook.elements[gmi].groupId == clickedGroupId {
+                                groupMembers.push({"element": elementsHook.elements[gmi], "index": gmi});
+                            }
+                            gmi = gmi + 1;
+                        }
+                        selectionHook.setSelectedElements(groupMembers);
+                        selectionHook.setSelectedElement(None);
+                        selectionHook.setIsDragging(True);
+                        selectionHook.setDragStartPos(pos);
                     } else {
                         # Clicking on new element: single-select it
                         selectionHook.startDragging(elementInfo, pos);
@@ -733,6 +936,11 @@ def:pub Canvas(props: dict) -> JsxElement {
                 elementsHook.addElement(lineElement);
                 drawingState.setIsDrawing(False);
                 drawingState.setStartPoint(None);
+                newLineIdx = elementsHook.elements.length;
+                selectionHook.setSelectedElement({"element": lineElement, "index": newLineIdx});
+                if props.onToolChange {
+                    props.onToolChange("select");
+                }
             } else {
                 startSnap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
                 if startSnap {
@@ -960,6 +1168,16 @@ def:pub Canvas(props: dict) -> JsxElement {
                     i = i + 1;
                 }
                 elementsHook.updateMultipleElementsSilent(updates);
+                # Update selectedElements so selection boxes move with the elements
+                newSelectedElements = [];
+                ui = 0;
+                while ui < updates.length {
+                    newSelectedElements.push({"element": updates[ui].element, "index": updates[ui].index});
+                    ui = ui + 1;
+                }
+                selectionHook.setSelectedElements(newSelectedElements);
+                # Update dragStartPos so delta is incremental, not cumulative
+                selectionHook.setDragStartPos(pos);
                 return;
             } elif selectionHook.selectedElement {
                 element = selectionHook.selectedElement.element;
@@ -1105,6 +1323,36 @@ def:pub Canvas(props: dict) -> JsxElement {
         }
 
         if currentTool == "line" or currentTool == "arrow" {
+            # If user dragged far enough from start, finalize as drag-to-draw
+            if drawingState.startPoint {
+                dragEndPos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
+                dragDist = Math.sqrt(Math.pow(dragEndPos.x - drawingState.startPoint.x, 2) + Math.pow(dragEndPos.y - drawingState.startPoint.y, 2));
+                if dragDist > 5 {
+                    dragEndSnap = findNearestConnectionPoint(dragEndPos, elementsHook.elements, 20.0);
+                    if dragEndSnap {
+                        dragEndPos = dragEndSnap.point;
+                    }
+                    dragLineEl = {
+                        "type": currentTool,
+                        "x1": drawingState.startPoint.x,
+                        "y1": drawingState.startPoint.y,
+                        "x2": dragEndPos.x,
+                        "y2": dragEndPos.y,
+                        "color": currentColor,
+                        "strokeWidth": currentStrokeWidth,
+                        "lineStyle": currentLineStyle,
+                        "opacity": currentOpacity
+                    };
+                    elementsHook.addElement(dragLineEl);
+                    drawingState.setIsDrawing(False);
+                    drawingState.setStartPoint(None);
+                    dragLineIdx = elementsHook.elements.length;
+                    selectionHook.setSelectedElement({"element": dragLineEl, "index": dragLineIdx});
+                    if props.onToolChange {
+                        props.onToolChange("select");
+                    }
+                }
+            }
             return;
         }
 
@@ -1174,6 +1422,11 @@ def:pub Canvas(props: dict) -> JsxElement {
 
         if newElement {
             elementsHook.addElement(newElement);
+            newElIdx = elementsHook.elements.length;
+            selectionHook.setSelectedElement({"element": newElement, "index": newElIdx});
+            if props.onToolChange {
+                props.onToolChange("select");
+            }
         }
     }
 
@@ -1236,11 +1489,15 @@ def:pub Canvas(props: dict) -> JsxElement {
                 x={contextMenu and contextMenu.x or 0}
                 y={contextMenu and contextMenu.y or 0}
                 hasSelection={contextMenu and contextMenu.hasSelection or False}
+                canGroup={contextMenu and contextMenu.canGroup or False}
+                canUngroup={contextMenu and contextMenu.canUngroup or False}
                 onClose={lambda -> None { setContextMenu(None); }}
                 onDelete={handleDeleteFromMenu}
                 onDuplicate={handleDuplicate}
                 onBringToFront={handleBringToFront}
                 onSendToBack={handleSendToBack}
+                onGroup={handleGroup}
+                onUngroup={handleUngroup}
                 onClearCanvas={handleClearCanvas}
                 onExportPNG={handleExportPNG}
                 onExportSVG={handleExportSVG}
@@ -1251,9 +1508,9 @@ def:pub Canvas(props: dict) -> JsxElement {
                 onSelectAll={handleSelectAll}
             />
 
-            <div className="absolute bottom-3 left-3 flex items-center bg-white border border-gray-200 rounded-lg shadow-sm z-40 select-none">
+            <div className="absolute bottom-4 left-4 flex items-center bg-white/90 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-lg z-40 select-none">
                 <button
-                    className="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded-l-lg text-sm font-medium"
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-l-xl text-base font-medium transition-colors"
                     onClick={lambda -> None {
                         zoomCanvas = canvasRef.current;
                         if zoomCanvas {
@@ -1263,14 +1520,14 @@ def:pub Canvas(props: dict) -> JsxElement {
                     }}
                 >-</button>
                 <button
-                    className="px-2 py-1 text-gray-600 hover:bg-gray-100 text-xs min-w-[48px] text-center"
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 text-sm font-medium min-w-[56px] text-center transition-colors"
                     onClick={lambda -> None {
                         viewportHook.setZoom(1);
                         viewportHook.setPanOffset({"x": 0, "y": 0});
                     }}
                 >{String(Math.round(viewportHook.zoom * 100)) + "%"}</button>
                 <button
-                    className="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded-r-lg text-sm font-medium"
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-r-xl text-base font-medium transition-colors"
                     onClick={lambda -> None {
                         ziCanvas = canvasRef.current;
                         if ziCanvas {

@@ -175,25 +175,27 @@ def:pub drawCircle(ctx: any, element: dict) -> None {
     rx = Math.abs(element.width) / 2;
     ry = Math.abs(element.height) / 2;
 
-    # Draw hand-drawn ellipse using many small segments with jitter
+    # Draw hand-drawn ellipse — 2 slightly offset passes for Excalidraw style
     pass_i = 0;
     while pass_i < 2 {
         ctx.beginPath();
-        segments = 36;
+        segments = 64;
         step = (Math.PI * 2) / segments;
+        startOffset = pass_i * 0.3;
+        wobble = Math.min(Math.max(rx, ry) * 0.02, 2.5);
         j = 0;
         while j <= segments {
-            angle = j * step;
-            jRx = rx + jitter(seed + j * 3 + pass_i * 200, rx * 0.04);
-            jRy = ry + jitter(seed + j * 3 + 1 + pass_i * 200, ry * 0.04);
+            angle = j * step + startOffset;
+            jRx = rx + jitter(seed + j * 3 + pass_i * 200, wobble);
+            jRy = ry + jitter(seed + j * 3 + 1 + pass_i * 200, wobble);
             px = cx + jRx * Math.cos(angle);
             py = cy + jRy * Math.sin(angle);
             if j == 0 {
                 ctx.moveTo(px, py);
             } else {
-                prevAngle = (j - 0.5) * step;
-                cpJRx = rx + jitter(seed + j * 3 + 2 + pass_i * 200, rx * 0.04);
-                cpJRy = ry + jitter(seed + j * 3 + 3 + pass_i * 200, ry * 0.04);
+                prevAngle = (j - 0.5) * step + startOffset;
+                cpJRx = rx + jitter(seed + j * 3 + 2 + pass_i * 200, wobble);
+                cpJRy = ry + jitter(seed + j * 3 + 3 + pass_i * 200, wobble);
                 cpx = cx + cpJRx * Math.cos(prevAngle);
                 cpy = cy + cpJRy * Math.sin(prevAngle);
                 ctx.quadraticCurveTo(cpx, cpy, px, py);
@@ -547,6 +549,71 @@ def:pub drawSelectionBox(ctx: any, element: dict) -> None {
         ctx.strokeStyle = "#6366f1";
         ctx.lineWidth = 1.5;
         ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+def:pub drawGroupSelectionBox(ctx: any, elements: list) -> None {
+    if elements.length == 0 {
+        return;
+    }
+    ctx.save();
+    # Compute combined bounding box across all elements
+    firstBounds = getElementBounds(ctx, elements[0]);
+    gMinX = firstBounds.x;
+    gMinY = firstBounds.y;
+    gMaxX = firstBounds.x + firstBounds.width;
+    gMaxY = firstBounds.y + firstBounds.height;
+    gbi = 1;
+    while gbi < elements.length {
+        elBounds = getElementBounds(ctx, elements[gbi]);
+        if elBounds.x < gMinX { gMinX = elBounds.x; }
+        if elBounds.y < gMinY { gMinY = elBounds.y; }
+        if elBounds.x + elBounds.width > gMaxX { gMaxX = elBounds.x + elBounds.width; }
+        if elBounds.y + elBounds.height > gMaxY { gMaxY = elBounds.y + elBounds.height; }
+        gbi = gbi + 1;
+    }
+    # Add padding
+    pad = 4;
+    gMinX = gMinX - pad;
+    gMinY = gMinY - pad;
+    gMaxX = gMaxX + pad;
+    gMaxY = gMaxY + pad;
+    groupW = gMaxX - gMinX;
+    groupH = gMaxY - gMinY;
+
+    # Solid selection border
+    ctx.strokeStyle = "#6366f1";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([]);
+    ctx.strokeRect(gMinX, gMinY, groupW, groupH);
+
+    # Draw resize handles at corners and edges
+    ghSize = 6;
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#6366f1";
+    ctx.lineWidth = 1.5;
+
+    ghPositions = [
+        {"x": gMinX, "y": gMinY},
+        {"x": gMinX + groupW / 2, "y": gMinY},
+        {"x": gMaxX, "y": gMinY},
+        {"x": gMaxX, "y": gMinY + groupH / 2},
+        {"x": gMaxX, "y": gMaxY},
+        {"x": gMinX + groupW / 2, "y": gMaxY},
+        {"x": gMinX, "y": gMaxY},
+        {"x": gMinX, "y": gMinY + groupH / 2}
+    ];
+
+    ghi = 0;
+    while ghi < ghPositions.length {
+        ghp = ghPositions[ghi];
+        ctx.beginPath();
+        ctx.arc(ghp.x, ghp.y, ghSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ghi = ghi + 1;
     }
 
     ctx.restore();
