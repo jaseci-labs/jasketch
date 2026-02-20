@@ -1,9 +1,30 @@
-import from react { useState, useRef }
+import from react { useState, useRef, useEffect }
 
 def:pub useElements() -> dict {
-    [elements, setElementsInternal] = useState([]);
+    [elements, rawSetElements] = useState([]);
     historyRef = useRef([]);
     historyIndexRef = useRef(-1);
+    loadedRef = useRef(False);
+
+    STORAGE_KEY = "jasketch_elements";
+
+    def setElementsInternal(newElements: list) -> None {
+        rawSetElements(newElements);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newElements));
+    }
+
+    # Load from localStorage on mount
+    useEffect(lambda -> None {
+        stored = localStorage.getItem(STORAGE_KEY);
+        if stored {
+            parsed = JSON.parse(stored);
+            if parsed and parsed.length > 0 {
+                rawSetElements(parsed);
+                pushHistory(parsed);
+            }
+        }
+        loadedRef.current = True;
+    }, []);
 
     def pushHistory(newElements: list) -> None {
         history = historyRef.current;
