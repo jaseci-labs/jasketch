@@ -79,7 +79,7 @@ def:pub TopBar(props: dict) -> JsxElement {
         "diamond": "6",
         "circle": "7",
         "text": "8",
-        "image": ""
+        "image": "9"
     };
 
     def handleToolClick(toolId: str) -> None {

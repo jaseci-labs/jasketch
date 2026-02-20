@@ -4,7 +4,7 @@ import from "...constants.tools" { LINE_STYLES }
 
 def:pub Sidebar(props: dict) -> JsxElement {
     currentTool = props.currentTool or "freehand";
-    currentColor = props.currentColor or "#1971c2";
+    currentColor = props.currentColor or "#000000";
     currentStrokeWidth = props.currentStrokeWidth or 2;
     currentOpacity = props.currentOpacity or 1.0;
     currentFontSize = props.currentFontSize or 24;

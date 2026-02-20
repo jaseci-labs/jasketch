@@ -1,5 +1,5 @@
 import from react { useRef, useEffect, useState }
-import from "..services.canvas" { drawElement, applyViewportTransform, drawSelectionBox, drawBoxSelectionRect }
+import from "..services.canvas" { drawElement, applyViewportTransform, drawSelectionBox, drawGroupSelectionBox, drawBoxSelectionRect }
 import from "..constants.canvas" { CANVAS_DEFAULTS }
 
 def:pub useCanvas() -> dict {
@@ -37,11 +37,42 @@ def:pub useCanvas() -> dict {
         }
 
         if selectedElements and selectedElements.length > 0 {
-            selectedElements.forEach(lambda sel: dict -> None {
-                if sel.element {
-                    drawSelectionBox(ctx, sel.element);
+            # Check if all selected elements share the same groupId
+            allGrouped = True;
+            sharedGroupId = None;
+            if selectedElements[0].element and selectedElements[0].element.groupId {
+                sharedGroupId = selectedElements[0].element.groupId;
+            } else {
+                allGrouped = False;
+            }
+            if allGrouped {
+                gci = 1;
+                while gci < selectedElements.length {
+                    if not selectedElements[gci].element or selectedElements[gci].element.groupId != sharedGroupId {
+                        allGrouped = False;
+                    }
+                    gci = gci + 1;
                 }
-            });
+            }
+            if allGrouped and sharedGroupId {
+                # Draw single combined selection box for group
+                groupEls = [];
+                gei = 0;
+                while gei < selectedElements.length {
+                    if selectedElements[gei].element {
+                        groupEls.push(selectedElements[gei].element);
+                    }
+                    gei = gei + 1;
+                }
+                drawGroupSelectionBox(ctx, groupEls);
+            } else {
+                # Draw individual selection boxes
+                selectedElements.forEach(lambda sel: dict -> None {
+                    if sel.element {
+                        drawSelectionBox(ctx, sel.element);
+                    }
+                });
+            }
         }
 
         if isBoxSelecting and boxStart and boxEnd {

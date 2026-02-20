@@ -39,6 +39,16 @@ def:pub ToolIcon(props: dict) -> JsxElement {
             <line x1="9.5" y1="20" x2="14.5" y2="20" />
             <line x1="12" y1="4" x2="12" y2="20" />
         </svg>;
+    } elif toolId == "diamond" {
+        return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2 L22 12 L12 22 L2 12 Z" />
+        </svg>;
+    } elif toolId == "image" {
+        return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
+        </svg>;
     }
     return <span>{toolId}</span>;
 }
@@ -60,20 +70,22 @@ def:pub Toolbar(props: dict) -> JsxElement {
     fontSizes = FONT_SIZES();
     fonts = FONTS();
 
-    toolIds = ["select", "freehand", "line", "arrow", "rectangle", "circle", "text"];
+    toolIds = ["select", "freehand", "line", "arrow", "rectangle", "diamond", "circle", "text", "image"];
     toolLabels = {
         "select": "Select",
         "freehand": "Pencil",
         "line": "Line",
         "arrow": "Arrow",
         "rectangle": "Rectangle",
+        "diamond": "Diamond",
         "circle": "Circle",
-        "text": "Text"
+        "text": "Text",
+        "image": "Image"
     };
 
     return <div className="flex flex-row items-start gap-2">
         # Main Toolbar
-        <div className="flex flex-col items-center py-2 px-1.5 gap-2 bg-white/90 backdrop-blur-xl rounded-xl shadow-lg border border-gray-200/80">
+        <div className="flex flex-col items-center py-2.5 px-2 gap-2 bg-white/95 backdrop-blur-xl rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-gray-200/60">
             # Tools Section
             <div className="flex flex-col gap-1">
                 {toolIds.map(lambda toolId: any -> any {
@@ -82,9 +94,9 @@ def:pub Toolbar(props: dict) -> JsxElement {
                         key={toolId}
                         onClick={lambda -> None { onToolChange(toolId); }}
                         title={toolLabels[toolId]}
-                        className={"w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 " + (isActive and "bg-violet-100 text-violet-700 shadow-sm" or "text-gray-500 hover:bg-gray-100 hover:text-gray-700")}
+                        className={"w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150 " + (isActive and "bg-violet-100 text-violet-700 shadow-sm ring-1 ring-violet-200" or "text-gray-500 hover:bg-gray-100 hover:text-gray-700")}
                     >
-                        <ToolIcon toolId={toolId} size={18} color={isActive and "#7c3aed" or "currentColor"} />
+                        <ToolIcon toolId={toolId} size={20} color={isActive and "#7c3aed" or "currentColor"} />
                     </button>;
                 })}
             </div>
@@ -138,7 +150,7 @@ def:pub Toolbar(props: dict) -> JsxElement {
         </div>
 
         # Side Panel for Text Options (pops out to the right)
-        {currentTool == "text" and <div className="flex flex-col items-center py-2 px-1.5 gap-2 bg-white/90 backdrop-blur-xl rounded-xl shadow-lg border border-gray-200/80">
+        {currentTool == "text" and <div className="flex flex-col items-center py-2.5 px-2 gap-2 bg-white/95 backdrop-blur-xl rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-gray-200/60">
             # Font Family
             <span className="text-[9px] font-semibold uppercase tracking-wider text-gray-400">Font</span>
             <div className="flex flex-col gap-0.5">

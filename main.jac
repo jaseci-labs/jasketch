@@ -11,7 +11,7 @@ cl {
     def:pub app() -> JsxElement {
         # Drawing tool state
         [currentTool, setCurrentTool] = useState("freehand");
-        [currentColor, setCurrentColor] = useState("#1971c2");
+        [currentColor, setCurrentColor] = useState("#000000");
         [currentStrokeWidth, setCurrentStrokeWidth] = useState(2);
         [currentFontSize, setCurrentFontSize] = useState(24);
         [currentFontFamily, setCurrentFontFamily] = useState("Virgil");
