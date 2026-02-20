@@ -1323,6 +1323,36 @@ def:pub Canvas(props: dict) -> JsxElement {
         }
 
         if currentTool == "line" or currentTool == "arrow" {
+            # If user dragged far enough from start, finalize as drag-to-draw
+            if drawingState.startPoint {
+                dragEndPos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
+                dragDist = Math.sqrt(Math.pow(dragEndPos.x - drawingState.startPoint.x, 2) + Math.pow(dragEndPos.y - drawingState.startPoint.y, 2));
+                if dragDist > 5 {
+                    dragEndSnap = findNearestConnectionPoint(dragEndPos, elementsHook.elements, 20.0);
+                    if dragEndSnap {
+                        dragEndPos = dragEndSnap.point;
+                    }
+                    dragLineEl = {
+                        "type": currentTool,
+                        "x1": drawingState.startPoint.x,
+                        "y1": drawingState.startPoint.y,
+                        "x2": dragEndPos.x,
+                        "y2": dragEndPos.y,
+                        "color": currentColor,
+                        "strokeWidth": currentStrokeWidth,
+                        "lineStyle": currentLineStyle,
+                        "opacity": currentOpacity
+                    };
+                    elementsHook.addElement(dragLineEl);
+                    drawingState.setIsDrawing(False);
+                    drawingState.setStartPoint(None);
+                    dragLineIdx = elementsHook.elements.length;
+                    selectionHook.setSelectedElement({"element": dragLineEl, "index": dragLineIdx});
+                    if props.onToolChange {
+                        props.onToolChange("select");
+                    }
+                }
+            }
             return;
         }
 
