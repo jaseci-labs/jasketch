@@ -1,41 +1,50 @@
-  # jasketch
+# JaSketch
 
+A sketching and diagramming app built with [Jaclang](https://docs.jaseci.org/) and Canvas 2D.
 
-A Jac client-side application with React and TypeScript support.
+![JaSketch](assets/jasketch.png)
+
+## Features
+
+- Freehand drawing, lines, arrows, rectangles, diamonds, ellipses, and text
+- Image import (file picker + clipboard paste)
+- Click-to-place lines/arrows with draggable bend points for curves
+- Select, move, resize, group/ungroup elements
+- Copy/paste, duplicate, undo/redo
+- Export as PNG, SVG, or PDF
+- Zoom and pan with scroll
+- localStorage persistence
+
+## Getting Started
+
+```bash
+jac start
+```
 
 ## Project Structure
 
 ```
 jasketch/
-├── jac.toml              # Project configuration
-├── src/                  # Source files
-│   ├── app.jac           # Main application entry
-│   └── components/       # Reusable components
-│       └── Button.tsx    # Example TypeScript component
-├── assets/               # Static assets (images, fonts, etc.)
-└── build/                # Build output (generated)
+├── main.jac                  # App entry point
+├── styles.css                # Global styles (Tailwind)
+├── components/
+│   ├── Canvas.cl.jac         # Main canvas with drawing logic
+│   ├── canvas/
+│   │   ├── CanvasRenderer    # Canvas rendering layer
+│   │   ├── ContextMenu       # Right-click context menu
+│   │   └── TextInput         # Inline text editing
+│   └── layout/
+│       ├── TopBar            # Toolbar with tool selection
+│       └── Sidebar           # Properties panel
+├── hooks/                    # React hooks for state management
+├── services/                 # Canvas rendering, collision, export, geometry
+├── constants/                # Colors, fonts, tools, canvas defaults
+└── assets/                   # Icon files
 ```
 
-## Getting Started
+## Tech
 
-Start the development server:
-
-```bash
-jac serve src/app.jac
-```
-
-## TypeScript Support
-
-Create TypeScript components in `src/components/` and import them in your Jac files:
-
-```jac
-cl import from "./components/Button.tsx" { Button }
-```
-
-## Adding Dependencies
-
-Add npm packages with the --cl flag:
-
-```bash
-jac add --cl react-router-dom
-```
+- **Jaclang** (.cl.jac) compiled to JavaScript
+- **Canvas 2D** with viewport transformations
+- **Tailwind CSS v4** for styling
+- **Virgil** handwriting font (default)
