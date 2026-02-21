@@ -18,6 +18,9 @@ A sketching and diagramming app built with [Jaclang](https://docs.jaseci.org/) a
 ## Getting Started
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install jaclang jac-client jac-scale
 jac start
 ```
 
