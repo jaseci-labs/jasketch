@@ -400,8 +400,8 @@ def:pub applyViewportTransform(ctx: any, zoom: float, panOffset: dict) -> None {
 
 def:pub drawBoxSelectionRect(ctx: any, boxStart: dict, boxEnd: dict) -> None {
     ctx.save();
-    ctx.strokeStyle = "#6366f1";
-    ctx.fillStyle = "rgba(99, 102, 241, 0.1)";
+    ctx.strokeStyle = "#f97316";
+    ctx.fillStyle = "rgba(249, 115, 22, 0.1)";
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
 
@@ -500,7 +500,7 @@ def:pub drawSelectionBox(ctx: any, element: dict) -> None {
     bounds = getElementBounds(ctx, element);
 
     # Solid selection border
-    ctx.strokeStyle = "#6366f1";
+    ctx.strokeStyle = "#f97316";
     ctx.lineWidth = 1.5;
     ctx.setLineDash([]);
     ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
@@ -508,7 +508,7 @@ def:pub drawSelectionBox(ctx: any, element: dict) -> None {
     # Draw resize handles at corners and edges
     handleSize = 6;
     ctx.fillStyle = "#ffffff";
-    ctx.strokeStyle = "#6366f1";
+    ctx.strokeStyle = "#f97316";
     ctx.lineWidth = 1.5;
 
     handlePositions = [
@@ -546,7 +546,7 @@ def:pub drawSelectionBox(ctx: any, element: dict) -> None {
         ctx.arc(bendHandleX, bendHandleY, 5, 0, Math.PI * 2);
         ctx.fillStyle = "#ffffff";
         ctx.fill();
-        ctx.strokeStyle = "#6366f1";
+        ctx.strokeStyle = "#f97316";
         ctx.lineWidth = 1.5;
         ctx.stroke();
     }
@@ -584,7 +584,7 @@ def:pub drawGroupSelectionBox(ctx: any, elements: list) -> None {
     groupH = gMaxY - gMinY;
 
     # Solid selection border
-    ctx.strokeStyle = "#6366f1";
+    ctx.strokeStyle = "#f97316";
     ctx.lineWidth = 1.5;
     ctx.setLineDash([]);
     ctx.strokeRect(gMinX, gMinY, groupW, groupH);
@@ -592,7 +592,7 @@ def:pub drawGroupSelectionBox(ctx: any, elements: list) -> None {
     # Draw resize handles at corners and edges
     ghSize = 6;
     ctx.fillStyle = "#ffffff";
-    ctx.strokeStyle = "#6366f1";
+    ctx.strokeStyle = "#f97316";
     ctx.lineWidth = 1.5;
 
     ghPositions = [
@@ -625,8 +625,8 @@ def:pub drawConnectionPoints(ctx: any, element: dict) -> None {
         return;
     }
     ctx.save();
-    ctx.fillStyle = "rgba(99, 102, 241, 0.3)";
-    ctx.strokeStyle = "#6366f1";
+    ctx.fillStyle = "rgba(249, 115, 22, 0.3)";
+    ctx.strokeStyle = "#f97316";
     ctx.lineWidth = 1.5;
     i = 0;
     while i < points.length {
@@ -644,9 +644,9 @@ def:pub drawSnapIndicator(ctx: any, point: dict) -> None {
     ctx.save();
     ctx.beginPath();
     ctx.arc(point.x, point.y, 7, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(99, 102, 241, 0.5)";
+    ctx.fillStyle = "rgba(249, 115, 22, 0.5)";
     ctx.fill();
-    ctx.strokeStyle = "#6366f1";
+    ctx.strokeStyle = "#f97316";
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.restore();

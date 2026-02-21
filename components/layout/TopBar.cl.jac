@@ -53,7 +53,7 @@ def ToolIcon(props: dict) -> JsxElement {
 }
 
 def:pub TopBar(props: dict) -> JsxElement {
-    currentTool = props.currentTool or "freehand";
+    currentTool = props.currentTool or "select";
     onToolChange = props.onToolChange;
     onImageLoad = props.onImageLoad;
     fileInputRef = useRef(None);
@@ -116,28 +116,34 @@ def:pub TopBar(props: dict) -> JsxElement {
         }
     }
 
-    return <header className="topbar bg-gray-50/95 border-b border-gray-200 flex-shrink-0">
-        <div className="h-12 px-4 flex items-center justify-between">
+    return <header className="topbar bg-white/95 border-b border-gray-200/60 flex-shrink-0">
+        <div className="h-11 px-3 flex items-center justify-between">
             # Logo
-            <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-sm overflow-hidden">
-                    <svg width="36" height="36" viewBox="0 0 512 512">
-                        <g transform="translate(256,256) rotate(-45) translate(-256,-256)">
-                            <rect x="196" y="100" width="120" height="260" rx="6" fill="white" opacity="0.95"/>
-                            <rect x="196" y="180" width="120" height="24" fill="#c4b5fd" opacity="0.7"/>
-                            <rect x="196" y="220" width="120" height="24" fill="#c4b5fd" opacity="0.7"/>
-                            <polygon points="196,360 316,360 256,420" fill="#fbbf24"/>
-                            <polygon points="240,400 272,400 256,420" fill="#374151"/>
-                            <rect x="196" y="100" width="120" height="40" rx="6" fill="#f9a8d4" opacity="0.9"/>
+            <div className="flex items-center gap-2 min-w-[120px]">
+                <div className="w-9 h-9 rounded-lg shadow-sm overflow-hidden">
+                    <svg width="100%" height="100%" viewBox="0 0 512 512">
+                        <defs>
+                            <linearGradient id="lbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#f97316"/><stop offset="100%" stopColor="#ea580c"/></linearGradient>
+                            <filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="4" dy="4" stdDeviation="12" floodColor="rgba(0,0,0,0.3)"/></filter>
+                        </defs>
+                        <rect width="512" height="512" rx="108" ry="108" fill="url(#lbg)"/>
+                        <g transform="translate(256,256) rotate(-45) translate(-256,-256)" filter="url(#sh)">
+                            <rect x="181" y="60" width="150" height="320" rx="8" fill="white" opacity="0.95"/>
+                            <rect x="181" y="195" width="150" height="30" fill="#06b6d4" opacity="0.45"/>
+                            <rect x="181" y="245" width="150" height="30" fill="#06b6d4" opacity="0.45"/>
+                            <polygon points="181,380 331,380 256,460" fill="#fde68a"/>
+                            <polygon points="228,420 284,420 256,458" fill="#374151"/>
+                            <rect x="181" y="60" width="150" height="50" rx="8" fill="#f9a8d4" opacity="0.9"/>
+                            <rect x="181" y="100" width="150" height="12" fill="#e5e7eb" opacity="0.5"/>
                         </g>
-                        <path d="M340 370 Q360 340 380 355 Q400 370 420 345" stroke="white" strokeWidth="8" fill="none" strokeLinecap="round" opacity="0.6"/>
+                        <path d="M350 385 Q375 350 400 368 Q425 385 445 358" stroke="white" strokeWidth="10" fill="none" strokeLinecap="round" opacity="0.6"/>
                     </svg>
                 </div>
-                <span className="text-sm font-bold text-gray-800 tracking-tight">JaSketch</span>
+                <span className="text-sm font-bold text-gray-700 tracking-tight">JaSketch</span>
             </div>
 
-            # Tool buttons
-            <div className="flex items-center gap-0.5 bg-white rounded-lg px-1.5 py-1 border border-gray-200/80 shadow-sm">
+            # Tool buttons - centered
+            <div className="flex items-center gap-0.5 bg-gray-50 rounded-lg px-1 py-0.5">
                 {toolIds.map(lambda toolId: any -> any {
                     isActive = currentTool == toolId and toolId != "image";
                     shortcut = toolShortcuts[toolId];
@@ -145,16 +151,18 @@ def:pub TopBar(props: dict) -> JsxElement {
                         key={toolId}
                         onClick={lambda -> None { handleToolClick(toolId); }}
                         title={toolLabels[toolId] + (shortcut and (" (" + shortcut + ")") or "")}
-                        className={"w-9 h-10 rounded-md flex flex-col items-center justify-center gap-0 transition-all duration-150 " + (isActive and "bg-violet-50 text-violet-700 ring-1 ring-violet-200/80" or "text-gray-400 hover:bg-gray-50 hover:text-gray-600")}
+                        className={"relative w-9 h-9 rounded-md flex flex-col items-center justify-center gap-0 transition-all duration-150 " + (isActive and "bg-white text-orange-600 shadow-sm" or "text-gray-400 hover:bg-white/60 hover:text-gray-600")}
                     >
-                        <ToolIcon toolId={toolId} size={18} color={isActive and "#7c3aed" or "currentColor"} />
-                        {shortcut and <span className={"text-[8px] leading-none font-medium mt-0.5 " + (isActive and "text-violet-500" or "text-gray-300")}>{shortcut}</span> or None}
+                        <ToolIcon toolId={toolId} size={17} color={isActive and "#ea580c" or "currentColor"} />
+                        {shortcut and <span className={"text-[7px] leading-none font-medium mt-px " + (isActive and "text-orange-400" or "text-gray-300")}>{shortcut}</span> or None}
                     </button>;
                 })}
             </div>
 
             # Help text
-            <span className="text-[10px] text-gray-400 hidden sm:block">Scroll to pan | Ctrl+scroll to zoom</span>
+            <div className="min-w-[120px] flex justify-end">
+                <span className="text-[10px] text-gray-400 hidden sm:block">Scroll to pan | Ctrl+scroll to zoom</span>
+            </div>
         </div>
 
         # Hidden file input

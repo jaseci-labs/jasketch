@@ -10,7 +10,7 @@ cl {
 
     def:pub app() -> JsxElement {
         # Drawing tool state
-        [currentTool, setCurrentTool] = useState("freehand");
+        [currentTool, setCurrentTool] = useState("select");
         [currentColor, setCurrentColor] = useState("#000000");
         [currentStrokeWidth, setCurrentStrokeWidth] = useState(2);
         [currentFontSize, setCurrentFontSize] = useState(24);
@@ -91,7 +91,7 @@ cl {
 
                 # Powered by badge
                 <div className="absolute bottom-3 right-4 z-10 pointer-events-none">
-                    <span className="text-xs tracking-wide text-gray-400 font-semibold">
+                    <span className="text-[10px] tracking-wider text-gray-300 font-medium uppercase">
                         {"Powered by Jaseci"}
                     </span>
                 </div>

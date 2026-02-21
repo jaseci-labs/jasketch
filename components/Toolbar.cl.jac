@@ -54,11 +54,11 @@ def:pub ToolIcon(props: dict) -> JsxElement {
 }
 
 def:pub Toolbar(props: dict) -> JsxElement {
-    currentTool = props.currentTool or "freehand";
+    currentTool = props.currentTool or "select";
     currentColor = props.currentColor or "#1e1e1e";
     currentStrokeWidth = props.currentStrokeWidth or 2;
     currentFontSize = props.currentFontSize or 24;
-    currentFontFamily = props.currentFontFamily or "Inter";
+    currentFontFamily = props.currentFontFamily or "Virgil";
 
     onToolChange = props.onToolChange;
     onColorChange = props.onColorChange;
@@ -94,9 +94,9 @@ def:pub Toolbar(props: dict) -> JsxElement {
                         key={toolId}
                         onClick={lambda -> None { onToolChange(toolId); }}
                         title={toolLabels[toolId]}
-                        className={"w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150 " + (isActive and "bg-violet-100 text-violet-700 shadow-sm ring-1 ring-violet-200" or "text-gray-500 hover:bg-gray-100 hover:text-gray-700")}
+                        className={"w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150 " + (isActive and "bg-orange-100 text-orange-700 shadow-sm ring-1 ring-orange-200" or "text-gray-500 hover:bg-gray-100 hover:text-gray-700")}
                     >
-                        <ToolIcon toolId={toolId} size={20} color={isActive and "#7c3aed" or "currentColor"} />
+                        <ToolIcon toolId={toolId} size={20} color={isActive and "#ea580c" or "currentColor"} />
                     </button>;
                 })}
             </div>
@@ -113,7 +113,7 @@ def:pub Toolbar(props: dict) -> JsxElement {
                             key={color}
                             onClick={lambda -> None { onColorChange(color); }}
                             title={color}
-                            className={"w-4 h-4 rounded-full transition-all duration-150 " + (isSelected and "ring-2 ring-violet-500 ring-offset-1 scale-110" or "hover:scale-110")}
+                            className={"w-4 h-4 rounded-full transition-all duration-150 " + (isSelected and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
                             style={{"backgroundColor": color}}
                         />;
                     })}
@@ -143,7 +143,7 @@ def:pub Toolbar(props: dict) -> JsxElement {
                         onChange={lambda e: any -> None { onStrokeWidthChange(parseInt(e.target.value)); }}
                         title={"Stroke: " + String(currentStrokeWidth) + "px"}
                         className="stroke-slider"
-                        style={{"writingMode": "vertical-lr", "direction": "rtl", "width": "20px", "height": "72px", "accentColor": "#7c3aed"}}
+                        style={{"writingMode": "vertical-lr", "direction": "rtl", "width": "20px", "height": "72px", "accentColor": "#ea580c"}}
                     />
                 </div>
             </div>
@@ -160,7 +160,7 @@ def:pub Toolbar(props: dict) -> JsxElement {
                         key={font.id}
                         onClick={lambda -> None { onFontFamilyChange(font.id); }}
                         title={font.id}
-                        className={"px-2 h-7 rounded-md flex items-center justify-center text-[10px] font-medium transition-all duration-150 whitespace-nowrap " + (isActive and "bg-violet-100 text-violet-700" or "text-gray-500 hover:bg-gray-100")}
+                        className={"px-2 h-7 rounded-md flex items-center justify-center text-[10px] font-medium transition-all duration-150 whitespace-nowrap " + (isActive and "bg-orange-100 text-orange-700" or "text-gray-500 hover:bg-gray-100")}
                         style={{"fontFamily": font.id}}
                     >
                         {font.label}
@@ -178,7 +178,7 @@ def:pub Toolbar(props: dict) -> JsxElement {
                     return <button
                         key={size}
                         onClick={lambda -> None { onFontSizeChange(size); }}
-                        className={"w-9 h-6 rounded-md flex items-center justify-center text-[10px] font-medium transition-all duration-150 " + (isActive and "bg-violet-100 text-violet-700" or "text-gray-500 hover:bg-gray-100")}
+                        className={"w-9 h-6 rounded-md flex items-center justify-center text-[10px] font-medium transition-all duration-150 " + (isActive and "bg-orange-100 text-orange-700" or "text-gray-500 hover:bg-gray-100")}
                     >
                         {size}
                     </button>;

@@ -1,20 +1,21 @@
 @import "tailwindcss";
 
-/* Import handwriting fonts like Excalidraw uses */
-@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Comic+Neue:wght@400;700&family=Architects+Daughter&display=swap');
+/* Import handwriting and display fonts */
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Comic+Neue:wght@400;700&family=Architects+Daughter&family=Patrick+Hand&display=swap');
 
-/* Custom font face for Virgil-like handwriting */
+/* Virgil handwriting font (OFL-1.1 licensed, via jsDelivr CDN) */
 @font-face {
     font-family: 'Virgil';
-    src: url('https://excalidraw.com/Virgil.woff2') format('woff2');
+    src: url('https://cdn.jsdelivr.net/gh/excalidraw/virgil@master/Virgil.woff2') format('woff2');
     font-display: swap;
 }
 
 /* Root CSS Variables */
 :root {
-    /* Modern Color Palette */
-    --primary-violet: #8b5cf6;
-    --primary-purple: #a855f7;
+    /* Jaseci Brand Palette - Orange/Amber */
+    --primary: #f97316;
+    --primary-light: #fb923c;
+    --primary-dark: #ea580c;
     --surface-light: #fafafa;
     --surface-dark: #111827;
     --border-light: #e5e7eb;
@@ -48,14 +49,14 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, var(--primary-violet), var(--primary-purple));
+    background: linear-gradient(135deg, var(--primary), var(--primary-light));
     border-radius: 10px;
     border: 2px solid transparent;
     background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(135deg, #7c3aed, #9333ea);
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
     background-clip: content-box;
 }
 
@@ -69,11 +70,11 @@ body {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Top bar glassmorphism */
+/* Top bar */
 .topbar {
-    -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 /* Sidebar glassmorphism */
@@ -108,7 +109,7 @@ body {
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: #7c3aed;
+    background: var(--primary);
     border: 2px solid white;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     cursor: pointer;
@@ -123,7 +124,7 @@ body {
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: #7c3aed;
+    background: var(--primary);
     border: 2px solid white;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     cursor: pointer;
@@ -175,7 +176,7 @@ button, input, select, textarea {
 
 /* Premium focus ring */
 *:focus-visible {
-    outline: 2px solid var(--primary-violet);
+    outline: 2px solid var(--primary);
     outline-offset: 2px;
     border-radius: 8px;
 }
@@ -231,16 +232,16 @@ button, input, select, textarea {
 /* Premium shadow styles */
 .shadow-premium {
     box-shadow:
-        0 10px 15px -3px rgba(139, 92, 246, 0.1),
-        0 4px 6px -4px rgba(139, 92, 246, 0.1),
-        0 0 0 1px rgba(139, 92, 246, 0.05);
+        0 10px 15px -3px rgba(249, 115, 22, 0.1),
+        0 4px 6px -4px rgba(249, 115, 22, 0.1),
+        0 0 0 1px rgba(249, 115, 22, 0.05);
 }
 
 .dark .shadow-premium {
     box-shadow:
-        0 10px 15px -3px rgba(168, 85, 247, 0.2),
-        0 4px 6px -4px rgba(168, 85, 247, 0.2),
-        0 0 0 1px rgba(168, 85, 247, 0.1);
+        0 10px 15px -3px rgba(251, 146, 60, 0.2),
+        0 4px 6px -4px rgba(251, 146, 60, 0.2),
+        0 0 0 1px rgba(251, 146, 60, 0.1);
 }
 
 /* Loading spinner */
@@ -272,10 +273,16 @@ button, input, select, textarea {
 
 /* Selection highlight */
 ::selection {
-    background-color: rgba(139, 92, 246, 0.3);
+    background-color: rgba(249, 115, 22, 0.25);
     color: inherit;
 }
 
 .dark ::selection {
-    background-color: rgba(168, 85, 247, 0.4);
+    background-color: rgba(251, 146, 60, 0.35);
+}
+
+/* Subtle dot grid canvas background */
+.canvas-dotgrid {
+    background-image: radial-gradient(circle, #d1d5db 0.8px, transparent 0.8px);
+    background-size: 24px 24px;
 }

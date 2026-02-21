@@ -3,7 +3,7 @@ import from "...constants.fonts" { FONTS, FONT_SIZES }
 import from "...constants.tools" { LINE_STYLES }
 
 def:pub Sidebar(props: dict) -> JsxElement {
-    currentTool = props.currentTool or "freehand";
+    currentTool = props.currentTool or "select";
     currentColor = props.currentColor or "#000000";
     currentStrokeWidth = props.currentStrokeWidth or 2;
     currentOpacity = props.currentOpacity or 1.0;
@@ -158,12 +158,12 @@ def:pub Sidebar(props: dict) -> JsxElement {
         }
     }
 
-    return <div className="sidebar bg-white/90 backdrop-blur-xl rounded-2xl shadow-lg border border-gray-200/80 w-[210px] py-3 px-3 flex flex-col gap-3 animate-slide-in overflow-y-auto max-h-[calc(100vh-80px)]">
+    return <div className="sidebar bg-white/95 backdrop-blur-xl rounded-xl shadow-md border border-gray-200/60 w-[200px] py-2.5 px-2.5 flex flex-col gap-2.5 animate-slide-in overflow-y-auto max-h-[calc(100vh-80px)]">
 
         # Header showing context
         {hasSelection and <div className="flex items-center gap-2 pb-1">
-            <div className="w-2 h-2 rounded-full bg-violet-500"></div>
-            <span className="text-[10px] font-semibold text-violet-600 uppercase tracking-wider">{sel.type + " selected"}</span>
+            <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+            <span className="text-[10px] font-semibold text-orange-600 uppercase tracking-wider">{sel.type + " selected"}</span>
         </div> or None}
 
         # Color Palette
@@ -176,7 +176,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                         key={color}
                         onClick={lambda -> None { handleColorChange(color); }}
                         title={color}
-                        className={"w-7 h-7 rounded-full transition-all duration-150 border border-gray-200/60 " + (isSelected and "ring-2 ring-violet-500 ring-offset-1 scale-110" or "hover:scale-110")}
+                        className={"w-7 h-7 rounded-full transition-all duration-150 border border-gray-200/60 " + (isSelected and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
                         style={{"backgroundColor": color}}
                     />;
                 })}
@@ -200,7 +200,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                 <button
                     onClick={lambda -> None { handleFillColorChange("transparent"); }}
                     title="No fill"
-                    className={"w-7 h-7 rounded-full border transition-all duration-150 flex items-center justify-center " + (activeFillColor == "transparent" and "ring-2 ring-violet-500 ring-offset-1 border-gray-300" or "border-gray-200 hover:scale-110")}
+                    className={"w-7 h-7 rounded-full border transition-all duration-150 flex items-center justify-center " + (activeFillColor == "transparent" and "ring-2 ring-orange-500 ring-offset-1 border-gray-300" or "border-gray-200 hover:scale-110")}
                     style={{"background": "repeating-conic-gradient(#e5e7eb 0% 25%, white 0% 50%) 50% / 8px 8px"}}
                 >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round">
@@ -211,7 +211,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                 <button
                     onClick={lambda -> None { handleFillColorChange(activeColor); }}
                     title="Fill with stroke color"
-                    className={"w-7 h-7 rounded-full border transition-all duration-150 " + (activeFillColor != "transparent" and activeFillColor == activeColor and "ring-2 ring-violet-500 ring-offset-1 border-gray-300" or "border-gray-200 hover:scale-110")}
+                    className={"w-7 h-7 rounded-full border transition-all duration-150 " + (activeFillColor != "transparent" and activeFillColor == activeColor and "ring-2 ring-orange-500 ring-offset-1 border-gray-300" or "border-gray-200 hover:scale-110")}
                     style={{"backgroundColor": activeColor, "opacity": 0.3}}
                 />
                 # Custom fill color picker
@@ -256,12 +256,12 @@ def:pub Sidebar(props: dict) -> JsxElement {
                         key={style.id}
                         onClick={lambda -> None { handleLineStyleChange(style.id); }}
                         title={style.label}
-                        className={"flex-1 h-8 rounded-lg flex items-center justify-center transition-all duration-150 " + (isActive and "bg-violet-50 ring-1 ring-violet-200" or "bg-gray-50 hover:bg-gray-100")}
+                        className={"flex-1 h-8 rounded-lg flex items-center justify-center transition-all duration-150 " + (isActive and "bg-orange-50 ring-1 ring-orange-200" or "bg-gray-50 hover:bg-gray-100")}
                     >
                         <svg width="32" height="4" viewBox="0 0 32 4">
                             <line
                                 x1="2" y1="2" x2="30" y2="2"
-                                stroke={isActive and "#7c3aed" or "#9ca3af"}
+                                stroke={isActive and "#ea580c" or "#9ca3af"}
                                 strokeWidth="2"
                                 strokeLinecap="round"
                                 strokeDasharray={style.id == "dashed" and "6,4" or (style.id == "dotted" and "2,4" or "none")}
@@ -300,7 +300,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                         key={font.id}
                         onClick={lambda -> None { handleFontFamilyChange(font.id); }}
                         title={font.id}
-                        className={"px-2 h-7 rounded-md flex items-center text-xs font-medium transition-all duration-150 whitespace-nowrap " + (isActive and "bg-violet-50 text-violet-700 ring-1 ring-violet-200" or "text-gray-500 hover:bg-gray-50")}
+                        className={"px-2 h-7 rounded-md flex items-center text-xs font-medium transition-all duration-150 whitespace-nowrap " + (isActive and "bg-orange-50 text-orange-700 ring-1 ring-orange-200" or "text-gray-500 hover:bg-gray-50")}
                         style={{"fontFamily": font.id}}
                     >
                         {font.label}
@@ -317,7 +317,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                     return <button
                         key={size}
                         onClick={lambda -> None { handleFontSizeChange(size); }}
-                        className={"h-7 rounded-md flex items-center justify-center text-xs font-medium transition-all duration-150 " + (isActive and "bg-violet-50 text-violet-700 ring-1 ring-violet-200" or "text-gray-500 hover:bg-gray-50")}
+                        className={"h-7 rounded-md flex items-center justify-center text-xs font-medium transition-all duration-150 " + (isActive and "bg-orange-50 text-orange-700 ring-1 ring-orange-200" or "text-gray-500 hover:bg-gray-50")}
                     >
                         {size}
                     </button>;

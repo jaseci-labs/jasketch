@@ -1,33 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#8b5cf6"/>
-      <stop offset="100%" stop-color="#7c3aed"/>
+      <stop offset="0%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#ea580c"/>
     </linearGradient>
     <linearGradient id="shine" x1="0" y1="0" x2="0.3" y2="0.3">
       <stop offset="0%" stop-color="rgba(255,255,255,0.25)"/>
       <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
     </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="4" dy="4" stdDeviation="12" flood-color="rgba(0,0,0,0.3)"/>
+    </filter>
   </defs>
   <!-- Rounded square background -->
   <rect width="512" height="512" rx="108" ry="108" fill="url(#bg)"/>
   <!-- Subtle shine -->
   <rect width="512" height="512" rx="108" ry="108" fill="url(#shine)"/>
   <!-- Pencil body -->
-  <g transform="translate(256,256) rotate(-45) translate(-256,-256)">
+  <g transform="translate(256,256) rotate(-45) translate(-256,-256)" filter="url(#shadow)">
     <!-- Pencil shaft -->
-    <rect x="196" y="100" width="120" height="260" rx="6" fill="white" opacity="0.95"/>
+    <rect x="181" y="60" width="150" height="320" rx="8" fill="white" opacity="0.95"/>
     <!-- Pencil stripe -->
-    <rect x="196" y="180" width="120" height="24" fill="#c4b5fd" opacity="0.7"/>
-    <rect x="196" y="220" width="120" height="24" fill="#c4b5fd" opacity="0.7"/>
+    <rect x="181" y="195" width="150" height="30" fill="#06b6d4" opacity="0.45"/>
+    <rect x="181" y="245" width="150" height="30" fill="#06b6d4" opacity="0.45"/>
     <!-- Pencil tip (triangle) -->
-    <polygon points="196,360 316,360 256,420" fill="#fbbf24"/>
+    <polygon points="181,380 331,380 256,460" fill="#fde68a"/>
     <!-- Pencil point -->
-    <polygon points="240,400 272,400 256,420" fill="#374151"/>
+    <polygon points="228,420 284,420 256,458" fill="#374151"/>
     <!-- Eraser -->
-    <rect x="196" y="100" width="120" height="40" rx="6" fill="#f9a8d4" opacity="0.9"/>
-    <rect x="196" y="130" width="120" height="10" fill="#e5e7eb" opacity="0.5"/>
+    <rect x="181" y="60" width="150" height="50" rx="8" fill="#f9a8d4" opacity="0.9"/>
+    <rect x="181" y="100" width="150" height="12" fill="#e5e7eb" opacity="0.5"/>
   </g>
   <!-- Small sketch line to suggest drawing -->
-  <path d="M340 370 Q360 340 380 355 Q400 370 420 345" stroke="white" stroke-width="8" fill="none" stroke-linecap="round" opacity="0.6"/>
+  <path d="M350 385 Q375 350 400 368 Q425 385 445 358" stroke="white" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.6"/>
 </svg>
