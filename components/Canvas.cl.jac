@@ -15,7 +15,7 @@ import from .canvas.TextInput { TextInput }
 import from .canvas.ContextMenu { ContextMenu }
 
 def:pub Canvas(props: dict) -> JsxElement {
-    currentTool = props.currentTool or "freehand";
+    currentTool = props.currentTool or "select";
     currentColor = props.currentColor or "#000000";
     currentStrokeWidth = props.currentStrokeWidth or 2;
     currentFontSize = props.currentFontSize or 24;
@@ -1456,7 +1456,7 @@ def:pub Canvas(props: dict) -> JsxElement {
     }
 
     return (
-        <div ref={containerRef} className="relative w-full h-full flex items-center justify-center overflow-hidden bg-white" onContextMenu={handleContextMenu}>
+        <div ref={containerRef} className="relative w-full h-full flex items-center justify-center overflow-hidden bg-gray-50/50 canvas-dotgrid" onContextMenu={handleContextMenu}>
             <CanvasRenderer
                 canvasRef={canvasRef}
                 canvasSize={canvasHook.canvasSize}
