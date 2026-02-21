@@ -643,26 +643,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             newElements = [];
             pi = 0;
             while pi < clipboardRef.current.length {
-                original = clipboardRef.current[pi];
-                newEl = Object.assign({}, original);
-                if newEl.type == "text" or newEl.type == "rectangle" or newEl.type == "circle" or newEl.type == "image" or newEl.type == "diamond" {
-                    newEl.x = original.x + 20;
-                    newEl.y = original.y + 20;
-                } elif newEl.type == "line" or newEl.type == "arrow" {
-                    newEl.x1 = original.x1 + 20;
-                    newEl.y1 = original.y1 + 20;
-                    newEl.x2 = original.x2 + 20;
-                    newEl.y2 = original.y2 + 20;
-                    if original.bendX != None and original.bendX != undefined {
-                        newEl.bendX = original.bendX + 20;
-                        newEl.bendY = original.bendY + 20;
-                    }
-                } elif newEl.type == "freehand" {
-                    newEl.points = original.points.map(lambda pt: dict -> dict {
-                        return {"x": pt.x + 20, "y": pt.y + 20};
-                    });
-                }
-                newElements.push(newEl);
+                newElements.push(offsetElement(clipboardRef.current[pi], 20, 20));
                 pi = pi + 1;
             }
             baseIndex = elementsHook.elements.length;

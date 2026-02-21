@@ -32,11 +32,6 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
 }
 
-/* Handwriting font class */
-.font-handwritten {
-    font-family: 'Virgil', 'Caveat', 'Architects Daughter', cursive;
-}
-
 /* Custom Scrollbar - Modern Design */
 ::-webkit-scrollbar {
     width: 10px;
@@ -60,12 +55,7 @@ body {
     background-clip: content-box;
 }
 
-/* Dark mode scrollbar */
-.dark ::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-}
-
-/* Canvas container with premium shadow */
+/* Canvas container */
 .canvas-container {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -190,71 +180,6 @@ button, input, select, textarea {
     box-shadow: none !important;
 }
 
-/* Gradient text animation */
-@keyframes gradient-shift {
-    0% {
-        background-position: 0% 50%;
-    }
-    50% {
-        background-position: 100% 50%;
-    }
-    100% {
-        background-position: 0% 50%;
-    }
-}
-
-.animate-gradient {
-    background-size: 200% 200%;
-    animation: gradient-shift 3s ease infinite;
-}
-
-/* Pulse animation for status indicators */
-@keyframes pulse-glow {
-    0%, 100% {
-        opacity: 1;
-        box-shadow: 0 0 8px currentColor;
-    }
-    50% {
-        opacity: 0.5;
-        box-shadow: 0 0 16px currentColor;
-    }
-}
-
-.animate-pulse {
-    animation: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* Smooth scale transform */
-.transition-transform {
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Premium shadow styles */
-.shadow-premium {
-    box-shadow:
-        0 10px 15px -3px rgba(249, 115, 22, 0.1),
-        0 4px 6px -4px rgba(249, 115, 22, 0.1),
-        0 0 0 1px rgba(249, 115, 22, 0.05);
-}
-
-.dark .shadow-premium {
-    box-shadow:
-        0 10px 15px -3px rgba(251, 146, 60, 0.2),
-        0 4px 6px -4px rgba(251, 146, 60, 0.2),
-        0 0 0 1px rgba(251, 146, 60, 0.1);
-}
-
-/* Loading spinner */
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-.animate-spin {
-    animation: spin 1s linear infinite;
-}
-
 /* Fade in animation */
 @keyframes fadeIn {
     from {
@@ -275,10 +200,6 @@ button, input, select, textarea {
 ::selection {
     background-color: rgba(249, 115, 22, 0.25);
     color: inherit;
-}
-
-.dark ::selection {
-    background-color: rgba(251, 146, 60, 0.35);
 }
 
 /* Subtle dot grid canvas background */

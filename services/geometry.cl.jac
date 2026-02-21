@@ -15,10 +15,6 @@ def:pub calculateDistance(point1: dict, point2: dict) -> float {
     );
 }
 
-def:pub calculateCircleRadius(width: float, height: float) -> float {
-    return Math.sqrt(Math.pow(width, 2) + Math.pow(height, 2)) / 2;
-}
-
 def:pub getTextDimensions(text: str, fontSize: float) -> dict {
     lines = text.split(String.fromCharCode(10));
     maxLen = 0;
