@@ -34,7 +34,6 @@ cl {
         }
 
         return <div className="h-screen flex flex-col overflow-hidden bg-white">
-            # Top Bar
             <TopBar
                 currentTool={currentTool}
                 onToolChange={lambda tool: any -> None { setCurrentTool(tool); }}
@@ -45,9 +44,7 @@ cl {
                 }}
             />
 
-            # Main Content Area
             <div className="flex-1 overflow-hidden relative">
-                # Floating Left Sidebar
                 <div className="absolute left-3 top-3 z-10">
                     <Sidebar
                         currentTool={currentTool}
@@ -70,7 +67,6 @@ cl {
                     />
                 </div>
 
-                # Canvas Container
                 <div className="w-full h-full">
                     <Canvas
                         currentTool={currentTool}
@@ -89,7 +85,6 @@ cl {
                     />
                 </div>
 
-                # Powered by badge
                 <div className="absolute bottom-3 right-4 z-10 pointer-events-none">
                     <span className="text-[10px] tracking-wider text-gray-300 font-medium uppercase">
                         {"Powered by Jaseci"}

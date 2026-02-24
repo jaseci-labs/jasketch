@@ -160,13 +160,11 @@ def:pub Sidebar(props: dict) -> JsxElement {
 
     return <div className="sidebar bg-white/95 backdrop-blur-xl rounded-xl shadow-md border border-gray-200/60 w-[200px] py-2.5 px-2.5 flex flex-col gap-2.5 animate-slide-in overflow-y-auto max-h-[calc(100vh-80px)]">
 
-        # Header showing context
         {hasSelection and <div className="flex items-center gap-2 pb-1">
             <div className="w-2 h-2 rounded-full bg-orange-500"></div>
             <span className="text-[10px] font-semibold text-orange-600 uppercase tracking-wider">{sel.type + " selected"}</span>
         </div> or None}
 
-        # Color Palette
         {showColor and <div>
             <span className="sidebar-label">Stroke</span>
             <div className="grid grid-cols-5 gap-1.5 mt-1.5">
@@ -192,11 +190,9 @@ def:pub Sidebar(props: dict) -> JsxElement {
 
         {showColor and <div className="h-px bg-gray-100"></div> or None}
 
-        # Fill Color
         {showFillColor and <div>
             <span className="sidebar-label">Fill</span>
             <div className="flex items-center gap-1.5 mt-1.5">
-                # Transparent (no fill) button
                 <button
                     onClick={lambda -> None { handleFillColorChange("transparent"); }}
                     title="No fill"
@@ -207,14 +203,12 @@ def:pub Sidebar(props: dict) -> JsxElement {
                         <line x1="4" y1="4" x2="20" y2="20" />
                     </svg>
                 </button>
-                # Use stroke color as fill
                 <button
                     onClick={lambda -> None { handleFillColorChange(activeColor); }}
                     title="Fill with stroke color"
                     className={"w-7 h-7 rounded-full border transition-all duration-150 " + (activeFillColor != "transparent" and activeFillColor == activeColor and "ring-2 ring-orange-500 ring-offset-1 border-gray-300" or "border-gray-200 hover:scale-110")}
                     style={{"backgroundColor": activeColor, "opacity": 0.3}}
                 />
-                # Custom fill color picker
                 <div className="relative">
                     <input
                         type="color"
@@ -229,7 +223,6 @@ def:pub Sidebar(props: dict) -> JsxElement {
 
         {showFillColor and <div className="h-px bg-gray-100"></div> or None}
 
-        # Stroke Width
         {showStroke and <div>
             <div className="flex items-center justify-between">
                 <span className="sidebar-label">Stroke Width</span>
@@ -246,7 +239,6 @@ def:pub Sidebar(props: dict) -> JsxElement {
             />
         </div> or None}
 
-        # Line Style
         {showLineStyle and <div>
             <span className="sidebar-label">Line Style</span>
             <div className="flex items-center gap-1 mt-1.5">
@@ -272,7 +264,6 @@ def:pub Sidebar(props: dict) -> JsxElement {
             </div>
         </div> or None}
 
-        # Opacity
         {showOpacity and <div>
             <div className="flex items-center justify-between">
                 <span className="sidebar-label">Opacity</span>
@@ -289,7 +280,6 @@ def:pub Sidebar(props: dict) -> JsxElement {
             />
         </div> or None}
 
-        # Font Options
         {showFont and <div>
             <div className="h-px bg-gray-100 mb-3"></div>
             <span className="sidebar-label">Font</span>

@@ -45,7 +45,6 @@ def:pub Canvas(props: dict) -> JsxElement {
     [isDraggingBend, setIsDraggingBend] = useState(False);
     [bendDragElement, setBendDragElement] = useState(None);
 
-    # Keep refs in sync with selection state
     selectedElementRef.current = selectionHook.selectedElement;
     selectedElementsRef.current = selectionHook.selectedElements;
     drawingStateRef.current = drawingState;
@@ -55,7 +54,6 @@ def:pub Canvas(props: dict) -> JsxElement {
         if canvas {
             canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd);
         }
-        # Notify parent of selection changes
         if props.onSelectionChange {
             props.onSelectionChange(selectionHook.selectedElement);
         }
@@ -129,7 +127,6 @@ def:pub Canvas(props: dict) -> JsxElement {
                 deleteSelected();
                 e.preventDefault();
             }
-            # Undo/Redo
             if not textInputHook.textInput and (e.key == "z" or e.key == "Z") and (e.ctrlKey or e.metaKey) {
                 e.preventDefault();
                 if e.shiftKey {
@@ -144,7 +141,6 @@ def:pub Canvas(props: dict) -> JsxElement {
                 elementsHook.redo();
                 selectionHook.clearSelection();
             }
-            # Group / Ungroup
             if not textInputHook.textInput and (e.key == "g" or e.key == "G") and (e.ctrlKey or e.metaKey) {
                 e.preventDefault();
                 if e.shiftKey {
@@ -247,16 +243,11 @@ def:pub Canvas(props: dict) -> JsxElement {
         def handleWheel(e: dict) -> None {
             e.preventDefault();
             if e.ctrlKey or e.metaKey {
-                # Ctrl + wheel / pinch-to-zoom on trackpad: zoom
                 viewportHook.handleZoom(e.deltaY, e.clientX, e.clientY, canvas);
             } else {
-                # Two-finger scroll on trackpad provides both deltaX and deltaY
-                # Mouse wheel: deltaY only (deltaX is 0)
-                # Shift + mouse wheel: swap to horizontal
                 panX = -(e.deltaX or 0);
                 panY = -(e.deltaY or 0);
                 if e.shiftKey and panX == 0 {
-                    # Shift + mouse wheel with no deltaX: use deltaY for horizontal
                     panX = panY;
                     panY = 0;
                 }
@@ -270,7 +261,6 @@ def:pub Canvas(props: dict) -> JsxElement {
         };
     }, [viewportHook.zoom, viewportHook.panOffset]);
 
-    # Expose internal functions via refs for cross-component communication
     useEffect(lambda -> None {
         if props.clearCanvasRef {
             props.clearCanvasRef.current = lambda -> None {
@@ -298,7 +288,6 @@ def:pub Canvas(props: dict) -> JsxElement {
     def handleCanvasClick(e: dict) -> None {
         if currentTool == "text" {
             if textInputHook.textInput {
-                # Active text input — submit it and switch to select
                 handleTextSubmit();
                 if props.onToolChange {
                     props.onToolChange("select");
@@ -307,7 +296,6 @@ def:pub Canvas(props: dict) -> JsxElement {
             }
             pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
 
-            # Check if clicking on an existing text element -> edit it
             elementInfo = selectionHook.findElementAtPoint(pos, elementsHook.elements);
             if elementInfo and elementInfo.element.type == "text" {
                 element = elementInfo.element;
@@ -321,7 +309,6 @@ def:pub Canvas(props: dict) -> JsxElement {
                     }
                 }, 10);
             } else {
-                # Click on empty space -> new text
                 textInputHook.startTextInput(pos.x, pos.y, "");
                 setTimeout(lambda -> None {
                     if textInputRef.current {
@@ -337,7 +324,6 @@ def:pub Canvas(props: dict) -> JsxElement {
         elementInfo = selectionHook.findElementAtPoint(pos, elementsHook.elements);
 
         if elementInfo and elementInfo.element.type == "text" {
-            # Double-click on existing text -> edit it
             element = elementInfo.element;
             textInputHook.startTextInput(element.x, element.y, element.text);
             elementsHook.removeElement(elementInfo.index);

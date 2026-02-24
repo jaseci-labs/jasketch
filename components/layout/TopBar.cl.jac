@@ -118,7 +118,6 @@ def:pub TopBar(props: dict) -> JsxElement {
 
     return <header className="topbar bg-white/95 border-b border-gray-200/60 flex-shrink-0">
         <div className="h-11 px-3 flex items-center justify-between">
-            # Logo
             <div className="flex items-center gap-2 min-w-[120px]">
                 <div className="w-9 h-9 rounded-lg shadow-sm overflow-hidden">
                     <svg width="100%" height="100%" viewBox="0 0 512 512">
@@ -142,7 +141,6 @@ def:pub TopBar(props: dict) -> JsxElement {
                 <span className="text-sm font-bold text-gray-700 tracking-tight">JaSketch</span>
             </div>
 
-            # Tool buttons - centered
             <div className="flex items-center gap-0.5 bg-gray-50 rounded-lg px-1 py-0.5">
                 {toolIds.map(lambda toolId: any -> any {
                     isActive = currentTool == toolId and toolId != "image";
@@ -159,13 +157,11 @@ def:pub TopBar(props: dict) -> JsxElement {
                 })}
             </div>
 
-            # Help text
             <div className="min-w-[120px] flex justify-end">
                 <span className="text-[10px] text-gray-400 hidden sm:block">Scroll to pan | Ctrl+scroll to zoom</span>
             </div>
         </div>
 
-        # Hidden file input
         <input
             ref={fileInputRef}
             type="file"
