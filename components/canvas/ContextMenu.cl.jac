@@ -10,7 +10,7 @@ def:pub ContextMenu(props: dict) -> JsxElement {
     onClearCanvas = props.onClearCanvas;
     onExportPNG = props.onExportPNG;
     onExportSVG = props.onExportSVG;
-    onExportPDF = props.onExportPDF;
+    onCopySelectionPNG = props.onCopySelectionPNG;
     onPaste = props.onPaste;
     onCopyCanvasPNG = props.onCopyCanvasPNG;
     onCopyCanvasSVG = props.onCopyCanvasSVG;
@@ -67,8 +67,8 @@ def:pub ContextMenu(props: dict) -> JsxElement {
             <button onClick={onExportSVG} className={itemClass}>
                 <span>Export as SVG</span>
             </button>
-            <button onClick={onExportPDF} className={itemClass}>
-                <span>Export as PDF</span>
+            <button onClick={onCopySelectionPNG} className={itemClass}>
+                <span>Copy as PNG</span>
             </button>
         </div> or None}
         {not hasSelection and <div>

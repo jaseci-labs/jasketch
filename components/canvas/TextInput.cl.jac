@@ -19,6 +19,32 @@ def:pub TextInput(props: dict) -> JsxElement {
     screenY = textInput.y * zoom + panOffset.y;
     scaledFontSize = currentFontSize * zoom;
 
+    isShapeEdit = textInput.editingShapeIndex != None and textInput.editingShapeIndex != undefined;
+
+    baseStyle = {
+        "left": screenX + "px",
+        "top": screenY + "px",
+        "color": currentColor,
+        "fontSize": scaledFontSize + "px",
+        "fontFamily": currentFontFamily,
+        "lineHeight": "1.2",
+        "background": "transparent",
+        "border": "none",
+        "padding": "0",
+        "margin": "0",
+        "minWidth": "4px",
+        "minHeight": scaledFontSize * 1.2 + "px",
+        "zIndex": "20",
+        "caretColor": currentColor,
+        "whiteSpace": "pre",
+        "wordBreak": "keep-all"
+    };
+
+    if isShapeEdit {
+        baseStyle.transform = "translate(-50%, -50%)";
+        baseStyle.textAlign = "center";
+    }
+
     return <textarea
         ref={textInputRef}
         value={textInput.text or ""}
@@ -27,23 +53,6 @@ def:pub TextInput(props: dict) -> JsxElement {
         onBlur={onBlur}
         autoFocus={True}
         className="absolute outline-none resize-none overflow-hidden canvas-text-input"
-        style={{
-            "left": screenX + "px",
-            "top": screenY + "px",
-            "color": currentColor,
-            "fontSize": scaledFontSize + "px",
-            "fontFamily": currentFontFamily,
-            "lineHeight": "1.2",
-            "background": "transparent",
-            "border": "none",
-            "padding": "0",
-            "margin": "0",
-            "minWidth": "4px",
-            "minHeight": scaledFontSize * 1.2 + "px",
-            "zIndex": "20",
-            "caretColor": currentColor,
-            "whiteSpace": "pre",
-            "wordBreak": "keep-all"
-        }}
+        style={baseStyle}
     />;
 }

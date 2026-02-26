@@ -42,6 +42,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
     showFontSize = False;
     showLineStyle = False;
     showFillColor = False;
+    showShapeTextColor = False;
 
     activeColor = currentColor;
     activeStrokeWidth = currentStrokeWidth;
@@ -50,6 +51,10 @@ def:pub Sidebar(props: dict) -> JsxElement {
     activeFontFamily = currentFontFamily;
     activeLineStyle = currentLineStyle;
     activeFillColor = currentFillColor;
+    activeShapeTextColor = currentColor;
+
+    # Track whether selected element is a shape (for font/color handler routing)
+    isShapeWithText = False;
 
     if hasSelection {
         # Editing a selected element - show its properties
@@ -77,6 +82,16 @@ def:pub Sidebar(props: dict) -> JsxElement {
             if elType == "rectangle" or elType == "circle" or elType == "diamond" {
                 showFillColor = True;
                 activeFillColor = sel.fillColor or "transparent";
+                # Show text controls if shape has text
+                if sel.shapeText {
+                    isShapeWithText = True;
+                    showFont = True;
+                    showFontSize = True;
+                    showShapeTextColor = True;
+                    activeFontSize = sel.shapeTextFontSize or currentFontSize;
+                    activeFontFamily = sel.shapeTextFontFamily or currentFontFamily;
+                    activeShapeTextColor = sel.shapeTextColor or sel.color;
+                }
             }
         } elif elType == "image" {
             showOpacity = True;
@@ -133,14 +148,29 @@ def:pub Sidebar(props: dict) -> JsxElement {
     def handleFontFamilyChange(font: str) -> None {
         onFontFamilyChange(font);
         if hasSelection {
-            onUpdateElement({"fontFamily": font});
+            if isShapeWithText {
+                onUpdateElement({"shapeTextFontFamily": font});
+            } else {
+                onUpdateElement({"fontFamily": font});
+            }
         }
     }
 
     def handleFontSizeChange(size: int) -> None {
         onFontSizeChange(size);
         if hasSelection {
-            onUpdateElement({"fontSize": size});
+            if isShapeWithText {
+                onUpdateElement({"shapeTextFontSize": size});
+            } else {
+                onUpdateElement({"fontSize": size});
+            }
+        }
+    }
+
+    def handleShapeTextColorChange(color: str) -> None {
+        onColorChange(color);
+        if hasSelection {
+            onUpdateElement({"shapeTextColor": color});
         }
     }
 
@@ -158,7 +188,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
         }
     }
 
-    return <div className="sidebar bg-white/95 backdrop-blur-xl rounded-xl shadow-md border border-gray-200/60 w-[200px] py-2.5 px-2.5 flex flex-col gap-2.5 animate-slide-in overflow-y-auto max-h-[calc(100vh-80px)]">
+    return <div className="sidebar bg-white/95 backdrop-blur-xl rounded-xl shadow-md border border-gray-200/60 w-[200px] py-2.5 px-2.5 flex flex-col gap-2.5 animate-slide-in overflow-y-auto max-h-[calc(100vh-140px)]">
 
         {hasSelection and <div className="flex items-center gap-2 pb-1">
             <div className="w-2 h-2 rounded-full bg-orange-500"></div>
@@ -222,6 +252,31 @@ def:pub Sidebar(props: dict) -> JsxElement {
         </div> or None}
 
         {showFillColor and <div className="h-px bg-gray-100"></div> or None}
+
+        {showShapeTextColor and <div>
+            <span className="sidebar-label">Text Color</span>
+            <div className="grid grid-cols-5 gap-1.5 mt-1.5">
+                {presetColors.map(lambda stcColor: any -> any {
+                    stcSelected = activeShapeTextColor == stcColor;
+                    return <button
+                        key={stcColor}
+                        onClick={lambda -> None { handleShapeTextColorChange(stcColor); }}
+                        title={stcColor}
+                        className={"w-7 h-7 rounded-full transition-all duration-150 border border-gray-200/60 " + (stcSelected and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
+                        style={{"backgroundColor": stcColor}}
+                    />;
+                })}
+            </div>
+            <input
+                type="color"
+                value={activeShapeTextColor}
+                onChange={lambda e: any -> None { handleShapeTextColorChange(e.target.value); }}
+                title="Custom text color"
+                className="color-input w-full h-7 rounded-md cursor-pointer border border-gray-200 p-0 mt-1.5"
+            />
+        </div> or None}
+
+        {showShapeTextColor and <div className="h-px bg-gray-100"></div> or None}
 
         {showStroke and <div>
             <div className="flex items-center justify-between">

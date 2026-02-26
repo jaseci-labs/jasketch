@@ -73,6 +73,82 @@ def:pub drawTextElement(ctx: any, element: dict) -> None {
     ctx.restore();
 }
 
+def wrapTextLines(ctx: any, text: str, maxWidth: float) -> list {
+    # Split by explicit newlines first, then word-wrap each line
+    rawLines = text.split(String.fromCharCode(10));
+    wrapped = [];
+    wri = 0;
+    while wri < rawLines.length {
+        rawLine = rawLines[wri];
+        if rawLine == "" {
+            wrapped.push("");
+            wri = wri + 1;
+            continue;
+        }
+        words = rawLine.split(" ");
+        currentLine = "";
+        wrj = 0;
+        while wrj < words.length {
+            testLine = currentLine;
+            if currentLine == "" {
+                testLine = words[wrj];
+            } else {
+                testLine = currentLine + " " + words[wrj];
+            }
+            testWidth = ctx.measureText(testLine).width;
+            if testWidth > maxWidth and currentLine != "" {
+                wrapped.push(currentLine);
+                currentLine = words[wrj];
+            } else {
+                currentLine = testLine;
+            }
+            wrj = wrj + 1;
+        }
+        if currentLine != "" {
+            wrapped.push(currentLine);
+        }
+        wri = wri + 1;
+    }
+    return wrapped;
+}
+
+def drawShapeText(ctx: any, element: dict) -> None {
+    if not element.shapeText {
+        return;
+    }
+    ctx.save();
+    stFontSize = element.shapeTextFontSize or 16;
+    stFontFamily = element.shapeTextFontFamily or "Virgil";
+    stColor = element.shapeTextColor or element.color;
+
+    ctx.font = stFontSize + "px " + stFontFamily;
+    ctx.fillStyle = stColor;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+
+    # Calculate shape center and available width (with padding)
+    stCx = element.x + element.width / 2;
+    stCy = element.y + element.height / 2;
+    stMaxWidth = Math.abs(element.width) - 20;
+    if stMaxWidth < 20 {
+        stMaxWidth = 20;
+    }
+
+    stLines = wrapTextLines(ctx, element.shapeText, stMaxWidth);
+    stLineHeight = stFontSize * 1.2;
+    stTotalHeight = stLines.length * stLineHeight;
+    stStartY = stCy - stTotalHeight / 2 + stLineHeight / 2;
+
+    stIdx = 0;
+    while stIdx < stLines.length {
+        ctx.fillText(stLines[stIdx], stCx, stStartY + stIdx * stLineHeight);
+        stIdx = stIdx + 1;
+    }
+    ctx.restore();
+}
+
 def:pub drawShapeElement(ctx: any, element: dict) -> None {
     ctx.save();
     ctx.globalAlpha = element.opacity or 1.0;
@@ -109,6 +185,8 @@ def:pub drawShapeElement(ctx: any, element: dict) -> None {
     } elif element.type == "arrow" {
         drawArrow(ctx, element);
     }
+    # Draw text inside shape if present
+    drawShapeText(ctx, element);
     ctx.restore();
 }
 

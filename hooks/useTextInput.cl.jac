@@ -3,11 +3,13 @@ import from react { useState }
 def:pub useTextInput() -> dict {
     [textInput, setTextInput] = useState(None);
 
-    def startTextInput(x: float, y: float, initialText: str) -> None {
+    def startTextInput(x: float, y: float, initialText: str, shapeIndex: any, shapeElement: any) -> None {
         setTextInput({
             "x": x,
             "y": y,
-            "text": initialText or ""
+            "text": initialText or "",
+            "editingShapeIndex": shapeIndex,
+            "editingShapeElement": shapeElement
         });
     }
 
@@ -16,7 +18,9 @@ def:pub useTextInput() -> dict {
             setTextInput({
                 "x": textInput.x,
                 "y": textInput.y,
-                "text": text
+                "text": text,
+                "editingShapeIndex": textInput.editingShapeIndex,
+                "editingShapeElement": textInput.editingShapeElement
             });
         }
     }
