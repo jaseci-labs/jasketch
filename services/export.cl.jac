@@ -155,6 +155,67 @@ def buildSvgString(elements: list, bounds: dict) -> str {
         } elif el.type == "image" and el.src {
             parts.push("<image x=\"" + String(el.x) + "\" y=\"" + String(el.y) + "\" width=\"" + String(el.width) + "\" height=\"" + String(el.height) + "\" href=\"" + el.src + "\"/>");
         }
+        # Add text inside shapes if present (with word wrapping)
+        if el.shapeText and (el.type == "rectangle" or el.type == "circle" or el.type == "diamond") {
+            svgTCx = el.x + el.width / 2;
+            svgTCy = el.y + el.height / 2;
+            svgTFs = el.shapeTextFontSize or 16;
+            svgTFf = el.shapeTextFontFamily or "Virgil";
+            svgTFc = el.shapeTextColor or el.color;
+            svgTMaxW = Math.abs(el.width) - 20;
+            if svgTMaxW < 20 {
+                svgTMaxW = 20;
+            }
+            # Approximate max chars per line (0.6 * fontSize per char)
+            svgTCharW = svgTFs * 0.6;
+            svgTMaxChars = Math.floor(svgTMaxW / svgTCharW);
+            if svgTMaxChars < 1 {
+                svgTMaxChars = 1;
+            }
+            # Word-wrap text
+            svgTRawLines = el.shapeText.split(String.fromCharCode(10));
+            svgTWrapped = [];
+            svgTRi = 0;
+            while svgTRi < svgTRawLines.length {
+                svgTRawLine = svgTRawLines[svgTRi];
+                if svgTRawLine == "" {
+                    svgTWrapped.push("");
+                    svgTRi = svgTRi + 1;
+                    continue;
+                }
+                svgTWords = svgTRawLine.split(" ");
+                svgTCurLine = "";
+                svgTWi = 0;
+                while svgTWi < svgTWords.length {
+                    svgTTestLine = svgTCurLine;
+                    if svgTCurLine == "" {
+                        svgTTestLine = svgTWords[svgTWi];
+                    } else {
+                        svgTTestLine = svgTCurLine + " " + svgTWords[svgTWi];
+                    }
+                    if svgTTestLine.length > svgTMaxChars and svgTCurLine != "" {
+                        svgTWrapped.push(svgTCurLine);
+                        svgTCurLine = svgTWords[svgTWi];
+                    } else {
+                        svgTCurLine = svgTTestLine;
+                    }
+                    svgTWi = svgTWi + 1;
+                }
+                if svgTCurLine != "" {
+                    svgTWrapped.push(svgTCurLine);
+                }
+                svgTRi = svgTRi + 1;
+            }
+            svgTLineH = svgTFs * 1.2;
+            svgTTotalH = svgTWrapped.length * svgTLineH;
+            svgTStartY = svgTCy - svgTTotalH / 2 + svgTLineH / 2;
+            svgTLi = 0;
+            while svgTLi < svgTWrapped.length {
+                svgTLy = svgTStartY + svgTLi * svgTLineH;
+                parts.push("<text x=\"" + String(svgTCx) + "\" y=\"" + String(svgTLy) + "\" font-size=\"" + String(svgTFs) + "\" font-family=\"" + svgTFf + "\" fill=\"" + svgTFc + "\" text-anchor=\"middle\" dominant-baseline=\"central\">" + svgTWrapped[svgTLi] + "</text>");
+                svgTLi = svgTLi + 1;
+            }
+        }
         si = si + 1;
     }
 

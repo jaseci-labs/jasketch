@@ -8,7 +8,7 @@ import from "..hooks.useTextInput" { useTextInput }
 import from "..services.geometry" { getMousePosition, findNearestConnectionPoint }
 import from "..services.canvas" { drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
 import from "..services.collision" { getResizeHandleAtPoint, getBendHandleAtPoint }
-import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, exportSelectionAsPDF, copyCanvasAsPNG, copyCanvasAsSVG }
+import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, copySelectionAsPNG, copyCanvasAsPNG, copyCanvasAsSVG }
 import from "..constants.tools" { TOOL_SHORTCUTS }
 import from .canvas.CanvasRenderer { CanvasRenderer }
 import from .canvas.TextInput { TextInput }
@@ -49,10 +49,16 @@ def:pub Canvas(props: dict) -> JsxElement {
     selectedElementsRef.current = selectionHook.selectedElements;
     drawingStateRef.current = drawingState;
 
-    can with [elementsHook.elements, canvasHook.canvasSize, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, drawingState.isDrawing] entry {
+    # Get the editing shape index to suppress its shapeText during editing
+    editingShapeIdx = None;
+    if textInputHook.textInput and textInputHook.textInput.editingShapeIndex != None and textInputHook.textInput.editingShapeIndex != undefined {
+        editingShapeIdx = textInputHook.textInput.editingShapeIndex;
+    }
+
+    can with [elementsHook.elements, canvasHook.canvasSize, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, drawingState.isDrawing, textInputHook.textInput] entry {
         canvas = canvasRef.current;
         if canvas {
-            canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd);
+            canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, editingShapeIdx);
         }
         if props.onSelectionChange {
             props.onSelectionChange(selectionHook.selectedElement);
@@ -299,7 +305,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             elementInfo = selectionHook.findElementAtPoint(pos, elementsHook.elements);
             if elementInfo and elementInfo.element.type == "text" {
                 element = elementInfo.element;
-                textInputHook.startTextInput(element.x, element.y, element.text);
+                textInputHook.startTextInput(element.x, element.y, element.text, None, None);
                 elementsHook.removeElement(elementInfo.index);
                 selectionHook.clearSelection();
                 setTimeout(lambda -> None {
@@ -309,7 +315,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                     }
                 }, 10);
             } else {
-                textInputHook.startTextInput(pos.x, pos.y, "");
+                textInputHook.startTextInput(pos.x, pos.y, "", None, None);
                 setTimeout(lambda -> None {
                     if textInputRef.current {
                         textInputRef.current.focus();
@@ -325,7 +331,7 @@ def:pub Canvas(props: dict) -> JsxElement {
 
         if elementInfo and elementInfo.element.type == "text" {
             element = elementInfo.element;
-            textInputHook.startTextInput(element.x, element.y, element.text);
+            textInputHook.startTextInput(element.x, element.y, element.text, None, None);
             elementsHook.removeElement(elementInfo.index);
             selectionHook.clearSelection();
 
@@ -335,10 +341,26 @@ def:pub Canvas(props: dict) -> JsxElement {
                     textInputRef.current.select();
                 }
             }, 10);
+        } elif elementInfo and (elementInfo.element.type == "rectangle" or elementInfo.element.type == "circle" or elementInfo.element.type == "diamond") {
+            # Double-click on shape -> edit text inside it
+            shapeEl = elementInfo.element;
+            shapeCenterX = shapeEl.x + shapeEl.width / 2;
+            shapeCenterY = shapeEl.y + shapeEl.height / 2;
+            existingShapeText = shapeEl.shapeText or "";
+            textInputHook.startTextInput(shapeCenterX, shapeCenterY, existingShapeText, elementInfo.index, shapeEl);
+            selectionHook.clearSelection();
+            setTimeout(lambda -> None {
+                if textInputRef.current {
+                    textInputRef.current.focus();
+                    if existingShapeText != "" {
+                        textInputRef.current.select();
+                    }
+                }
+            }, 10);
         } elif not elementInfo {
             # Double-click on empty canvas -> start text input
             selectionHook.clearSelection();
-            textInputHook.startTextInput(pos.x, pos.y, "");
+            textInputHook.startTextInput(pos.x, pos.y, "", None, None);
             setTimeout(lambda -> None {
                 if textInputRef.current {
                     textInputRef.current.focus();
@@ -351,7 +373,28 @@ def:pub Canvas(props: dict) -> JsxElement {
         if not textInputHook.textInput {
             return;
         }
-        if textInputHook.hasContent() {
+        shapeIdx = textInputHook.textInput.editingShapeIndex;
+        if shapeIdx != None and shapeIdx != undefined {
+            # Updating text inside a shape
+            shapeElement = elementsHook.elements[shapeIdx];
+            updatedShape = Object.assign({}, shapeElement);
+            trimmedText = textInputHook.textInput.text;
+            if trimmedText and trimmedText.trim() != "" {
+                updatedShape.shapeText = trimmedText;
+                updatedShape.shapeTextColor = currentColor;
+                updatedShape.shapeTextFontSize = currentFontSize;
+                updatedShape.shapeTextFontFamily = currentFontFamily;
+            } else {
+                # Empty text: remove text from shape
+                updatedShape.shapeText = None;
+                updatedShape.shapeTextColor = None;
+                updatedShape.shapeTextFontSize = None;
+                updatedShape.shapeTextFontFamily = None;
+            }
+            elementsHook.updateElement(shapeIdx, updatedShape);
+            selectionHook.setSelectedElement({"element": updatedShape, "index": shapeIdx});
+        } elif textInputHook.hasContent() {
+            # Create standalone text element
             textEl = {
                 "type": "text",
                 "x": textInputHook.textInput.x,
@@ -619,8 +662,10 @@ def:pub Canvas(props: dict) -> JsxElement {
         setContextMenu(None);
     }
 
-    def handleExportPDF() -> None {
-        exportSelectionAsPDF(getExportElements(), canvasRef);
+    def handleCopySelectionPNG() -> None {
+        copySelectionAsPNG(getExportElements(), canvasRef, lambda -> None {
+            showToast("Copied as PNG");
+        });
         setContextMenu(None);
     }
 
@@ -1468,7 +1513,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 onClearCanvas={handleClearCanvas}
                 onExportPNG={handleExportPNG}
                 onExportSVG={handleExportSVG}
-                onExportPDF={handleExportPDF}
+                onCopySelectionPNG={handleCopySelectionPNG}
                 onPaste={handlePasteFromMenu}
                 onCopyCanvasPNG={handleCopyCanvasAsPNG}
                 onCopyCanvasSVG={handleCopyCanvasAsSVG}

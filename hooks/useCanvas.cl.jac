@@ -11,7 +11,7 @@ def:pub useCanvas() -> dict {
         "height": canvasDefaults.height
     });
 
-    def redrawCanvas(elements: list, zoom: float, panOffset: dict, selectedElement: any = None, selectedElements: list = [], isBoxSelecting: bool = False, boxStart: any = None, boxEnd: any = None) -> None {
+    def redrawCanvas(elements: list, zoom: float, panOffset: dict, selectedElement: any = None, selectedElements: list = [], isBoxSelecting: bool = False, boxStart: any = None, boxEnd: any = None, editingShapeIndex: any = None) -> None {
         canvas = canvasRef.current;
         if not canvas {
             return;
@@ -28,9 +28,19 @@ def:pub useCanvas() -> dict {
         ctx.save();
         applyViewportTransform(ctx, zoom, panOffset);
 
-        elements.forEach(lambda element: any -> None {
-            drawElement(ctx, element);
-        });
+        drIdx = 0;
+        while drIdx < elements.length {
+            drEl = elements[drIdx];
+            if editingShapeIndex != None and editingShapeIndex != undefined and drIdx == editingShapeIndex and drEl.shapeText {
+                # Temporarily hide shapeText while editing this shape
+                drCopy = Object.assign({}, drEl);
+                drCopy.shapeText = None;
+                drawElement(ctx, drCopy);
+            } else {
+                drawElement(ctx, drEl);
+            }
+            drIdx = drIdx + 1;
+        }
 
         if selectedElement and selectedElement.element {
             drawSelectionBox(ctx, selectedElement.element);
