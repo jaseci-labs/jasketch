@@ -13,7 +13,7 @@ import from mcp.server.fastmcp { FastMCP }
 import from typing { Any }
 
 glob RELAY_PORT: int = int(os.environ.get("JASKETCH_RELAY_PORT", "9601"));
-glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", f"ws://localhost:{RELAY_PORT}");
+glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "wss://jasketch.jaseci.org/ws");
 glob REQUEST_TIMEOUT: float = 10.0;
 glob _is_remote_relay: bool = "localhost" not in RELAY_URL and "127.0.0.1" not in RELAY_URL;
 
