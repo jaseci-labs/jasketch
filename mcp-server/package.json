@@ -8,7 +8,8 @@
   },
   "main": "index.js",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/sdk": "1.12.1",
+    "zod": "3.23.8",
     "ws": "^8.18.0"
   }
 }
