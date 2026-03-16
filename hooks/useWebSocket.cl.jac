@@ -9,6 +9,24 @@ def:pub useWebSocket(elementsHook: dict) -> dict {
     # Keep ref current to avoid stale closures
     elementsHookRef.current = elementsHook;
 
+    def getRelayUrl() -> str {
+        # Auto-detect: use wss:// for deployed, ws:// for localhost
+        protocol = window.location.protocol;
+        host = window.location.hostname;
+        port = window.location.port;
+
+        if host == "localhost" or host == "127.0.0.1" {
+            # Local dev: relay runs on port 9601
+            return "ws://" + host + ":9601";
+        }
+        # Deployed: relay exposed on /ws path via same host
+        wsProtocol = "ws:";
+        if protocol == "https:" {
+            wsProtocol = "wss:";
+        }
+        return wsProtocol + "//" + host + "/ws";
+    }
+
     def sendResponse(ws: any, requestId: str, success: bool, data: any) -> None {
         msg = {"requestId": requestId, "success": success, "data": data};
         ws.send(JSON.stringify(msg));
@@ -21,6 +39,12 @@ def:pub useWebSocket(elementsHook: dict) -> dict {
 
     def handleMessage(ws: any, event: any) -> None {
         msg = JSON.parse(event.data);
+
+        # Skip relay control messages
+        if msg.type == "registered" or msg.type == "canvasConnected" or msg.type == "canvasDisconnected" {
+            return;
+        }
+
         requestId = msg.requestId;
         action = msg.action;
         data = msg.data or {};
@@ -86,12 +110,14 @@ def:pub useWebSocket(elementsHook: dict) -> dict {
     }
 
     def connect() -> None {
-        port = "9600";
-        ws = Reflect.construct(WebSocket, ["ws://localhost:" + port]);
+        url = getRelayUrl();
+        ws = Reflect.construct(WebSocket, [url]);
 
         ws.onopen = lambda -> None {
             connectedRef.current = True;
-            console.log("[JaSketch MCP] Connected to MCP server");
+            # Register as canvas with the relay
+            ws.send(JSON.stringify({"role": "canvas"}));
+            console.log("[JaSketch MCP] Connected to relay at " + url);
         };
 
         ws.onmessage = lambda event: any -> None {

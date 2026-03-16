@@ -2,27 +2,57 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { WebSocketServer } from "ws";
 import { randomUUID } from "crypto";
 import { z } from "zod";
+import WebSocket from "ws";
 
-const PORT = parseInt(process.env.JASKETCH_MCP_PORT || "9600");
+const RELAY_URL = process.env.JASKETCH_RELAY_URL || "ws://localhost:9601";
 const REQUEST_TIMEOUT = 10000;
 
 // --- State ---
-let connectedClient = null;
+let ws = null;
+let connected = false;
+let canvasConnected = false;
 const pendingRequests = new Map();
 
-// --- WebSocket Server ---
-const wss = new WebSocketServer({ port: PORT });
+// --- Connect to relay as controller ---
+function connectToRelay() {
+  try {
+    ws = new WebSocket(RELAY_URL);
+  } catch (e) {
+    process.stderr.write(`[jasketch-mcp] Failed to create WebSocket: ${e.message}\n`);
+    scheduleReconnect();
+    return;
+  }
 
-wss.on("connection", (ws) => {
-  connectedClient = ws;
-  process.stderr.write(`[jasketch-mcp] Client connected\n`);
+  ws.on("open", () => {
+    connected = true;
+    process.stderr.write(`[jasketch-mcp] Connected to relay at ${RELAY_URL}\n`);
+    ws.send(JSON.stringify({ role: "controller" }));
+  });
 
   ws.on("message", (data) => {
     try {
       const msg = JSON.parse(data.toString());
+
+      // Relay control messages
+      if (msg.type === "registered") {
+        canvasConnected = msg.canvasConnected || false;
+        process.stderr.write(`[jasketch-mcp] Registered as controller, canvas: ${canvasConnected}\n`);
+        return;
+      }
+      if (msg.type === "canvasConnected") {
+        canvasConnected = true;
+        process.stderr.write(`[jasketch-mcp] Canvas connected\n`);
+        return;
+      }
+      if (msg.type === "canvasDisconnected") {
+        canvasConnected = false;
+        process.stderr.write(`[jasketch-mcp] Canvas disconnected\n`);
+        return;
+      }
+
+      // Response from canvas via relay
       const pending = pendingRequests.get(msg.requestId);
       if (pending) {
         clearTimeout(pending.timeout);
@@ -39,18 +69,32 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    if (connectedClient === ws) {
-      connectedClient = null;
-      process.stderr.write(`[jasketch-mcp] Client disconnected\n`);
-    }
+    connected = false;
+    canvasConnected = false;
+    process.stderr.write(`[jasketch-mcp] Disconnected from relay\n`);
+    scheduleReconnect();
   });
-});
+
+  ws.on("error", () => {
+    // onclose will handle reconnect
+  });
+}
+
+function scheduleReconnect() {
+  setTimeout(() => connectToRelay(), 3000);
+}
 
 function sendCommand(action, data = {}) {
   return new Promise((resolve, reject) => {
-    if (!connectedClient || connectedClient.readyState !== 1) {
+    if (!connected || !ws || ws.readyState !== WebSocket.OPEN) {
       reject(new Error(
-        "jasketch is not connected. Start it with `jac start main.jac` and open the browser."
+        `Not connected to relay. Ensure the relay is running at ${RELAY_URL}`
+      ));
+      return;
+    }
+    if (!canvasConnected) {
+      reject(new Error(
+        "No canvas connected. Open jasketch.jaseci.org in a browser."
       ));
       return;
     }
@@ -61,7 +105,7 @@ function sendCommand(action, data = {}) {
     }, REQUEST_TIMEOUT);
 
     pendingRequests.set(requestId, { resolve, reject, timeout });
-    connectedClient.send(JSON.stringify({ requestId, action, data }));
+    ws.send(JSON.stringify({ requestId, action, data }));
   });
 }
 
@@ -224,6 +268,7 @@ server.tool(
 );
 
 // --- Start ---
+connectToRelay();
 const transport = new StdioServerTransport();
 await server.connect(transport);
-process.stderr.write(`[jasketch-mcp] Server running, WebSocket on port ${PORT}\n`);
+process.stderr.write(`[jasketch-mcp] MCP server running, connecting to relay at ${RELAY_URL}\n`);
