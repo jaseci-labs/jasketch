@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jasketch-mcp-server"
-version = "1.0.1"
+version = "1.0.2"
 description = "MCP server for JaSketch - programmatic diagram creation"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "jaclang",
     "mcp>=1.0.0",
