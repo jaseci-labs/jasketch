@@ -51,7 +51,7 @@ RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Pre-warm Jac bytecode cache as appuser (avoids cold-start recompilation at runtime)
-RUN python -c "from jaclang import jac_import"
+RUN python -c "import jaclang" || true
 
 EXPOSE 8000 9601
 
