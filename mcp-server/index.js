@@ -5,8 +5,15 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import WebSocket from "ws";
+import https from "https";
+import http from "http";
 
 const RELAY_URL = process.env.JASKETCH_RELAY_URL || "ws://localhost:9601";
+
+// Force HTTP/1.1 for ALB compatibility (ALB doesn't support WebSocket over HTTP/2)
+const wsAgent = RELAY_URL.startsWith("wss")
+  ? new https.Agent({ ALPNProtocols: ["http/1.1"] })
+  : new http.Agent();
 const REQUEST_TIMEOUT = 10000;
 
 // --- State ---
@@ -18,7 +25,7 @@ const pendingRequests = new Map();
 // --- Connect to relay as controller ---
 function connectToRelay() {
   try {
-    ws = new WebSocket(RELAY_URL);
+    ws = new WebSocket(RELAY_URL, { agent: wsAgent, perMessageDeflate: false });
   } catch (e) {
     process.stderr.write(`[jasketch-mcp] Failed to create WebSocket: ${e.message}\n`);
     scheduleReconnect();
