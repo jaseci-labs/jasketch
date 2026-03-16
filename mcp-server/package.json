@@ -4,7 +4,7 @@
   "description": "MCP server for JaSketch - programmatic diagram creation",
   "type": "module",
   "bin": {
-    "jasketch-mcp-server": "./index.js"
+    "jasketch-mcp-server": "index.js"
   },
   "main": "index.js",
   "dependencies": {
