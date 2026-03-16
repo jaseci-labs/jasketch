@@ -51,13 +51,13 @@ def:pub useWebSocket(elementsHook: dict) -> dict {
         hook = elementsHookRef.current;
 
         if action == "addElement" {
-            hook.addElement(data);
             newIndex = hook.elements.length;
+            hook.addElement(data);
             sendResponse(ws, requestId, True, {"index": newIndex, "action": "created"});
         } elif action == "addMultipleElements" {
             items = data.elements or [];
-            hook.addMultipleElements(items);
             startIndex = hook.elements.length;
+            hook.addMultipleElements(items);
             sendResponse(ws, requestId, True, {"count": items.length, "startIndex": startIndex, "action": "created"});
         } elif action == "getElements" {
             elems = hook.elements;
@@ -112,12 +112,15 @@ def:pub useWebSocket(elementsHook: dict) -> dict {
 
     def connect() -> None {
         url = getRelayUrl();
+        # Read session ID from localStorage, fall back to "default"
+        # Set via: localStorage.setItem("jasketchSession", "your-id")
+        sessionId = localStorage.getItem("jasketchSession") or "default";
         ws = Reflect.construct(WebSocket, [url]);
 
         ws.onopen = lambda -> None {
             connectedRef.current = True;
             # Register as canvas with the relay
-            ws.send(JSON.stringify({"role": "canvas"}));
+            ws.send(JSON.stringify({"role": "canvas", "session_id": sessionId}));
             console.log("[JaSketch MCP] Connected to relay at " + url);
         };
 

@@ -14,6 +14,7 @@ import from typing { Any }
 
 glob RELAY_PORT: int = int(os.environ.get("JASKETCH_RELAY_PORT", "9601"));
 glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "wss://jasketch.jaseci.org/ws");
+glob SESSION_ID: str = os.environ.get("JASKETCH_SESSION_ID", "default");
 glob REQUEST_TIMEOUT: float = 10.0;
 glob _is_remote_relay: bool = "localhost" not in RELAY_URL and "127.0.0.1" not in RELAY_URL;
 
@@ -26,9 +27,8 @@ glob _pending: dict = {};
 glob _relay_loop: Any = None;
 glob _relay_ready: Any = threading.Event();
 
-# Relay state
-glob _relay_controller: Any = None;
-glob _relay_canvas: Any = None;
+# Relay state — session-based pairing
+glob _relay_sessions: Any = {};
 
 glob mcp: Any = FastMCP("jasketch");
 
@@ -41,10 +41,10 @@ def log(msg: str) -> None {
 
 # --- Embedded WebSocket relay ---
 
-"""Handle a single WebSocket connection to the relay."""
+"""Handle a single WebSocket connection to the embedded relay."""
 async def _relay_handler(ws: Any) -> None {
-    global _relay_controller, _relay_canvas;
     role: str | None = None;
+    sid: str | None = None;
 
     try {
         async for raw in ws {
@@ -54,27 +54,33 @@ async def _relay_handler(ws: Any) -> None {
                 # Registration
                 if msg.get("role") is not None and role is None {
                     role = msg["role"];
+                    sid = str(msg.get("session_id", "default"));
+
+                    if sid not in _relay_sessions {
+                        _relay_sessions[sid] = {"controller": None, "canvas": None};
+                    }
 
                     if role == "controller" {
-                        _relay_controller = ws;
-                        log("Relay: controller connected");
+                        _relay_sessions[sid]["controller"] = ws;
+                        log(f"Relay: controller connected (session={sid})");
                         await ws.send(json.dumps({
                             "type": "registered",
                             "role": "controller",
-                            "canvasConnected": _relay_canvas is not None
+                            "session_id": sid,
+                            "canvasConnected": _relay_sessions[sid]["canvas"] is not None
                         }));
                     } elif role == "canvas" {
-                        _relay_canvas = ws;
-                        log("Relay: canvas connected");
+                        _relay_sessions[sid]["canvas"] = ws;
+                        log(f"Relay: canvas connected (session={sid})");
                         await ws.send(json.dumps({
                             "type": "registered",
-                            "role": "canvas"
+                            "role": "canvas",
+                            "session_id": sid
                         }));
-                        if _relay_controller is not None {
+                        ctrl: Any = _relay_sessions[sid]["controller"];
+                        if ctrl is not None {
                             try {
-                                await _relay_controller.send(json.dumps({
-                                    "type": "canvasConnected"
-                                }));
+                                await ctrl.send(json.dumps({"type": "canvasConnected"}));
                             } except Exception {
                                 _ = 0;
                             }
@@ -83,32 +89,39 @@ async def _relay_handler(ws: Any) -> None {
                     continue;
                 }
 
-                # Relay messages between controller and canvas
-                if role == "controller" and _relay_canvas is not None {
-                    try {
-                        await _relay_canvas.send(raw);
-                    } except Exception {
-                        if msg.get("requestId") is not None {
-                            await ws.send(json.dumps({
-                                "requestId": msg["requestId"],
-                                "success": False,
-                                "error": "No canvas connected. Open jasketch in a browser."
-                            }));
+                # Relay messages between roles
+                if sid is None { continue; }
+                session: Any = _relay_sessions[sid];
+
+                if role == "controller" {
+                    target: Any = session["canvas"];
+                    if target is not None {
+                        try {
+                            await target.send(raw);
+                        } except Exception {
+                            if msg.get("requestId") is not None {
+                                await ws.send(json.dumps({
+                                    "requestId": msg["requestId"],
+                                    "success": False,
+                                    "error": "No canvas connected. Open jasketch in a browser."
+                                }));
+                            }
                         }
-                    }
-                } elif role == "canvas" and _relay_controller is not None {
-                    try {
-                        await _relay_controller.send(raw);
-                    } except Exception {
-                        _ = 0;
-                    }
-                } elif role == "controller" {
-                    if msg.get("requestId") is not None {
+                    } elif msg.get("requestId") is not None {
                         await ws.send(json.dumps({
                             "requestId": msg["requestId"],
                             "success": False,
                             "error": "No canvas connected. Open jasketch in a browser."
                         }));
+                    }
+                } elif role == "canvas" {
+                    ctrl2: Any = session["controller"];
+                    if ctrl2 is not None {
+                        try {
+                            await ctrl2.send(raw);
+                        } except Exception {
+                            _ = 0;
+                        }
                     }
                 }
             } except Exception as e {
@@ -119,21 +132,26 @@ async def _relay_handler(ws: Any) -> None {
         _ = 0;
     }
 
-    # Cleanup on disconnect
-    if ws == _relay_controller {
-        _relay_controller = None;
-        log("Relay: controller disconnected");
-    } elif ws == _relay_canvas {
-        _relay_canvas = None;
-        log("Relay: canvas disconnected");
-        if _relay_controller is not None {
-            try {
-                await _relay_controller.send(json.dumps({
-                    "type": "canvasDisconnected"
-                }));
-            } except Exception {
-                _ = 0;
+    # Cleanup — only clear the slot this ws owns
+    if sid is not None and sid in _relay_sessions {
+        session2: Any = _relay_sessions[sid];
+        if session2["controller"] == ws {
+            session2["controller"] = None;
+            log(f"Relay: controller disconnected (session={sid})");
+        } elif session2["canvas"] == ws {
+            session2["canvas"] = None;
+            log(f"Relay: canvas disconnected (session={sid})");
+            ctrl3: Any = session2["controller"];
+            if ctrl3 is not None {
+                try {
+                    await ctrl3.send(json.dumps({"type": "canvasDisconnected"}));
+                } except Exception {
+                    _ = 0;
+                }
             }
+        }
+        if session2["controller"] is None and session2["canvas"] is None {
+            del _relay_sessions[sid];
         }
     }
 }
@@ -151,7 +169,7 @@ async def _connect_to_relay() -> None {
                 _ws = ws;
                 _connected = True;
                 log(f"Connected to relay at {RELAY_URL}");
-                await ws.send(json.dumps({"role": "controller"}));
+                await ws.send(json.dumps({"role": "controller", "session_id": SESSION_ID}));
 
                 async for raw in ws {
                     try {
@@ -233,7 +251,9 @@ def _start_relay_thread() -> None {
 
 """Send a command to the canvas via relay (blocking, thread-safe)."""
 def _send_command(action: str, data: dict | None = None) -> Any {
-    if (not _connected) or (_ws is None) {
+    # Capture _ws once to avoid TOCTOU race with the relay thread
+    ws_local: Any = _ws;
+    if (not _connected) or (ws_local is None) {
         raise Exception(
             f"Not connected to relay. Ensure the relay is running at {RELAY_URL}"
         );
@@ -262,7 +282,7 @@ def _send_command(action: str, data: dict | None = None) -> Any {
     });
 
     try {
-        future: Any = asyncio.run_coroutine_threadsafe(_ws.send(payload), _relay_loop);
+        future: Any = asyncio.run_coroutine_threadsafe(getattr(ws_local, "send")(payload), _relay_loop);
         future.result(timeout=5);
     } except Exception as e {
         with _lock {
