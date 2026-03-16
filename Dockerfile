@@ -30,8 +30,8 @@ RUN curl -fsSL https://bun.sh/install | bash && \
 # Copy application code
 COPY . /app
 
-# Install MCP relay dependencies
-RUN cd /app/mcp-server && npm install --omit=dev
+# Install MCP relay (Jac/Python)
+RUN pip install --no-cache-dir -e /app/mcp-server
 
 # Install client-side npm dependencies and project dependencies
 RUN jac clean --all --force
@@ -57,4 +57,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/ || exit 1
 
 # Run relay server in background + jac app in foreground
-CMD node /app/mcp-server/relay.js & jac start --client pwa
+CMD jasketch-relay & jac start --client pwa
