@@ -62,6 +62,7 @@ def:pub useWebSocket(elementsHook: dict) -> dict {
         } elif action == "getElements" {
             elems = hook.elements;
             result = [];
+            i = 0;
             if data.index != undefined and data.index != None {
                 idx = data.index;
                 if idx >= 0 and idx < elems.length {
