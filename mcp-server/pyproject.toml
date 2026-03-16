@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jasketch-mcp-server"
+version = "1.0.0"
+description = "MCP server for JaSketch - programmatic diagram creation"
+requires-python = ">=3.11"
+dependencies = [
+    "jaclang",
+    "mcp>=1.0.0",
+    "websockets>=12.0",
+]
+
+[project.scripts]
+jasketch-mcp-server = "jasketch_mcp.__main__:run_server"
+jasketch-relay = "jasketch_mcp.__main__:run_relay"
+
+[tool.setuptools.package-data]
+jasketch_mcp = ["*.jac"]

@@ -49,46 +49,18 @@ jasketch/
 
 JaSketch includes an MCP (Model Context Protocol) server that lets AI assistants like Claude create and manipulate diagrams programmatically.
 
-### Setup with Claude Code
+### Setup
 
 ```bash
-claude mcp add --scope user jasketch -- npx -y jasketch-mcp-server
+claude mcp add --scope user jasketch -- uvx jasketch-mcp-server
 ```
 
-Or manually add to `~/.claude.json`:
+That's it. The MCP server embeds its own WebSocket relay — no extra processes needed.
 
-```json
-{
-  "mcpServers": {
-    "jasketch": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "jasketch-mcp-server"]
-    }
-  }
-}
-```
+### Usage
 
-### Setup with Claude Desktop
-
-Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
-
-```json
-{
-  "mcpServers": {
-    "jasketch": {
-      "command": "npx",
-      "args": ["-y", "jasketch-mcp-server"]
-    }
-  }
-}
-```
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `JASKETCH_RELAY_URL` | `ws://localhost:9601` | WebSocket relay URL connecting the MCP server to the canvas |
+1. Open JaSketch in a browser (`jac start`)
+2. Ask Claude to draw — e.g., "draw a flowchart showing user authentication"
 
 ### Available Tools
 
@@ -101,9 +73,26 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 | `delete_element` | Delete element(s) by index |
 | `clear_canvas` | Clear all elements from the canvas |
 
-### Usage
+### Configuration
 
-Make sure JaSketch is running (`jac start`) so the canvas is connected to the relay, then ask Claude to draw diagrams — e.g., "draw a flowchart showing user authentication".
+Manually add to `~/.claude.json` if preferred:
+
+```json
+{
+  "mcpServers": {
+    "jasketch": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["jasketch-mcp-server"]
+    }
+  }
+}
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JASKETCH_RELAY_PORT` | `9601` | WebSocket relay port (auto-started) |
+| `JASKETCH_RELAY_URL` | `ws://localhost:9601` | Override to use an external relay |
 
 ## Tech
 
