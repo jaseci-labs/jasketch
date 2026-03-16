@@ -15,6 +15,7 @@ import from typing { Any }
 glob RELAY_PORT: int = int(os.environ.get("JASKETCH_RELAY_PORT", "9601"));
 glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", f"ws://localhost:{RELAY_PORT}");
 glob REQUEST_TIMEOUT: float = 10.0;
+glob _is_remote_relay: bool = "localhost" not in RELAY_URL and "127.0.0.1" not in RELAY_URL;
 
 # Thread-safe state
 glob _lock: Any = threading.Lock();
@@ -206,23 +207,27 @@ async def _connect_to_relay() -> None {
 }
 
 
-"""Run embedded relay + controller connection in a dedicated thread."""
+"""Run embedded relay (if local) + controller connection in a dedicated thread."""
 def _start_relay_thread() -> None {
     global _relay_loop;
     _relay_loop = asyncio.new_event_loop();
     asyncio.set_event_loop(_relay_loop);
     _relay_ready.set();
 
-    async def _run() -> None {
-        # Start embedded relay server
+    async def _run_local() -> None {
+        # Start embedded relay server, then connect as controller
         async with serve(_relay_handler, "0.0.0.0", RELAY_PORT) {
             log(f"Embedded relay running on port {RELAY_PORT}");
-            # Connect to our own relay as controller
             await _connect_to_relay();
         }
     }
 
-    _relay_loop.run_until_complete(_run());
+    if _is_remote_relay {
+        log(f"Remote relay mode — connecting directly to {RELAY_URL}");
+        _relay_loop.run_until_complete(_connect_to_relay());
+    } else {
+        _relay_loop.run_until_complete(_run_local());
+    }
 }
 
 
@@ -432,12 +437,16 @@ async def clear_canvas() -> str {
 # --- Start server ---
 
 with entry {
-    log(f"Starting MCP server with embedded relay on port {RELAY_PORT}");
+    if _is_remote_relay {
+        log(f"Starting MCP server (remote relay: {RELAY_URL})");
+    } else {
+        log(f"Starting MCP server with embedded relay on port {RELAY_PORT}");
+    }
 
     relay_thread: Any = threading.Thread(target=_start_relay_thread, daemon=True);
     relay_thread.start();
 
-    # Give relay a moment to start before MCP begins accepting tools
+    # Give relay/connection a moment to start before MCP begins accepting tools
     _relay_ready.wait(timeout=5);
 
     mcp.run(transport="stdio");
