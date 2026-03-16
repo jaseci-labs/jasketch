@@ -30,6 +30,9 @@ RUN curl -fsSL https://bun.sh/install | bash && \
 # Copy application code
 COPY . /app
 
+# Install MCP relay dependencies
+RUN cd /app/mcp-server && npm install --omit=dev
+
 # Install client-side npm dependencies and project dependencies
 RUN jac clean --all --force
 RUN jac add --npm && jac install
@@ -39,18 +42,19 @@ ENV PORT=8000 \
     HOST=0.0.0.0 \
     DEBUG=false \
     LOG_LEVEL=info \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    JASKETCH_RELAY_PORT=9601
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 
 USER appuser
 
-EXPOSE 8000
+EXPOSE 8000 9601
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/ || exit 1
 
-# Run the application
-CMD ["jac", "start", "--client", "pwa"]
+# Run relay server in background + jac app in foreground
+CMD node /app/mcp-server/relay.js & jac start --client pwa
