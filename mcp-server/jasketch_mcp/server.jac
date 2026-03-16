@@ -14,7 +14,7 @@ import from typing { Any }
 
 glob RELAY_PORT: int = int(os.environ.get("JASKETCH_RELAY_PORT", "9601"));
 glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "wss://jasketch.jaseci.org/ws");
-glob SESSION_ID: str = os.environ.get("JASKETCH_SESSION_ID", "default");
+glob SESSION_ID: str = os.environ.get("JASKETCH_SESSION_ID", str(uuid.uuid4()));
 glob REQUEST_TIMEOUT: float = 10.0;
 glob _is_remote_relay: bool = "localhost" not in RELAY_URL and "127.0.0.1" not in RELAY_URL;
 
@@ -458,9 +458,16 @@ async def clear_canvas() -> str {
 
 with entry {
     if _is_remote_relay {
+        # Derive the canvas URL from the relay URL
+        # wss://jasketch.jaseci.org/ws -> https://jasketch.jaseci.org/?session=...
+        canvas_base: str = RELAY_URL;
+        canvas_base = canvas_base.replace("wss://", "https://").replace("ws://", "http://").rsplit("/ws", 1)[0];
+        canvas_url = f"{canvas_base}/?session={SESSION_ID}";
         log(f"Starting MCP server (remote relay: {RELAY_URL})");
+        log(f"Open JaSketch in your browser: {canvas_url}");
     } else {
         log(f"Starting MCP server with embedded relay on port {RELAY_PORT}");
+        log(f"Open JaSketch in your browser: http://localhost:8000/?session={SESSION_ID}");
     }
 
     relay_thread: Any = threading.Thread(target=_start_relay_thread, daemon=True);
