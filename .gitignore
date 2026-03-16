@@ -225,6 +225,7 @@ venv/
 
 # Node.js
 node_modules/
+package-lock.json
 
 # Build artifacts
 .jac/
