@@ -1,21 +1,24 @@
 """CLI entry points for jasketch-mcp-server and jasketch-relay."""
 
 import os
+import subprocess
 import sys
+
+
+def _run_jac(filename):
+    """Run a .jac file from this package directory."""
+    jac_file = os.path.join(os.path.dirname(__file__), filename)
+    subprocess.run([sys.executable, "-m", "jaclang", "run", jac_file], check=True)
 
 
 def run_server():
     """Run the JaSketch MCP server."""
-    from jaclang import jac_import
-
-    jac_import("server", base_path=os.path.dirname(__file__))
+    _run_jac("server.jac")
 
 
 def run_relay():
     """Run the JaSketch WebSocket relay."""
-    from jaclang import jac_import
-
-    jac_import("relay", base_path=os.path.dirname(__file__))
+    _run_jac("relay.jac")
 
 
 def main():
