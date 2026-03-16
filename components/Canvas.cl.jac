@@ -5,6 +5,7 @@ import from "..hooks.useElements" { useElements }
 import from "..hooks.useSelection" { useSelection }
 import from "..hooks.useViewport" { useViewport }
 import from "..hooks.useTextInput" { useTextInput }
+import from "..hooks.useWebSocket" { useWebSocket }
 import from "..services.geometry" { getMousePosition, findNearestConnectionPoint }
 import from "..services.canvas" { drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
 import from "..services.collision" { getResizeHandleAtPoint, getBendHandleAtPoint }
@@ -30,6 +31,7 @@ def:pub Canvas(props: dict) -> JsxElement {
     selectionHook = useSelection();
     viewportHook = useViewport();
     textInputHook = useTextInput();
+    useWebSocket(elementsHook);
 
     canvasRef = canvasHook.canvasRef;
     containerRef = canvasHook.containerRef;
