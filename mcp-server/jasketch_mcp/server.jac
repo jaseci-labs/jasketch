@@ -17,6 +17,10 @@ glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "wss://jasketch.jasec
 glob REQUEST_TIMEOUT: float = 10.0;
 glob _is_remote_relay: bool = "localhost" not in RELAY_URL and "127.0.0.1" not in RELAY_URL;
 
+# HTTP transport config (used when JASKETCH_MCP_TRANSPORT=streamable-http)
+glob MCP_TRANSPORT: str = os.environ.get("JASKETCH_MCP_TRANSPORT", "stdio");
+glob MCP_PORT: int = int(os.environ.get("JASKETCH_MCP_PORT", "3003"));
+
 # Thread-safe state
 glob _lock: Any = threading.Lock();
 glob _ws: Any = None;
@@ -30,7 +34,7 @@ glob _relay_ready: Any = threading.Event();
 glob _relay_controller: Any = None;
 glob _relay_canvas: Any = None;
 
-glob mcp: Any = FastMCP("jasketch");
+glob mcp: Any = FastMCP("jasketch", host="127.0.0.1", port=MCP_PORT, streamable_http_path="/mcp/");
 
 
 """Log to stderr (stdout is reserved for MCP stdio transport)."""
@@ -449,5 +453,10 @@ with entry {
     # Give relay/connection a moment to start before MCP begins accepting tools
     _relay_ready.wait(timeout=5);
 
-    mcp.run(transport="stdio");
+    if MCP_TRANSPORT == "streamable-http" {
+        log(f"Running MCP server with streamable-http transport on port {MCP_PORT}");
+        mcp.run(transport="streamable-http");
+    } else {
+        mcp.run(transport="stdio");
+    }
 }
