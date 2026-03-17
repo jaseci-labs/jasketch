@@ -59,7 +59,7 @@ That's it. The MCP server embeds its own WebSocket relay — no extra processes 
 
 ### Usage
 
-1. Open JaSketch in a browser (`jac start`)
+1. Open JaSketch in a browser ([jasketch](https://jasketch.jaseci.org/))
 2. Ask Claude to draw — e.g., "draw a flowchart showing user authentication"
 
 ### Available Tools
