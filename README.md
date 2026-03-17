@@ -75,7 +75,13 @@ That's it. The MCP server embeds its own WebSocket relay — no extra processes 
 
 ### Configuration
 
-Manually add to `~/.claude.json` if preferred:
+**Claude Code** (CLI):
+
+```bash
+claude mcp add --scope user jasketch -- uvx jasketch-mcp-server
+```
+
+**Other assistants** (Cursor, Windsurf, Continue.dev, Zed, VS Code Copilot) require manual config. Add the following JSON to the config file for your assistant:
 
 ```json
 {
@@ -88,6 +94,14 @@ Manually add to `~/.claude.json` if preferred:
   }
 }
 ```
+
+| Assistant | Config file |
+|-----------|-------------|
+| Cursor | `~/.cursor/mcp.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Continue.dev | `~/.continue/config.json` (under `experimental.modelContextProtocolServers`) |
+| Zed | `~/.config/zed/settings.json` (under `context_servers`) |
+| VS Code Copilot | `.vscode/mcp.json` (project) or user `settings.json` (under `mcp`) |
 
 | Variable | Default | Description |
 |----------|---------|-------------|
