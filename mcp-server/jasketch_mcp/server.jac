@@ -20,6 +20,7 @@ glob _is_remote_relay: bool = "localhost" not in RELAY_URL and "127.0.0.1" not i
 # HTTP transport config (used when JASKETCH_MCP_TRANSPORT=streamable-http)
 glob MCP_TRANSPORT: str = os.environ.get("JASKETCH_MCP_TRANSPORT", "stdio");
 glob MCP_PORT: int = int(os.environ.get("JASKETCH_MCP_PORT", "3003"));
+glob MCP_HOST: str = os.environ.get("JASKETCH_MCP_HOST", "0.0.0.0");
 
 # Thread-safe state
 glob _lock: Any = threading.Lock();
@@ -34,7 +35,7 @@ glob _relay_ready: Any = threading.Event();
 glob _relay_controller: Any = None;
 glob _relay_canvas: Any = None;
 
-glob mcp: Any = FastMCP("jasketch", host="127.0.0.1", port=MCP_PORT, streamable_http_path="/mcp/");
+glob mcp: FastMCP = FastMCP("jasketch", host=MCP_HOST, port=MCP_PORT, streamable_http_path="/mcp/");
 
 
 """Log to stderr (stdout is reserved for MCP stdio transport)."""
