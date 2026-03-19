@@ -4,23 +4,19 @@ version = "1.0.0"
 description = "Jac client application: jasketch"
 entry-point = "main.jac"
 
-[dependencies]
-
 [dependencies.npm]
-jac-client-node = "1.0.4"
+jac-client-node = "1.0.7"
 tailwindcss = "latest"
 "@tailwindcss/vite" = "latest"
 
 [dependencies.npm.dev]
-"@jac-client/dev-deps" = "1.0.0"
+"@jac-client/dev-deps" = "2.0.0"
 
 [dev-dependencies]
 watchdog = ">=3.0.0"
 
 [serve]
 base_route_app = "app"
-
-[plugins.client]
 
 [plugins.client.vite]
 plugins = ["tailwindcss()"]
@@ -34,7 +30,3 @@ author = "Jaseci"
 [plugins.client.pwa]
 theme_color = "#000000"
 background_color = "#ffffff"
-# cache_name = "jac-pwa-cache-v1"
-# [plugins.client.pwa.manifest]
-# name = "My App"
-# short_name = "App"

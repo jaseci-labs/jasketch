@@ -6,7 +6,7 @@ import from "..hooks.useSelection" { useSelection }
 import from "..hooks.useViewport" { useViewport }
 import from "..hooks.useTextInput" { useTextInput }
 import from "..hooks.useWebSocket" { useWebSocket }
-import from "..services.geometry" { getMousePosition, findNearestConnectionPoint }
+import from "..services.geometry" { getMousePosition, findNearestConnectionPoint, getConnectionPoints, findConnectedLineUpdates }
 import from "..services.canvas" { drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
 import from "..services.collision" { getResizeHandleAtPoint, getBendHandleAtPoint }
 import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, copySelectionAsPNG, copyCanvasAsPNG, copyCanvasAsSVG }
@@ -1181,12 +1181,47 @@ def:pub Canvas(props: dict) -> JsxElement {
                     updates.push({"index": selectedInfo.index, "element": newElement});
                     i = i + 1;
                 }
+                # Find connected lines/arrows not in the selection and move them too
+                selectedIdxSet = {};
+                msi = 0;
+                while msi < selectionHook.selectedElements.length {
+                    selectedIdxSet[selectionHook.selectedElements[msi].index] = True;
+                    msi = msi + 1;
+                }
+                mci = 0;
+                while mci < selectionHook.selectedElements.length {
+                    mcSelInfo = selectionHook.selectedElements[mci];
+                    mcSelEl = mcSelInfo.element;
+                    mcLineUpdates = findConnectedLineUpdates(mcSelEl, multiDx, multiDy, elementsHook.elements, mcSelInfo.index);
+                    mcli = 0;
+                    while mcli < mcLineUpdates.length {
+                        if not selectedIdxSet[mcLineUpdates[mcli].index] {
+                            updates.push(mcLineUpdates[mcli]);
+                            selectedIdxSet[mcLineUpdates[mcli].index] = True;
+                        }
+                        mcli = mcli + 1;
+                    }
+                    mci = mci + 1;
+                }
+
                 elementsHook.updateMultipleElementsSilent(updates);
                 # Update selectedElements so selection boxes move with the elements
                 newSelectedElements = [];
                 ui = 0;
-                while ui < updates.length {
-                    newSelectedElements.push({"element": updates[ui].element, "index": updates[ui].index});
+                while ui < selectionHook.selectedElements.length {
+                    selIdx = selectionHook.selectedElements[ui].index;
+                    # Find the updated element for this selection index
+                    ufi = 0;
+                    foundUpdate = None;
+                    while ufi < updates.length {
+                        if updates[ufi].index == selIdx {
+                            foundUpdate = updates[ufi];
+                        }
+                        ufi = ufi + 1;
+                    }
+                    if foundUpdate {
+                        newSelectedElements.push({"element": foundUpdate.element, "index": foundUpdate.index});
+                    }
                     ui = ui + 1;
                 }
                 selectionHook.setSelectedElements(newSelectedElements);
@@ -1219,7 +1254,21 @@ def:pub Canvas(props: dict) -> JsxElement {
                     });
                 }
 
-                elementsHook.updateElementSilent(selectionHook.selectedElement.index, newElement);
+                # Move connected lines/arrows along with the shape
+                hasXY = element.type == "rectangle" or element.type == "circle" or element.type == "diamond" or element.type == "text" or element.type == "image";
+                if hasXY {
+                    shapeDx = newElement.x - element.x;
+                    shapeDy = newElement.y - element.y;
+                    connLineUpdates = findConnectedLineUpdates(element, shapeDx, shapeDy, elementsHook.elements, selectionHook.selectedElement.index);
+                    if connLineUpdates.length > 0 {
+                        connLineUpdates.push({"index": selectionHook.selectedElement.index, "element": newElement});
+                        elementsHook.updateMultipleElementsSilent(connLineUpdates);
+                    } else {
+                        elementsHook.updateElementSilent(selectionHook.selectedElement.index, newElement);
+                    }
+                } else {
+                    elementsHook.updateElementSilent(selectionHook.selectedElement.index, newElement);
+                }
                 selectionHook.setSelectedElement({"element": newElement, "index": selectionHook.selectedElement.index});
                 return;
             }
