@@ -1,0 +1,56 @@
+name: JaSketch E2E Tests
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "jasketch/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "jasketch/**"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: jasketch
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Jac and dependencies
+        run: |
+          pip install jaclang jac-client jac-scale pytest pytest-playwright pytest-timeout
+
+      - name: Install Playwright browsers
+        run: python -m playwright install --with-deps chromium
+
+      - name: Install app dependencies
+        run: jac install
+
+      - name: Run E2E tests
+        run: pytest tests/e2e/ -v --timeout=300
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: jasketch/tests/e2e/
+          retention-days: 7
