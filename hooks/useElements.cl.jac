@@ -1,7 +1,7 @@
-import from react { useState, useRef, useEffect }
+import from react { useRef }
 
 def:pub useElements() -> dict {
-    [elements, rawSetElements] = useState([]);
+    has elements: list = [];
     historyRef = useRef([]);
     historyIndexRef = useRef(-1);
     loadedRef = useRef(False);
@@ -9,7 +9,7 @@ def:pub useElements() -> dict {
     STORAGE_KEY = "jasketch_elements";
 
     def setElementsInternal(newElements: list) -> None {
-        rawSetElements(newElements);
+        elements = newElements;
         # Strip non-serializable imageObj before saving to localStorage
         toStore = newElements.map(lambda el: any -> any {
             if el.type == "image" and el.imageObj {
@@ -30,17 +30,17 @@ def:pub useElements() -> dict {
     }
 
     # Load from localStorage on mount
-    useEffect(lambda -> None {
+    can with entry {
         stored = localStorage.getItem(STORAGE_KEY);
         if stored {
             parsed = JSON.parse(stored);
             if parsed and parsed.length > 0 {
-                rawSetElements(parsed);
+                elements = parsed;
                 pushHistory(parsed);
             }
         }
         loadedRef.current = True;
-    }, []);
+    }
 
     def pushHistory(newElements: list) -> None {
         history = historyRef.current;
@@ -54,25 +54,25 @@ def:pub useElements() -> dict {
         historyIndexRef.current = newHistory.length - 1;
     }
 
-    def setElements(newElements: list) -> None {
+    def setElementsWithHistory(newElements: list) -> None {
         pushHistory(newElements);
         setElementsInternal(newElements);
     }
 
     def addElement(element: dict) -> None {
         newElements = elements.concat([element]);
-        setElements(newElements);
+        setElementsWithHistory(newElements);
     }
 
     def addMultipleElements(newItems: list) -> None {
         newElements = elements.concat(newItems);
-        setElements(newElements);
+        setElementsWithHistory(newElements);
     }
 
     def updateElement(index: int, newElement: dict) -> None {
         newElements = elements.slice();
         newElements[index] = newElement;
-        setElements(newElements);
+        setElementsWithHistory(newElements);
     }
 
     def updateElementSilent(index: int, newElement: dict) -> None {
@@ -88,7 +88,7 @@ def:pub useElements() -> dict {
             newElements[updates[i].index] = updates[i].element;
             i = i + 1;
         }
-        setElements(newElements);
+        setElementsWithHistory(newElements);
     }
 
     def updateMultipleElementsSilent(updates: list) -> None {
@@ -109,7 +109,7 @@ def:pub useElements() -> dict {
         newElements = elements.filter(lambda _: any, i: any -> bool {
             return i != index;
         });
-        setElements(newElements);
+        setElementsWithHistory(newElements);
     }
 
     def removeMultipleElements(indices: list) -> None {
@@ -122,11 +122,11 @@ def:pub useElements() -> dict {
         newElements = elements.filter(lambda _: any, i: any -> bool {
             return not indexSet[i];
         });
-        setElements(newElements);
+        setElementsWithHistory(newElements);
     }
 
     def clearElements() -> None {
-        setElements([]);
+        setElementsWithHistory([]);
     }
 
     def undo() -> None {
@@ -151,7 +151,7 @@ def:pub useElements() -> dict {
 
     return {
         "elements": elements,
-        "setElements": setElements,
+        "setElements": setElementsWithHistory,
         "addElement": addElement,
         "addMultipleElements": addMultipleElements,
         "updateElement": updateElement,

@@ -2,7 +2,7 @@
 
 cl {
     # Client-side imports
-    import from react { useState, useRef }
+    import from react { useRef }
     import from .components.layout.TopBar { TopBar }
     import from .components.layout.Sidebar { Sidebar }
     import from .components.Canvas { Canvas }
@@ -10,17 +10,17 @@ cl {
 
     def:pub app() -> JsxElement {
         # Drawing tool state
-        [currentTool, setCurrentTool] = useState("select");
-        [currentColor, setCurrentColor] = useState("#000000");
-        [currentStrokeWidth, setCurrentStrokeWidth] = useState(2);
-        [currentFontSize, setCurrentFontSize] = useState(24);
-        [currentFontFamily, setCurrentFontFamily] = useState("Virgil");
-        [currentOpacity, setCurrentOpacity] = useState(1.0);
-        [currentLineStyle, setCurrentLineStyle] = useState("solid");
-        [currentFillColor, setCurrentFillColor] = useState("transparent");
+        has currentTool: str = "select";
+        has currentColor: str = "#000000";
+        has currentStrokeWidth: int = 2;
+        has currentFontSize: int = 24;
+        has currentFontFamily: str = "Virgil";
+        has currentOpacity: float = 1.0;
+        has currentLineStyle: str = "solid";
+        has currentFillColor: str = "transparent";
 
         # Selection state (updated by Canvas via callback)
-        [selectedElement, setSelectedElement] = useState(None);
+        has selectedElement: any = None;
 
         # Refs for cross-component communication
         clearCanvasRef = useRef(None);
@@ -36,7 +36,7 @@ cl {
         return <div className="h-screen flex flex-col overflow-hidden bg-white">
             <TopBar
                 currentTool={currentTool}
-                onToolChange={lambda tool: any -> None { setCurrentTool(tool); }}
+                onToolChange={lambda tool: any -> None { currentTool = tool; }}
                 onImageLoad={lambda element: any -> None {
                     if addElementRef.current {
                         addElementRef.current(element);
@@ -56,13 +56,13 @@ cl {
                         currentLineStyle={currentLineStyle}
                         currentFillColor={currentFillColor}
                         selectedElement={selectedElement}
-                        onColorChange={lambda color: any -> None { setCurrentColor(color); }}
-                        onStrokeWidthChange={lambda width: any -> None { setCurrentStrokeWidth(width); }}
-                        onOpacityChange={lambda opacity: any -> None { setCurrentOpacity(opacity); }}
-                        onFontSizeChange={lambda size: any -> None { setCurrentFontSize(size); }}
-                        onFontFamilyChange={lambda font: any -> None { setCurrentFontFamily(font); }}
-                        onLineStyleChange={lambda style: any -> None { setCurrentLineStyle(style); }}
-                        onFillColorChange={lambda color: any -> None { setCurrentFillColor(color); }}
+                        onColorChange={lambda color: any -> None { currentColor = color; }}
+                        onStrokeWidthChange={lambda width: any -> None { currentStrokeWidth = width; }}
+                        onOpacityChange={lambda opacity: any -> None { currentOpacity = opacity; }}
+                        onFontSizeChange={lambda size: any -> None { currentFontSize = size; }}
+                        onFontFamilyChange={lambda font: any -> None { currentFontFamily = font; }}
+                        onLineStyleChange={lambda style: any -> None { currentLineStyle = style; }}
+                        onFillColorChange={lambda color: any -> None { currentFillColor = color; }}
                         onUpdateElement={handleUpdateElement}
                     />
                 </div>
@@ -80,8 +80,8 @@ cl {
                         clearCanvasRef={clearCanvasRef}
                         addElementRef={addElementRef}
                         updateElementRef={updateElementRef}
-                        onSelectionChange={lambda sel: any -> None { setSelectedElement(sel); }}
-                        onToolChange={lambda tool: any -> None { setCurrentTool(tool); }}
+                        onSelectionChange={lambda sel: any -> None { selectedElement = sel; }}
+                        onToolChange={lambda tool: any -> None { currentTool = tool; }}
                     />
                 </div>
 

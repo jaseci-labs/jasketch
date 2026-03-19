@@ -1,32 +1,30 @@
-import from react { useState }
-
 def:pub useTextInput() -> dict {
-    [textInput, setTextInput] = useState(None);
+    has textInput: any = None;
 
     def startTextInput(x: float, y: float, initialText: str, shapeIndex: any, shapeElement: any) -> None {
-        setTextInput({
+        textInput = {
             "x": x,
             "y": y,
             "text": initialText or "",
             "editingShapeIndex": shapeIndex,
             "editingShapeElement": shapeElement
-        });
+        };
     }
 
     def updateTextContent(text: str) -> None {
         if textInput {
-            setTextInput({
+            textInput = {
                 "x": textInput.x,
                 "y": textInput.y,
                 "text": text,
                 "editingShapeIndex": textInput.editingShapeIndex,
                 "editingShapeElement": textInput.editingShapeElement
-            });
+            };
         }
     }
 
     def cancelTextInput() -> None {
-        setTextInput(None);
+        textInput = None;
     }
 
     def hasContent() -> bool {

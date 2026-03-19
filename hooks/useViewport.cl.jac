@@ -1,11 +1,22 @@
-import from react { useState }
 import from "..constants.canvas" { CANVAS_DEFAULTS }
 
 def:pub useViewport() -> dict {
     canvasDefaults = CANVAS_DEFAULTS();
-    [zoom, setZoom] = useState(1);
-    [panOffset, setPanOffset] = useState({"x": 0, "y": 0});
-    [isPanning, setIsPanning] = useState(False);
+    has zoom: float = 1;
+    has panOffset: dict = {"x": 0, "y": 0};
+    has isPanning: bool = False;
+
+    def updateZoom(val: float) -> None {
+        zoom = val;
+    }
+
+    def updatePanOffset(val: dict) -> None {
+        panOffset = val;
+    }
+
+    def updateIsPanning(val: bool) -> None {
+        isPanning = val;
+    }
 
     def handleZoom(deltaY: float, mouseX: float, mouseY: float, canvas: any) -> None {
         zoomFactor = 1;
@@ -27,33 +38,33 @@ def:pub useViewport() -> dict {
             newPanX = canvasX - worldX * newZoom;
             newPanY = canvasY - worldY * newZoom;
 
-            setZoom(newZoom);
-            setPanOffset({"x": newPanX, "y": newPanY});
+            zoom = newZoom;
+            panOffset = {"x": newPanX, "y": newPanY};
         }
     }
 
     def handlePan(deltaX: float, deltaY: float) -> None {
-        setPanOffset({
+        panOffset = {
             "x": panOffset.x + deltaX,
             "y": panOffset.y + deltaY
-        });
+        };
     }
 
     def startPanning() -> None {
-        setIsPanning(True);
+        isPanning = True;
     }
 
     def stopPanning() -> None {
-        setIsPanning(False);
+        isPanning = False;
     }
 
     return {
         "zoom": zoom,
         "panOffset": panOffset,
         "isPanning": isPanning,
-        "setZoom": setZoom,
-        "setPanOffset": setPanOffset,
-        "setIsPanning": setIsPanning,
+        "setZoom": updateZoom,
+        "setPanOffset": updatePanOffset,
+        "setIsPanning": updateIsPanning,
         "handleZoom": handleZoom,
         "handlePan": handlePan,
         "startPanning": startPanning,
