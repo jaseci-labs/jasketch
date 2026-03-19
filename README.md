@@ -107,6 +107,9 @@ claude mcp add --scope user jasketch -- uvx jasketch-mcp-server
 |----------|---------|-------------|
 | `JASKETCH_RELAY_PORT` | `9601` | WebSocket relay port (auto-started) |
 | `JASKETCH_RELAY_URL` | `ws://localhost:9601` | Override to use an external relay |
+| `JASKETCH_MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` or `streamable-http` |
+| `JASKETCH_MCP_PORT` | `3003` | HTTP port (only used when transport is `streamable-http`) |
+| `JASKETCH_MCP_HOST` | `0.0.0.0` | HTTP bind address (only used when transport is `streamable-http`) |
 
 ## Tech
 
