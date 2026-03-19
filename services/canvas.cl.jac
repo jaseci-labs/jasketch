@@ -27,19 +27,25 @@ def sketchyLine(ctx: any, x1: float, y1: float, x2: float, y2: float, seed: floa
     ctx.bezierCurveTo(mx1, my1, mx2, my2, x2 + jitter(seed + 7, wobble), y2 + jitter(seed + 8, wobble));
 }
 
-def:pub drawElement(ctx: any, element: dict) -> None {
+def:pub drawElement(ctx: any, element: dict, onImageLoad: any) -> None {
     if element.type == "text" {
         drawTextElement(ctx, element);
     } elif element.type == "image" {
-        drawImageElement(ctx, element);
+        drawImageElement(ctx, element, onImageLoad);
     } else {
         drawShapeElement(ctx, element);
     }
 }
 
-def:pub drawImageElement(ctx: any, element: dict) -> None {
-    if not element.imageObj {
+def:pub drawImageElement(ctx: any, element: dict, onImageLoad: any) -> None {
+    if not element.imageObj or not element.imageObj.src {
         img = Reflect.construct(Image, []);
+        img.onload = lambda -> None {
+            # Image finished loading — request a canvas redraw
+            if onImageLoad {
+                onImageLoad();
+            }
+        };
         img.src = element.src;
         element.imageObj = img;
     }

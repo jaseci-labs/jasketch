@@ -28,6 +28,11 @@ def:pub useCanvas() -> dict {
         ctx.save();
         applyViewportTransform(ctx, zoom, panOffset);
 
+        # Callback to redraw canvas when an image finishes loading
+        imgLoadRedraw = lambda -> None {
+            redrawCanvas(elements, zoom, panOffset, selectedElement, selectedElements, isBoxSelecting, boxStart, boxEnd, editingShapeIndex);
+        };
+
         drIdx = 0;
         while drIdx < elements.length {
             drEl = elements[drIdx];
@@ -35,9 +40,9 @@ def:pub useCanvas() -> dict {
                 # Temporarily hide shapeText while editing this shape
                 drCopy = Object.assign({}, drEl);
                 drCopy.shapeText = None;
-                drawElement(ctx, drCopy);
+                drawElement(ctx, drCopy, imgLoadRedraw);
             } else {
-                drawElement(ctx, drEl);
+                drawElement(ctx, drEl, imgLoadRedraw);
             }
             drIdx = drIdx + 1;
         }

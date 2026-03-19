@@ -57,7 +57,7 @@ def renderToOffscreenCanvas(elements: list, bounds: dict, dpr: float) -> any {
     ctx.translate(padding - bounds.x, padding - bounds.y);
     i = 0;
     while i < elements.length {
-        drawElement(ctx, elements[i]);
+        drawElement(ctx, elements[i], None);
         i = i + 1;
     }
     ctx.restore();

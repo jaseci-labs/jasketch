@@ -10,7 +10,23 @@ def:pub useElements() -> dict {
 
     def setElementsInternal(newElements: list) -> None {
         rawSetElements(newElements);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(newElements));
+        # Strip non-serializable imageObj before saving to localStorage
+        toStore = newElements.map(lambda el: any -> any {
+            if el.type == "image" and el.imageObj {
+                return {
+                    "type": el.type,
+                    "x": el.x,
+                    "y": el.y,
+                    "width": el.width,
+                    "height": el.height,
+                    "src": el.src,
+                    "opacity": el.opacity,
+                    "groupId": el.groupId
+                };
+            }
+            return el;
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
     }
 
     # Load from localStorage on mount
