@@ -174,9 +174,12 @@ class TestToolSelection:
     """Verify tool switching works."""
 
     def test_select_rectangle_tool(self, app: Page):
+        """Clicking Rectangle tool makes it the active tool."""
         select_tool(app, "Rectangle")
         btn = app.locator("button[title^='Rectangle']")
         expect(btn).to_be_visible()
+        btn_class = btn.get_attribute("class")
+        assert "text-orange-600" in btn_class, f"Rectangle should be active, class: {btn_class}"
 
     def test_select_tool_via_keyboard(self, app: Page):
         """Pressing number keys selects corresponding tools."""
@@ -455,7 +458,7 @@ class TestContextMenu:
         press_key(app, "Escape")
 
     def test_duplicate_from_menu(self, app: Page):
-        """Duplicating via Ctrl+D creates a copy."""
+        """Duplicating via Ctrl+D creates a copy with same type."""
         clear_canvas(app)
         draw_shape(app, "Rectangle", S_X1, S_Y1, S_X2, S_Y2)
         wait_for_elements(app, 1)
@@ -463,6 +466,9 @@ class TestContextMenu:
         click_canvas(app, S_CX, S_CY)
         press_key(app, "Control+d")
         wait_for_elements(app, 2)
+        elements = get_elements(app)
+        assert elements[0]["type"] == "rectangle", "Original should be rectangle"
+        assert elements[1]["type"] == "rectangle", "Duplicate should also be rectangle"
 
 
 # -- Zoom tests ----------------------------------------------------------------
@@ -472,13 +478,17 @@ class TestZoom:
     """Verify zoom controls work."""
 
     def test_zoom_in_button(self, app: Page):
-        """Clicking + zoom button increases zoom."""
+        """Clicking + zoom button increases zoom above 100%."""
         clear_canvas(app)
+        press_key(app, "Control+0")  # Reset to 100% first
         zoom_buttons = app.locator("button", has_text="+")
         zoom_buttons.last.click()
         app.wait_for_timeout(ACTION_DELAY)
-        zoom_text = app.locator("text=100%")
-        expect(zoom_text).not_to_be_visible()
+        # Zoom should now be above 100% (e.g., 110%)
+        zoom_btn = app.locator("button", has_text="%")
+        zoom_label = zoom_btn.text_content()
+        zoom_val = int(zoom_label.replace("%", ""))
+        assert zoom_val > 100, f"Zoom should be above 100% after zoom in, got {zoom_val}%"
 
     def test_zoom_reset(self, app: Page):
         """Ctrl+0 resets zoom to 100%."""
@@ -730,12 +740,12 @@ class TestGrouping:
         canvas.click(position={"x": 450, "y": 115}, button="right", force=True)
         app.wait_for_timeout(ACTION_DELAY)
         ungroup_btn = app.locator("button", has_text="Ungroup")
-        if ungroup_btn.is_visible():
-            ungroup_btn.click()
-            app.wait_for_timeout(1000)
-            elements = get_elements(app)
-            gid0 = elements[0].get("groupId")
-            assert gid0 is None or gid0 == "", f"Element 0 groupId should be cleared, got {gid0}"
+        expect(ungroup_btn).to_be_visible(timeout=3_000)
+        ungroup_btn.click()
+        app.wait_for_timeout(1000)
+        elements = get_elements(app)
+        gid0 = elements[0].get("groupId")
+        assert gid0 is None or gid0 == "", f"Element 0 groupId should be cleared, got {gid0}"
 
     def test_move_grouped_elements(self, app: Page):
         """Moving one element in a group moves all group members."""
