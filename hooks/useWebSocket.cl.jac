@@ -1,4 +1,4 @@
-import from react { useEffect, useRef }
+import from react { useRef }
 
 def:pub useWebSocket(elementsHook: dict) -> dict {
     wsRef = useRef(None);
@@ -142,7 +142,7 @@ def:pub useWebSocket(elementsHook: dict) -> dict {
         wsRef.current = ws;
     }
 
-    useEffect(lambda -> any {
+    can with entry {
         connect();
 
         return lambda -> None {
@@ -153,7 +153,7 @@ def:pub useWebSocket(elementsHook: dict) -> dict {
                 wsRef.current.close();
             }
         };
-    }, []);
+    }
 
     return {"connected": connectedRef.current};
 }

@@ -1,24 +1,51 @@
-import from react { useState }
 import from "..services.collision" { isPointInElement }
 
 def:pub useSelection() -> dict {
-    [selectedElement, setSelectedElement] = useState(None);
-    [selectedElements, setSelectedElements] = useState([]);
-    [isDragging, setIsDragging] = useState(False);
-    [dragOffset, setDragOffset] = useState({"x": 0, "y": 0});
-    [dragStartPos, setDragStartPos] = useState(None);
-    [isBoxSelecting, setIsBoxSelecting] = useState(False);
-    [boxStart, setBoxStart] = useState(None);
-    [boxEnd, setBoxEnd] = useState(None);
-    [isResizing, setIsResizing] = useState(False);
-    [resizeHandle, setResizeHandle] = useState(None);
-    [resizeStartElement, setResizeStartElement] = useState(None);
+    has selectedElement: any = None;
+    has selectedElements: list = [];
+    has isDragging: bool = False;
+    has dragOffset: dict = {"x": 0, "y": 0};
+    has dragStartPos: any = None;
+    has isBoxSelecting: bool = False;
+    has boxStart: any = None;
+    has boxEnd: any = None;
+    has isResizing: bool = False;
+    has resizeHandle: any = None;
+    has resizeStartElement: any = None;
 
-    def findElementAtPoint(point: dict, elements: list) -> dict {
-        i = elements.length - 1;
+    def updateSelectedElement(val: any) -> None {
+        selectedElement = val;
+    }
+
+    def updateSelectedElements(val: list) -> None {
+        selectedElements = val;
+    }
+
+    def updateIsDragging(val: bool) -> None {
+        isDragging = val;
+    }
+
+    def updateDragStartPos(val: any) -> None {
+        dragStartPos = val;
+    }
+
+    def updateIsResizing(val: bool) -> None {
+        isResizing = val;
+    }
+
+    def updateResizeHandle(val: any) -> None {
+        resizeHandle = val;
+    }
+
+    def updateResizeStartElement(val: any) -> None {
+        resizeStartElement = val;
+    }
+
+    def findElementAtPoint(point: dict, elems: list) -> dict {
+        i = elems.length - 1;
         while i >= 0 {
-            if isPointInElement(point, elements[i]) {
-                return {"element": elements[i], "index": i};
+            if isPointInElement(point, elems[i]) {
+                return {"element": elems[i], "index": i};
             }
             i = i - 1;
         }
@@ -26,10 +53,10 @@ def:pub useSelection() -> dict {
     }
 
     def startDragging(elementInfo: dict, mousePos: dict) -> None {
-        setSelectedElement(elementInfo);
-        setSelectedElements([]);
-        setIsDragging(True);
-        setDragStartPos(mousePos);
+        selectedElement = elementInfo;
+        selectedElements = [];
+        isDragging = True;
+        dragStartPos = mousePos;
 
         element = elementInfo.element;
 
@@ -50,56 +77,56 @@ def:pub useSelection() -> dict {
         offsetX = mousePos.x - elementX;
         offsetY = mousePos.y - elementY;
 
-        setDragOffset({"x": offsetX, "y": offsetY});
+        dragOffset = {"x": offsetX, "y": offsetY};
     }
 
     def stopDragging() -> None {
-        setIsDragging(False);
+        isDragging = False;
     }
 
     def stopResizing() -> None {
-        setIsResizing(False);
-        setResizeHandle(None);
-        setResizeStartElement(None);
+        isResizing = False;
+        resizeHandle = None;
+        resizeStartElement = None;
     }
 
     def clearSelection() -> None {
-        setSelectedElement(None);
-        setSelectedElements([]);
-        setIsDragging(False);
+        selectedElement = None;
+        selectedElements = [];
+        isDragging = False;
         stopResizing();
     }
 
     def addToSelection(elementInfo: dict) -> None {
         newList = selectedElements.slice();
         newList.push(elementInfo);
-        setSelectedElements(newList);
-        setSelectedElement(None);
+        selectedElements = newList;
+        selectedElement = None;
     }
 
     def removeFromSelection(index: int) -> None {
         newList = selectedElements.filter(lambda sel: dict -> bool {
             return sel.index != index;
         });
-        setSelectedElements(newList);
+        selectedElements = newList;
         if newList.length == 1 {
-            setSelectedElement(newList[0]);
+            selectedElement = newList[0];
         } elif newList.length == 0 {
-            setSelectedElement(None);
+            selectedElement = None;
         }
     }
 
     def startBoxSelection(point: dict) -> None {
-        setIsBoxSelecting(True);
-        setBoxStart(point);
-        setBoxEnd(point);
+        isBoxSelecting = True;
+        boxStart = point;
+        boxEnd = point;
     }
 
     def updateBoxSelection(point: dict) -> None {
-        setBoxEnd(point);
+        boxEnd = point;
     }
 
-    def finishBoxSelection(elements: list) -> None {
+    def finishBoxSelection(elems: list) -> None {
         if boxStart and boxEnd {
             minX = Math.min(boxStart.x, boxEnd.x);
             minY = Math.min(boxStart.y, boxEnd.y);
@@ -108,25 +135,25 @@ def:pub useSelection() -> dict {
 
             selected = [];
             i = 0;
-            while i < elements.length {
-                element = elements[i];
+            while i < elems.length {
+                element = elems[i];
                 if isElementInBox(element, minX, minY, maxX, maxY) {
                     selected.push({"element": element, "index": i});
                 }
                 i = i + 1;
             }
 
-            setSelectedElements(selected);
+            selectedElements = selected;
             if selected.length == 1 {
-                setSelectedElement(selected[0]);
+                selectedElement = selected[0];
             } else {
-                setSelectedElement(None);
+                selectedElement = None;
             }
         }
 
-        setIsBoxSelecting(False);
-        setBoxStart(None);
-        setBoxEnd(None);
+        isBoxSelecting = False;
+        boxStart = None;
+        boxEnd = None;
     }
 
     def isElementInBox(element: dict, boxMinX: float, boxMinY: float, boxMaxX: float, boxMaxY: float) -> bool {
@@ -177,13 +204,13 @@ def:pub useSelection() -> dict {
         "isResizing": isResizing,
         "resizeHandle": resizeHandle,
         "resizeStartElement": resizeStartElement,
-        "setSelectedElement": setSelectedElement,
-        "setSelectedElements": setSelectedElements,
-        "setIsDragging": setIsDragging,
-        "setDragStartPos": setDragStartPos,
-        "setIsResizing": setIsResizing,
-        "setResizeHandle": setResizeHandle,
-        "setResizeStartElement": setResizeStartElement,
+        "setSelectedElement": updateSelectedElement,
+        "setSelectedElements": updateSelectedElements,
+        "setIsDragging": updateIsDragging,
+        "setDragStartPos": updateDragStartPos,
+        "setIsResizing": updateIsResizing,
+        "setResizeHandle": updateResizeHandle,
+        "setResizeStartElement": updateResizeStartElement,
         "findElementAtPoint": findElementAtPoint,
         "startDragging": startDragging,
         "stopDragging": stopDragging,

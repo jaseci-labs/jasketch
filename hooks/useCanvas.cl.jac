@@ -1,4 +1,4 @@
-import from react { useRef, useEffect, useState }
+import from react { useRef }
 import from "..services.canvas" { drawElement, applyViewportTransform, drawSelectionBox, drawGroupSelectionBox, drawBoxSelectionRect }
 import from "..constants.canvas" { CANVAS_DEFAULTS }
 
@@ -6,10 +6,14 @@ def:pub useCanvas() -> dict {
     canvasRef = useRef(None);
     containerRef = useRef(None);
     canvasDefaults = CANVAS_DEFAULTS();
-    [canvasSize, setCanvasSize] = useState({
+    has canvasSize: dict = {
         "width": canvasDefaults.width,
         "height": canvasDefaults.height
-    });
+    };
+
+    def updateCanvasSize(val: dict) -> None {
+        canvasSize = val;
+    }
 
     def redrawCanvas(elements: list, zoom: float, panOffset: dict, selectedElement: any = None, selectedElements: list = [], isBoxSelecting: bool = False, boxStart: any = None, boxEnd: any = None, editingShapeIndex: any = None) -> None {
         canvas = canvasRef.current;
@@ -100,14 +104,14 @@ def:pub useCanvas() -> dict {
     def initializeCanvas() -> None {
         if containerRef.current {
             rect = containerRef.current.getBoundingClientRect();
-            setCanvasSize({
+            canvasSize = {
                 "width": Math.round(rect.width),
                 "height": Math.round(rect.height)
-            });
+            };
         }
     }
 
-    useEffect(lambda -> None {
+    can with entry {
         def handleResize() -> None {
             initializeCanvas();
         }
@@ -117,13 +121,13 @@ def:pub useCanvas() -> dict {
         return lambda -> None {
             window.removeEventListener("resize", handleResize);
         };
-    }, []);
+    }
 
     return {
         "canvasRef": canvasRef,
         "containerRef": containerRef,
         "canvasSize": canvasSize,
-        "setCanvasSize": setCanvasSize,
+        "setCanvasSize": updateCanvasSize,
         "redrawCanvas": redrawCanvas,
         "initializeCanvas": initializeCanvas
     };

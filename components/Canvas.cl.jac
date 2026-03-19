@@ -1,4 +1,4 @@
-import from react { useRef, useEffect, useState }
+import from react { useRef }
 import from "..hooks.useCanvas" { useCanvas }
 import from "..hooks.useDrawingState" { useDrawingState }
 import from "..hooks.useElements" { useElements }
@@ -36,16 +36,16 @@ def:pub Canvas(props: dict) -> JsxElement {
     canvasRef = canvasHook.canvasRef;
     containerRef = canvasHook.containerRef;
     textInputRef = useRef(None);
-    [spacePressed, setSpacePressed] = useState(False);
-    [contextMenu, setContextMenu] = useState(None);
-    [toastMessage, setToastMessage] = useState(None);
+    has spacePressed: bool = False;
+    has contextMenu: any = None;
+    has toastMessage: any = None;
     clipboardRef = useRef([]);
     selectedElementRef = useRef(None);
     selectedElementsRef = useRef([]);
     altDragCopiedRef = useRef(False);
     drawingStateRef = useRef(drawingState);
-    [isDraggingBend, setIsDraggingBend] = useState(False);
-    [bendDragElement, setBendDragElement] = useState(None);
+    has isDraggingBend: bool = False;
+    has bendDragElement: any = None;
 
     selectedElementRef.current = selectionHook.selectedElement;
     selectedElementsRef.current = selectionHook.selectedElements;
@@ -109,11 +109,11 @@ def:pub Canvas(props: dict) -> JsxElement {
         imgInput.click();
     }
 
-    useEffect(lambda -> any {
+    can with (textInputHook.textInput, elementsHook.elements) entry {
         def handleKeyDown(e: dict) -> None {
             if e.key == " " and not textInputHook.textInput {
                 e.preventDefault();
-                setSpacePressed(True);
+                spacePressed = True;
             }
             if not textInputHook.textInput and (e.key == "a" or e.key == "A") and (e.ctrlKey or e.metaKey) {
                 e.preventDefault();
@@ -230,7 +230,7 @@ def:pub Canvas(props: dict) -> JsxElement {
 
         def handleKeyUp(e: dict) -> None {
             if e.key == " " {
-                setSpacePressed(False);
+                spacePressed = False;
             }
         }
 
@@ -240,9 +240,9 @@ def:pub Canvas(props: dict) -> JsxElement {
             window.removeEventListener("keydown", handleKeyDown);
             window.removeEventListener("keyup", handleKeyUp);
         };
-    }, [textInputHook.textInput, elementsHook.elements]);
+    }
 
-    useEffect(lambda -> any {
+    can with (viewportHook.zoom, viewportHook.panOffset) entry {
         canvas = canvasRef.current;
         if not canvas {
             return None;
@@ -267,9 +267,9 @@ def:pub Canvas(props: dict) -> JsxElement {
         return lambda -> None {
             canvas.removeEventListener("wheel", handleWheel);
         };
-    }, [viewportHook.zoom, viewportHook.panOffset]);
+    }
 
-    useEffect(lambda -> None {
+    can with elementsHook.elements entry {
         if props.clearCanvasRef {
             props.clearCanvasRef.current = lambda -> None {
                 elementsHook.clearElements();
@@ -291,7 +291,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 }
             };
         }
-    }, [elementsHook.elements]);
+    }
 
     def handleCanvasClick(e: dict) -> None {
         if currentTool == "text" {
@@ -466,18 +466,18 @@ def:pub Canvas(props: dict) -> JsxElement {
             }
             ctxi = ctxi + 1;
         }
-        setContextMenu({
+        contextMenu = {
             "x": e.clientX,
             "y": e.clientY,
             "hasSelection": hasSel,
             "canGroup": ctxCanGroup,
             "canUngroup": ctxCanUngroup
-        });
+        };
     }
 
     def handleDeleteFromMenu() -> None {
         deleteSelected();
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def offsetElement(original: dict, dx: float, dy: float) -> dict {
@@ -526,7 +526,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             singleDup = offsetElement(curSingleDup.element, 20, 20);
             elementsHook.addElement(singleDup);
         }
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def handleBringToFront() -> None {
@@ -537,7 +537,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             elementsHook.addElement(element);
             selectionHook.clearSelection();
         }
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def handleSendToBack() -> None {
@@ -550,7 +550,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             elementsHook.setElements(newElements);
             selectionHook.clearSelection();
         }
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def handleGroup() -> None {
@@ -559,11 +559,11 @@ def:pub Canvas(props: dict) -> JsxElement {
             allSelected = selectionHook.selectedElements;
         } elif selectionHook.selectedElement {
             # Single selected, nothing to group
-            setContextMenu(None);
+            contextMenu = None;
             return;
         }
         if allSelected.length < 2 {
-            setContextMenu(None);
+            contextMenu = None;
             return;
         }
         groupId = "g_" + String(Date.now()) + "_" + String(Math.floor(Math.random() * 10000));
@@ -586,7 +586,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             gsi = gsi + 1;
         }
         selectionHook.setSelectedElements(newSel);
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def handleUngroup() -> None {
@@ -597,7 +597,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             allSelected = [selectionHook.selectedElement];
         }
         if allSelected.length == 0 {
-            setContextMenu(None);
+            contextMenu = None;
             return;
         }
         # Collect all groupIds from selected elements
@@ -636,13 +636,13 @@ def:pub Canvas(props: dict) -> JsxElement {
             selectionHook.setSelectedElement(newSel[0]);
             selectionHook.setSelectedElements([]);
         }
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def handleClearCanvas() -> None {
         elementsHook.clearElements();
         selectionHook.clearSelection();
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def getExportElements() -> list {
@@ -656,19 +656,19 @@ def:pub Canvas(props: dict) -> JsxElement {
 
     def handleExportPNG() -> None {
         exportSelectionAsPNG(getExportElements(), canvasRef);
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def handleExportSVG() -> None {
         exportSelectionAsSVG(getExportElements(), canvasRef);
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def handleCopySelectionPNG() -> None {
         copySelectionAsPNG(getExportElements(), canvasRef, lambda -> None {
             showToast("Copied as PNG");
         });
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def pasteInternalClipboard() -> None {
@@ -778,27 +778,27 @@ def:pub Canvas(props: dict) -> JsxElement {
     }
 
     def handlePasteFromMenu() -> None {
-        setContextMenu(None);
+        contextMenu = None;
         pasteFromSystemClipboard();
     }
 
     def showToast(msg: str) -> None {
-        setToastMessage(msg);
-        setTimeout(lambda -> None { setToastMessage(None); }, 2000);
+        toastMessage = msg;
+        setTimeout(lambda -> None { toastMessage = None; }, 2000);
     }
 
     def handleCopyCanvasAsPNG() -> None {
         copyCanvasAsPNG(elementsHook.elements, canvasRef, lambda -> None {
             showToast("Copied as PNG");
         });
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def handleCopyCanvasAsSVG() -> None {
         copyCanvasAsSVG(elementsHook.elements, canvasRef, lambda -> None {
             showToast("Copied as SVG");
         });
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def handleSelectAll() -> None {
@@ -809,11 +809,11 @@ def:pub Canvas(props: dict) -> JsxElement {
             idx = idx + 1;
         }
         selectionHook.setSelectedElements(allElements);
-        setContextMenu(None);
+        contextMenu = None;
     }
 
     def handleMouseDown(e: dict) -> None {
-        setContextMenu(None);
+        contextMenu = None;
         pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
 
         if spacePressed or e.button == 1 {
@@ -832,8 +832,8 @@ def:pub Canvas(props: dict) -> JsxElement {
             if selectionHook.selectedElement and selectionHook.selectedElement.element {
                 selEl = selectionHook.selectedElement.element;
                 if (selEl.type == "line" or selEl.type == "arrow") and getBendHandleAtPoint(pos, selEl) {
-                    setIsDraggingBend(True);
-                    setBendDragElement(Object.assign({}, selEl));
+                    isDraggingBend = True;
+                    bendDragElement = Object.assign({}, selEl);
                     selectionHook.setDragStartPos(pos);
                     return;
                 }
@@ -1354,8 +1354,8 @@ def:pub Canvas(props: dict) -> JsxElement {
     def handleMouseUp(e: dict) -> None {
         if isDraggingBend {
             elementsHook.commitToHistory();
-            setIsDraggingBend(False);
-            setBendDragElement(None);
+            isDraggingBend = False;
+            bendDragElement = None;
             if selectionHook.selectedElement {
                 bendIdx = selectionHook.selectedElement.index;
                 updatedBendEl = elementsHook.elements[bendIdx];
@@ -1500,7 +1500,7 @@ def:pub Canvas(props: dict) -> JsxElement {
         selectionHook.stopDragging();
         selectionHook.stopResizing();
         viewportHook.stopPanning();
-        setIsDraggingBend(False);
+        isDraggingBend = False;
     }
 
     cursorClass = "cursor-crosshair";
@@ -1554,7 +1554,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 hasSelection={contextMenu and contextMenu.hasSelection or False}
                 canGroup={contextMenu and contextMenu.canGroup or False}
                 canUngroup={contextMenu and contextMenu.canUngroup or False}
-                onClose={lambda -> None { setContextMenu(None); }}
+                onClose={lambda -> None { contextMenu = None; }}
                 onDelete={handleDeleteFromMenu}
                 onDuplicate={handleDuplicate}
                 onBringToFront={handleBringToFront}

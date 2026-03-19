@@ -1,16 +1,26 @@
-import from react { useState }
-
 def:pub useDrawingState() -> dict {
-    [isDrawing, setIsDrawing] = useState(False);
-    [startPoint, setStartPoint] = useState(None);
-    [currentPath, setCurrentPath] = useState([]);
+    has isDrawing: bool = False;
+    has startPoint: any = None;
+    has currentPath: list = [];
+
+    def updateIsDrawing(val: bool) -> None {
+        isDrawing = val;
+    }
+
+    def updateStartPoint(val: any) -> None {
+        startPoint = val;
+    }
+
+    def updateCurrentPath(val: list) -> None {
+        currentPath = val;
+    }
 
     return {
         "isDrawing": isDrawing,
         "startPoint": startPoint,
         "currentPath": currentPath,
-        "setIsDrawing": setIsDrawing,
-        "setStartPoint": setStartPoint,
-        "setCurrentPath": setCurrentPath
+        "setIsDrawing": updateIsDrawing,
+        "setStartPoint": updateStartPoint,
+        "setCurrentPath": updateCurrentPath
     };
 }
