@@ -142,19 +142,18 @@ def:pub TopBar(props: dict) -> JsxElement {
             </div>
 
             <div className="flex items-center gap-0.5 bg-gray-50 rounded-lg px-1 py-0.5">
-                {toolIds.map(lambda toolId: any -> any {
-                    isActive = currentTool == toolId and toolId != "image";
-                    shortcut = toolShortcuts[toolId];
-                    return <button
+                {[
+                    <button
                         key={toolId}
                         onClick={lambda -> None { handleToolClick(toolId); }}
-                        title={toolLabels[toolId] + (shortcut and (" (" + shortcut + ")") or "")}
-                        className={"relative w-9 h-9 rounded-md flex flex-col items-center justify-center gap-0 transition-all duration-150 " + (isActive and "bg-white text-orange-600 shadow-sm" or "text-gray-400 hover:bg-white/60 hover:text-gray-600")}
+                        title={toolLabels[toolId] + (toolShortcuts[toolId] and (" (" + toolShortcuts[toolId] + ")") or "")}
+                        className={"relative w-9 h-9 rounded-md flex flex-col items-center justify-center gap-0 transition-all duration-150 " + (currentTool == toolId and toolId != "image" and "bg-white text-orange-600 shadow-sm" or "text-gray-400 hover:bg-white/60 hover:text-gray-600")}
                     >
-                        <ToolIcon toolId={toolId} size={17} color={isActive and "#ea580c" or "currentColor"} />
-                        {shortcut and <span className={"text-[7px] leading-none font-medium mt-px " + (isActive and "text-orange-400" or "text-gray-300")}>{shortcut}</span> or None}
-                    </button>;
-                })}
+                        <ToolIcon toolId={toolId} size={17} color={currentTool == toolId and toolId != "image" and "#ea580c" or "currentColor"} />
+                        {toolShortcuts[toolId] and <span className={"text-[7px] leading-none font-medium mt-px " + (currentTool == toolId and toolId != "image" and "text-orange-400" or "text-gray-300")}>{toolShortcuts[toolId]}</span> or None}
+                    </button>
+                    for toolId in toolIds
+                ]}
             </div>
 
             <div className="min-w-[120px] flex justify-end">

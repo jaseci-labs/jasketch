@@ -105,9 +105,7 @@ def:pub useSelection() -> dict {
     }
 
     def removeFromSelection(index: int) -> None {
-        newList = selectedElements.filter(lambda sel: dict -> bool {
-            return sel.index != index;
-        });
+        newList = [sel for sel in selectedElements if sel.index != index];
         selectedElements = newList;
         if newList.length == 1 {
             selectedElement = newList[0];

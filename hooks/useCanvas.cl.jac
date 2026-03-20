@@ -86,11 +86,13 @@ def:pub useCanvas() -> dict {
                 drawGroupSelectionBox(ctx, groupEls);
             } else {
                 # Draw individual selection boxes
-                selectedElements.forEach(lambda sel: dict -> None {
-                    if sel.element {
-                        drawSelectionBox(ctx, sel.element);
+                selBoxIdx = 0;
+                while selBoxIdx < selectedElements.length {
+                    if selectedElements[selBoxIdx].element {
+                        drawSelectionBox(ctx, selectedElements[selBoxIdx].element);
                     }
-                });
+                    selBoxIdx = selBoxIdx + 1;
+                }
             }
         }
 

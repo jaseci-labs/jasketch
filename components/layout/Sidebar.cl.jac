@@ -198,16 +198,16 @@ def:pub Sidebar(props: dict) -> JsxElement {
         {showColor and <div>
             <span className="sidebar-label">Stroke</span>
             <div className="grid grid-cols-5 gap-1.5 mt-1.5">
-                {presetColors.map(lambda color: any -> any {
-                    isSelected = activeColor == color;
-                    return <button
+                {[
+                    <button
                         key={color}
                         onClick={lambda -> None { handleColorChange(color); }}
                         title={color}
-                        className={"w-7 h-7 rounded-full transition-all duration-150 border border-gray-200/60 " + (isSelected and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
+                        className={"w-7 h-7 rounded-full transition-all duration-150 border border-gray-200/60 " + (activeColor == color and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
                         style={{"backgroundColor": color}}
-                    />;
-                })}
+                    />
+                    for color in presetColors
+                ]}
             </div>
             <input
                 type="color"
@@ -256,16 +256,16 @@ def:pub Sidebar(props: dict) -> JsxElement {
         {showShapeTextColor and <div>
             <span className="sidebar-label">Text Color</span>
             <div className="grid grid-cols-5 gap-1.5 mt-1.5">
-                {presetColors.map(lambda stcColor: any -> any {
-                    stcSelected = activeShapeTextColor == stcColor;
-                    return <button
+                {[
+                    <button
                         key={stcColor}
                         onClick={lambda -> None { handleShapeTextColorChange(stcColor); }}
                         title={stcColor}
-                        className={"w-7 h-7 rounded-full transition-all duration-150 border border-gray-200/60 " + (stcSelected and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
+                        className={"w-7 h-7 rounded-full transition-all duration-150 border border-gray-200/60 " + (activeShapeTextColor == stcColor and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
                         style={{"backgroundColor": stcColor}}
-                    />;
-                })}
+                    />
+                    for stcColor in presetColors
+                ]}
             </div>
             <input
                 type="color"
@@ -297,25 +297,25 @@ def:pub Sidebar(props: dict) -> JsxElement {
         {showLineStyle and <div>
             <span className="sidebar-label">Line Style</span>
             <div className="flex items-center gap-1 mt-1.5">
-                {lineStyles.map(lambda style: any -> any {
-                    isActive = activeLineStyle == style.id;
-                    return <button
+                {[
+                    <button
                         key={style.id}
                         onClick={lambda -> None { handleLineStyleChange(style.id); }}
                         title={style.label}
-                        className={"flex-1 h-8 rounded-lg flex items-center justify-center transition-all duration-150 " + (isActive and "bg-orange-50 ring-1 ring-orange-200" or "bg-gray-50 hover:bg-gray-100")}
+                        className={"flex-1 h-8 rounded-lg flex items-center justify-center transition-all duration-150 " + (activeLineStyle == style.id and "bg-orange-50 ring-1 ring-orange-200" or "bg-gray-50 hover:bg-gray-100")}
                     >
                         <svg width="32" height="4" viewBox="0 0 32 4">
                             <line
                                 x1="2" y1="2" x2="30" y2="2"
-                                stroke={isActive and "#ea580c" or "#9ca3af"}
+                                stroke={activeLineStyle == style.id and "#ea580c" or "#9ca3af"}
                                 strokeWidth="2"
                                 strokeLinecap="round"
                                 strokeDasharray={style.id == "dashed" and "6,4" or (style.id == "dotted" and "2,4" or "none")}
                             />
                         </svg>
-                    </button>;
-                })}
+                    </button>
+                    for style in lineStyles
+                ]}
             </div>
         </div> or None}
 
@@ -339,34 +339,34 @@ def:pub Sidebar(props: dict) -> JsxElement {
             <div className="h-px bg-gray-100 mb-3"></div>
             <span className="sidebar-label">Font</span>
             <div className="flex flex-col gap-0.5 mt-1.5">
-                {fonts.map(lambda font: any -> any {
-                    isActive = activeFontFamily == font.id;
-                    return <button
+                {[
+                    <button
                         key={font.id}
                         onClick={lambda -> None { handleFontFamilyChange(font.id); }}
                         title={font.id}
-                        className={"px-2 h-7 rounded-md flex items-center text-xs font-medium transition-all duration-150 whitespace-nowrap " + (isActive and "bg-orange-50 text-orange-700 ring-1 ring-orange-200" or "text-gray-500 hover:bg-gray-50")}
+                        className={"px-2 h-7 rounded-md flex items-center text-xs font-medium transition-all duration-150 whitespace-nowrap " + (activeFontFamily == font.id and "bg-orange-50 text-orange-700 ring-1 ring-orange-200" or "text-gray-500 hover:bg-gray-50")}
                         style={{"fontFamily": font.id}}
                     >
                         {font.label}
-                    </button>;
-                })}
+                    </button>
+                    for font in fonts
+                ]}
             </div>
         </div> or None}
 
         {showFontSize and <div>
             <span className="sidebar-label mt-3">Size</span>
             <div className="grid grid-cols-3 gap-1 mt-1.5">
-                {fontSizes.map(lambda size: any -> any {
-                    isActive = activeFontSize == size;
-                    return <button
+                {[
+                    <button
                         key={size}
                         onClick={lambda -> None { handleFontSizeChange(size); }}
-                        className={"h-7 rounded-md flex items-center justify-center text-xs font-medium transition-all duration-150 " + (isActive and "bg-orange-50 text-orange-700 ring-1 ring-orange-200" or "text-gray-500 hover:bg-gray-50")}
+                        className={"h-7 rounded-md flex items-center justify-center text-xs font-medium transition-all duration-150 " + (activeFontSize == size and "bg-orange-50 text-orange-700 ring-1 ring-orange-200" or "text-gray-500 hover:bg-gray-50")}
                     >
                         {size}
-                    </button>;
-                })}
+                    </button>
+                    for size in fontSizes
+                ]}
             </div>
         </div> or None}
     </div>;

@@ -73,9 +73,11 @@ def:pub drawTextElement(ctx: any, element: dict) -> None {
     ctx.shadowOffsetY = 1;
 
     lines = element.text.split(String.fromCharCode(10));
-    lines.forEach(lambda line: any, index: any -> None {
-        ctx.fillText(line, element.x, element.y + (index * element.fontSize * 1.2));
-    });
+    lineIdx = 0;
+    while lineIdx < lines.length {
+        ctx.fillText(lines[lineIdx], element.x, element.y + (lineIdx * element.fontSize * 1.2));
+        lineIdx = lineIdx + 1;
+    }
     ctx.restore();
 }
 
@@ -553,20 +555,23 @@ def:pub getElementBounds(ctx: any, element: dict) -> dict {
             fMaxX = element.points[0].x;
             fMaxY = element.points[0].y;
 
-            element.points.forEach(lambda point: dict -> None {
-                if point.x < fMinX {
-                    fMinX = point.x;
+            fpi = 0;
+            while fpi < element.points.length {
+                fPoint = element.points[fpi];
+                if fPoint.x < fMinX {
+                    fMinX = fPoint.x;
                 }
-                if point.y < fMinY {
-                    fMinY = point.y;
+                if fPoint.y < fMinY {
+                    fMinY = fPoint.y;
                 }
-                if point.x > fMaxX {
-                    fMaxX = point.x;
+                if fPoint.x > fMaxX {
+                    fMaxX = fPoint.x;
                 }
-                if point.y > fMaxY {
-                    fMaxY = point.y;
+                if fPoint.y > fMaxY {
+                    fMaxY = fPoint.y;
                 }
-            });
+                fpi = fpi + 1;
+            }
 
             return {
                 "x": fMinX - padding,

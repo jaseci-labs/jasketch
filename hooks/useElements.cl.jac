@@ -11,21 +11,14 @@ def:pub useElements() -> dict {
     def setElementsInternal(newElements: list) -> None {
         elements = newElements;
         # Strip non-serializable imageObj before saving to localStorage
-        toStore = newElements.map(lambda el: any -> any {
-            if el.type == "image" and el.imageObj {
-                return {
-                    "type": el.type,
-                    "x": el.x,
-                    "y": el.y,
-                    "width": el.width,
-                    "height": el.height,
-                    "src": el.src,
-                    "opacity": el.opacity,
-                    "groupId": el.groupId
-                };
-            }
-            return el;
-        });
+        toStore = [
+            el.type == "image" and el.imageObj and {
+                "type": el.type, "x": el.x, "y": el.y,
+                "width": el.width, "height": el.height,
+                "src": el.src, "opacity": el.opacity, "groupId": el.groupId
+            } or el
+            for el in newElements
+        ];
         localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
     }
 
@@ -106,9 +99,14 @@ def:pub useElements() -> dict {
     }
 
     def removeElement(index: int) -> None {
-        newElements = elements.filter(lambda _: any, i: any -> bool {
-            return i != index;
-        });
+        newElements = [];
+        ri = 0;
+        while ri < elements.length {
+            if ri != index {
+                newElements.push(elements[ri]);
+            }
+            ri = ri + 1;
+        }
         setElementsWithHistory(newElements);
     }
 
@@ -119,9 +117,14 @@ def:pub useElements() -> dict {
             indexSet[indices[i]] = True;
             i = i + 1;
         }
-        newElements = elements.filter(lambda _: any, i: any -> bool {
-            return not indexSet[i];
-        });
+        newElements = [];
+        rmi = 0;
+        while rmi < elements.length {
+            if not indexSet[rmi] {
+                newElements.push(elements[rmi]);
+            }
+            rmi = rmi + 1;
+        }
         setElementsWithHistory(newElements);
     }
 
