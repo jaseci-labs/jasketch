@@ -451,7 +451,7 @@ async def get_viewport() -> str {
 """Get a JPEG screenshot of the current canvas as a base64 data URL. Use this to visually verify what has been drawn."""
 @mcp.tool()
 async def get_canvas_snapshot() -> str {
-    result: Any = await asyncio.to_thread(_send_command, "getCanvasSnapshot", None, 30);
+    result: Any = await asyncio.to_thread(_send_command, "getCanvasSnapshot", None, 40);
     return json.dumps(result);
 }
 
