@@ -495,7 +495,11 @@ def:pub Canvas(props: dict) -> JsxElement {
                 dup.bendY = original.bendY + dy;
             }
         } elif original.type == "freehand" {
-            dup.points = [{"x": p.x + dx, "y": p.y + dy} for p in original.points];
+            newPoints: list = [];
+            for p in original.points {
+                newPoints.push({"x": p.x + dx, "y": p.y + dy});
+            }
+            dup.points = newPoints;
         }
         return dup;
     }
