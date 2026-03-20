@@ -495,9 +495,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 dup.bendY = original.bendY + dy;
             }
         } elif original.type == "freehand" {
-            dup.points = original.points.map(lambda p: dict -> dict {
-                return {"x": p.x + dx, "y": p.y + dy};
-            });
+            dup.points = [{"x": p.x + dx, "y": p.y + dy} for p in original.points];
         }
         return dup;
     }
@@ -544,9 +542,15 @@ def:pub Canvas(props: dict) -> JsxElement {
         if selectionHook.selectedElement {
             idx = selectionHook.selectedElement.index;
             element = selectionHook.selectedElement.element;
-            newElements = [element].concat(elementsHook.elements.filter(lambda _: any, i: any -> bool {
-                return i != idx;
-            }));
+            otherElements = [];
+            bfi = 0;
+            while bfi < elementsHook.elements.length {
+                if bfi != idx {
+                    otherElements.push(elementsHook.elements[bfi]);
+                }
+                bfi = bfi + 1;
+            }
+            newElements = [element].concat(otherElements);
             elementsHook.setElements(newElements);
             selectionHook.clearSelection();
         }
@@ -1100,12 +1104,10 @@ def:pub Canvas(props: dict) -> JsxElement {
                         scaleY = (bh + deltaY) / bh;
                         if scaleX < 0.1 { scaleX = 0.1; }
                         if scaleY < 0.1 { scaleY = 0.1; }
-                        newElement.points = origEl.points.map(lambda point: dict -> dict {
-                            return {
-                                "x": minX + (point.x - minX) * scaleX,
-                                "y": minY + (point.y - minY) * scaleY
-                            };
-                        });
+                        newElement.points = [
+                            {"x": minX + (point.x - minX) * scaleX, "y": minY + (point.y - minY) * scaleY}
+                            for point in origEl.points
+                        ];
                     }
                 }
             }
@@ -1173,9 +1175,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                             newElement.bendY = originalElement.bendY + multiDy;
                         }
                     } elif originalElement.type == "freehand" {
-                        newElement.points = originalElement.points.map(lambda point: dict -> dict {
-                            return {"x": point.x + multiDx, "y": point.y + multiDy};
-                        });
+                        newElement.points = [{"x": point.x + multiDx, "y": point.y + multiDy} for point in originalElement.points];
                     }
 
                     updates.push({"index": selectedInfo.index, "element": newElement});
@@ -1249,9 +1249,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 } elif element.type == "freehand" {
                     fhDx = pos.x - selectionHook.dragOffset.x - element.points[0].x;
                     fhDy = pos.y - selectionHook.dragOffset.y - element.points[0].y;
-                    newElement.points = element.points.map(lambda point: dict -> dict {
-                        return {"x": point.x + fhDx, "y": point.y + fhDy};
-                    });
+                    newElement.points = [{"x": point.x + fhDx, "y": point.y + fhDy} for point in element.points];
                 }
 
                 # Move connected lines/arrows along with the shape
