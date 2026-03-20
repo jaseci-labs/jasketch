@@ -12,7 +12,14 @@ def _run_jac(filename):
 
 
 def run_server():
-    """Run the JaSketch MCP server."""
+    """Run the JaSketch MCP server (stdio transport)."""
+    os.environ.setdefault("JASKETCH_MCP_TRANSPORT", "stdio")
+    _run_jac("server.jac")
+
+
+def run_server_http():
+    """Run the JaSketch MCP server (streamable-http transport)."""
+    os.environ["JASKETCH_MCP_TRANSPORT"] = "streamable-http"
     _run_jac("server.jac")
 
 
@@ -24,6 +31,8 @@ def run_relay():
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "relay":
         run_relay()
+    elif len(sys.argv) > 1 and sys.argv[1] == "http":
+        run_server_http()
     else:
         run_server()
 
