@@ -439,6 +439,30 @@ async def clear_canvas() -> str {
 }
 
 
+"""Get the current viewport state: zoom level, pan offset, canvas dimensions, and visible area in world coordinates."""
+@mcp.tool()
+async def get_viewport() -> str {
+    result: Any = await asyncio.to_thread(_send_command, "getViewport");
+    return json.dumps(result);
+}
+
+
+"""Get a PNG screenshot of the current canvas as a base64 data URL. Use this to visually verify what has been drawn."""
+@mcp.tool()
+async def get_canvas_snapshot() -> str {
+    result: Any = await asyncio.to_thread(_send_command, "getCanvasSnapshot");
+    return json.dumps(result);
+}
+
+
+"""Get the bounding box of all elements on the canvas. Useful for layout planning and finding free space."""
+@mcp.tool()
+async def get_bounding_box() -> str {
+    result: Any = await asyncio.to_thread(_send_command, "getBoundingBox");
+    return json.dumps(result);
+}
+
+
 # --- Start server ---
 
 with entry {
