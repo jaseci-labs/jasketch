@@ -1,13 +1,19 @@
 import from react { useRef }
 
-def:pub useWebSocket(elementsHook: dict) -> dict {
+def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, canvasHook: dict) -> dict {
     wsRef = useRef(None);
     connectedRef = useRef(False);
     elementsHookRef = useRef(elementsHook);
+    viewportHookRef = useRef(viewportHook);
+    canvasRefRef = useRef(canvasRef);
+    canvasHookRef = useRef(canvasHook);
     reconnectTimerRef = useRef(None);
 
-    # Keep ref current to avoid stale closures
+    # Keep refs current to avoid stale closures
     elementsHookRef.current = elementsHook;
+    viewportHookRef.current = viewportHook;
+    canvasRefRef.current = canvasRef;
+    canvasHookRef.current = canvasHook;
 
     def getRelayUrl() -> str {
         # Auto-detect: use wss:// for deployed, ws:// for localhost
@@ -105,6 +111,99 @@ def:pub useWebSocket(elementsHook: dict) -> dict {
         } elif action == "clearElements" {
             hook.clearElements();
             sendResponse(ws, requestId, True, {"action": "cleared"});
+        } elif action == "getViewport" {
+            vp = viewportHookRef.current;
+            canvas = canvasRefRef.current;
+            canvasWidth = 0;
+            canvasHeight = 0;
+            if canvas and canvas.current {
+                rect = canvas.current.getBoundingClientRect();
+                canvasWidth = rect.width;
+                canvasHeight = rect.height;
+            }
+            # Calculate visible area in world coordinates
+            visibleX = (0 - vp.panOffset.x) / vp.zoom;
+            visibleY = (0 - vp.panOffset.y) / vp.zoom;
+            visibleWidth = canvasWidth / vp.zoom;
+            visibleHeight = canvasHeight / vp.zoom;
+            sendResponse(ws, requestId, True, {
+                "zoom": vp.zoom,
+                "panOffset": vp.panOffset,
+                "canvasWidth": canvasWidth,
+                "canvasHeight": canvasHeight,
+                "visibleArea": {
+                    "x": visibleX,
+                    "y": visibleY,
+                    "width": visibleWidth,
+                    "height": visibleHeight
+                }
+            });
+        } elif action == "getCanvasSnapshot" {
+            canvas = canvasRefRef.current;
+            if canvas and canvas.current {
+                dataUrl = canvas.current.toDataURL("image/png");
+                sendResponse(ws, requestId, True, {"snapshot": dataUrl});
+            } else {
+                sendError(ws, requestId, "Canvas not available");
+            }
+        } elif action == "getBoundingBox" {
+            elems = hook.elements;
+            if elems.length == 0 {
+                sendResponse(ws, requestId, True, {"boundingBox": None, "elementCount": 0});
+            } else {
+                bbMinX = 999999;
+                bbMinY = 999999;
+                bbMaxX = -999999;
+                bbMaxY = -999999;
+                bbi = 0;
+                while bbi < elems.length {
+                    bbEl = elems[bbi];
+                    if bbEl.type == "line" or bbEl.type == "arrow" {
+                        if bbEl.x1 < bbMinX { bbMinX = bbEl.x1; }
+                        if bbEl.y1 < bbMinY { bbMinY = bbEl.y1; }
+                        if bbEl.x2 > bbMaxX { bbMaxX = bbEl.x2; }
+                        if bbEl.y2 > bbMaxY { bbMaxY = bbEl.y2; }
+                        if bbEl.x1 > bbMaxX { bbMaxX = bbEl.x1; }
+                        if bbEl.y1 > bbMaxY { bbMaxY = bbEl.y1; }
+                        if bbEl.x2 < bbMinX { bbMinX = bbEl.x2; }
+                        if bbEl.y2 < bbMinY { bbMinY = bbEl.y2; }
+                    } elif bbEl.type == "freehand" and bbEl.points and bbEl.points.length > 0 {
+                        bbpi = 0;
+                        while bbpi < bbEl.points.length {
+                            if bbEl.points[bbpi].x < bbMinX { bbMinX = bbEl.points[bbpi].x; }
+                            if bbEl.points[bbpi].y < bbMinY { bbMinY = bbEl.points[bbpi].y; }
+                            if bbEl.points[bbpi].x > bbMaxX { bbMaxX = bbEl.points[bbpi].x; }
+                            if bbEl.points[bbpi].y > bbMaxY { bbMaxY = bbEl.points[bbpi].y; }
+                            bbpi = bbpi + 1;
+                        }
+                    } elif bbEl.type == "text" {
+                        textW = (bbEl.fontSize or 16) * (bbEl.text or "").length * 0.6;
+                        textH = (bbEl.fontSize or 16) * 1.2;
+                        if bbEl.x < bbMinX { bbMinX = bbEl.x; }
+                        if bbEl.y < bbMinY { bbMinY = bbEl.y; }
+                        if bbEl.x + textW > bbMaxX { bbMaxX = bbEl.x + textW; }
+                        if bbEl.y + textH > bbMaxY { bbMaxY = bbEl.y + textH; }
+                    } else {
+                        # rectangle, circle, diamond, image
+                        if bbEl.x != undefined {
+                            if bbEl.x < bbMinX { bbMinX = bbEl.x; }
+                            if bbEl.y < bbMinY { bbMinY = bbEl.y; }
+                            if bbEl.x + (bbEl.width or 0) > bbMaxX { bbMaxX = bbEl.x + (bbEl.width or 0); }
+                            if bbEl.y + (bbEl.height or 0) > bbMaxY { bbMaxY = bbEl.y + (bbEl.height or 0); }
+                        }
+                    }
+                    bbi = bbi + 1;
+                }
+                sendResponse(ws, requestId, True, {
+                    "boundingBox": {
+                        "x": bbMinX,
+                        "y": bbMinY,
+                        "width": bbMaxX - bbMinX,
+                        "height": bbMaxY - bbMinY
+                    },
+                    "elementCount": elems.length
+                });
+            }
         } else {
             sendError(ws, requestId, "Unknown action: " + action);
         }

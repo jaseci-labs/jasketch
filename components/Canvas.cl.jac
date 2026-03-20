@@ -31,7 +31,7 @@ def:pub Canvas(props: dict) -> JsxElement {
     selectionHook = useSelection();
     viewportHook = useViewport();
     textInputHook = useTextInput();
-    useWebSocket(elementsHook);
+    useWebSocket(elementsHook, viewportHook, canvasHook.canvasRef, canvasHook);
 
     canvasRef = canvasHook.canvasRef;
     containerRef = canvasHook.containerRef;
