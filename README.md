@@ -52,10 +52,17 @@ JaSketch includes an MCP (Model Context Protocol) server that lets AI assistants
 ### Setup
 
 ```bash
-claude mcp add --scope user jasketch -- uvx jasketch-mcp-server
+claude mcp add --scope user jasketch -- uvx jasketch-mcp-server@latest
 ```
 
 That's it. The MCP server embeds its own WebSocket relay — no extra processes needed.
+
+To update to a newer version:
+
+```bash
+claude mcp remove --scope user jasketch
+claude mcp add --scope user jasketch -- uvx jasketch-mcp-server@latest
+```
 
 ### Usage
 
@@ -72,13 +79,16 @@ That's it. The MCP server embeds its own WebSocket relay — no extra processes 
 | `update_element` | Update properties of an existing element by index |
 | `delete_element` | Delete element(s) by index |
 | `clear_canvas` | Clear all elements from the canvas |
+| `get_viewport` | Get zoom level, pan offset, and visible canvas area |
+| `get_bounding_box` | Get bounding box of all elements (useful for layout planning) |
+| `get_canvas_snapshot` | Get a PNG screenshot of the canvas as base64 |
 
 ### Configuration
 
 **Claude Code** (CLI):
 
 ```bash
-claude mcp add --scope user jasketch -- uvx jasketch-mcp-server
+claude mcp add --scope user jasketch -- uvx jasketch-mcp-server@latest
 ```
 
 **Other assistants** (Cursor, Windsurf, Continue.dev, Zed, VS Code Copilot) require manual config. Add the following JSON to the config file for your assistant:
@@ -89,7 +99,7 @@ claude mcp add --scope user jasketch -- uvx jasketch-mcp-server
     "jasketch": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["jasketch-mcp-server"]
+      "args": ["jasketch-mcp-server@latest"]
     }
   }
 }
