@@ -141,7 +141,8 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         } elif action == "getCanvasSnapshot" {
             canvas = canvasRefRef.current;
             if canvas and canvas.current {
-                dataUrl = canvas.current.toDataURL("image/png");
+                # Use JPEG at 0.6 quality for smaller payload and faster transfer
+                dataUrl = canvas.current.toDataURL("image/jpeg", 0.6);
                 sendResponse(ws, requestId, True, {"snapshot": dataUrl});
             } else {
                 sendError(ws, requestId, "Canvas not available");
