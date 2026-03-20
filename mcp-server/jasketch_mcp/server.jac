@@ -237,7 +237,7 @@ def _start_relay_thread() -> None {
 
 
 """Send a command to the canvas via relay (blocking, thread-safe)."""
-def _send_command(action: str, data: dict | None = None) -> Any {
+def _send_command(action: str, data: dict | None = None, timeout: float | None = None) -> Any {
     if (not _connected) or (_ws is None) {
         raise Exception(
             f"Not connected to relay. Ensure the relay is running at {RELAY_URL}"
@@ -276,11 +276,12 @@ def _send_command(action: str, data: dict | None = None) -> Any {
         raise Exception(f"Failed to send command: {e}");
     }
 
-    if not evt.wait(timeout=REQUEST_TIMEOUT) {
+    effective_timeout: float = timeout if timeout is not None else REQUEST_TIMEOUT;
+    if not evt.wait(timeout=effective_timeout) {
         with _lock {
             _pending.pop(request_id, None);
         }
-        raise Exception("Request timed out (10s)");
+        raise Exception(f"Request timed out ({effective_timeout}s)");
     }
 
     if "error" in res {
@@ -447,10 +448,10 @@ async def get_viewport() -> str {
 }
 
 
-"""Get a PNG screenshot of the current canvas as a base64 data URL. Use this to visually verify what has been drawn."""
+"""Get a JPEG screenshot of the current canvas as a base64 data URL. Use this to visually verify what has been drawn."""
 @mcp.tool()
 async def get_canvas_snapshot() -> str {
-    result: Any = await asyncio.to_thread(_send_command, "getCanvasSnapshot");
+    result: Any = await asyncio.to_thread(_send_command, "getCanvasSnapshot", None, 40);
     return json.dumps(result);
 }
 
