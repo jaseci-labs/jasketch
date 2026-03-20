@@ -1108,10 +1108,11 @@ def:pub Canvas(props: dict) -> JsxElement {
                         scaleY = (bh + deltaY) / bh;
                         if scaleX < 0.1 { scaleX = 0.1; }
                         if scaleY < 0.1 { scaleY = 0.1; }
-                        newElement.points = [
-                            {"x": minX + (point.x - minX) * scaleX, "y": minY + (point.y - minY) * scaleY}
-                            for point in origEl.points
-                        ];
+                        scaledPoints: list = [];
+                        for point in origEl.points {
+                            scaledPoints.push({"x": minX + (point.x - minX) * scaleX, "y": minY + (point.y - minY) * scaleY});
+                        }
+                        newElement.points = scaledPoints;
                     }
                 }
             }
@@ -1179,7 +1180,11 @@ def:pub Canvas(props: dict) -> JsxElement {
                             newElement.bendY = originalElement.bendY + multiDy;
                         }
                     } elif originalElement.type == "freehand" {
-                        newElement.points = [{"x": point.x + multiDx, "y": point.y + multiDy} for point in originalElement.points];
+                        multiPoints: list = [];
+                        for point in originalElement.points {
+                            multiPoints.push({"x": point.x + multiDx, "y": point.y + multiDy});
+                        }
+                        newElement.points = multiPoints;
                     }
 
                     updates.push({"index": selectedInfo.index, "element": newElement});
@@ -1253,7 +1258,11 @@ def:pub Canvas(props: dict) -> JsxElement {
                 } elif element.type == "freehand" {
                     fhDx = pos.x - selectionHook.dragOffset.x - element.points[0].x;
                     fhDy = pos.y - selectionHook.dragOffset.y - element.points[0].y;
-                    newElement.points = [{"x": point.x + fhDx, "y": point.y + fhDy} for point in element.points];
+                    fhPoints: list = [];
+                    for point in element.points {
+                        fhPoints.push({"x": point.x + fhDx, "y": point.y + fhDy});
+                    }
+                    newElement.points = fhPoints;
                 }
 
                 # Move connected lines/arrows along with the shape
