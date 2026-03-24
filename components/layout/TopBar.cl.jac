@@ -56,7 +56,10 @@ def:pub TopBar(props: dict) -> JsxElement {
     currentTool = props.currentTool or "select";
     onToolChange = props.onToolChange;
     onImageLoad = props.onImageLoad;
+    onSave = props.onSave;
+    onLoad = props.onLoad;
     fileInputRef = useRef(None);
+    jasketchFileInputRef = useRef(None);
 
     toolIds = ["select", "freehand", "line", "arrow", "rectangle", "diamond", "circle", "text", "image"];
     toolLabels = {
@@ -89,6 +92,18 @@ def:pub TopBar(props: dict) -> JsxElement {
             }
         } else {
             onToolChange(toolId);
+        }
+    }
+
+    def handleSave() -> None {
+        if onSave { onSave(); }
+    }
+
+    def handleJaSketchFileChange(e: dict) -> None {
+        files = e.target.files;
+        if files.length > 0 {
+            if onLoad { onLoad(files[0]); }
+            e.target.value = "";
         }
     }
 
@@ -156,8 +171,28 @@ def:pub TopBar(props: dict) -> JsxElement {
                 ]}
             </div>
 
-            <div className="min-w-[120px] flex justify-end">
-                <span className="text-[10px] text-gray-400 hidden sm:block">Scroll to pan | Ctrl+scroll to zoom</span>
+            <div className="min-w-[120px] flex items-center justify-end gap-1">
+                <span className="text-[10px] text-gray-400 hidden lg:block mr-2">Scroll to pan | Ctrl+scroll to zoom</span>
+                <button
+                    onClick={handleSave}
+                    title="Save to disk (Ctrl+S)"
+                    className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-all duration-150"
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                </button>
+                <button
+                    onClick={lambda -> None { if jasketchFileInputRef.current { jasketchFileInputRef.current.click(); } }}
+                    title="Open file (Ctrl+O)"
+                    className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-all duration-150"
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
+                </button>
             </div>
         </div>
 
@@ -166,6 +201,13 @@ def:pub TopBar(props: dict) -> JsxElement {
             type="file"
             accept="image/*"
             onChange={handleFileChange}
+            className="hidden"
+        />
+        <input
+            ref={jasketchFileInputRef}
+            type="file"
+            accept=".jasketch"
+            onChange={handleJaSketchFileChange}
             className="hidden"
         />
     </header>;
