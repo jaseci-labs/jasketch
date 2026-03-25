@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jasketch-chat"
+version = "0.1.0"
+description = "Chat server for JaSketch - LLM-powered whiteboard assistant"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "litellm>=1.40.0",
+    "sse-starlette>=2.0.0",
+    "pydantic>=2.0.0",
+    "mcp>=1.0.0",
+]
+
+[project.scripts]
+jasketch-chat = "jasketch_chat.main:run"

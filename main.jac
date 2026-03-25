@@ -6,6 +6,9 @@ cl {
     import from .components.layout.TopBar { TopBar }
     import from .components.layout.Sidebar { Sidebar }
     import from .components.Canvas { Canvas }
+    import from .components.chat.ChatPanel { ChatPanel }
+    import from .components.chat.ChatToggleButton { ChatToggleButton }
+    import from .hooks.useChat { useChat }
     import ".styles.css";
 
     def:pub app() -> JsxElement {
@@ -21,6 +24,9 @@ cl {
 
         # Selection state (updated by Canvas via callback)
         has selectedElement: any = None;
+
+        # Chat state
+        chatHook = useChat();
 
         # Refs for cross-component communication
         clearCanvasRef = useRef(None);
@@ -85,7 +91,16 @@ cl {
                     />
                 </div>
 
-                <div className="absolute bottom-3 right-4 z-10 pointer-events-none">
+                {chatHook.isOpen and <ChatPanel chatHook={chatHook} /> or None}
+
+                <div className={"absolute bottom-12 z-10 " + (chatHook.isOpen and "right-[396px]" or "right-4")}>
+                    <ChatToggleButton
+                        isOpen={chatHook.isOpen}
+                        onClick={lambda -> None { chatHook.toggleOpen(); }}
+                    />
+                </div>
+
+                <div className={"absolute bottom-3 z-10 pointer-events-none " + (chatHook.isOpen and "right-[396px]" or "right-4")}>
                     <span className="text-[10px] tracking-wider text-gray-300 font-medium uppercase">
                         {"Powered by Jaseci"}
                     </span>

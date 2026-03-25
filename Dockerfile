@@ -33,6 +33,9 @@ COPY . /app
 # Install MCP relay (Jac/Python)
 RUN pip install --no-cache-dir -e /app/mcp-server
 
+# Install chat server
+RUN pip install --no-cache-dir -e /app/chat-server
+
 # Install client-side npm dependencies and project dependencies
 RUN jac clean --all --force
 RUN jac add --npm && jac install
@@ -53,11 +56,11 @@ USER appuser
 # Pre-warm Jac bytecode cache as appuser (avoids cold-start recompilation at runtime)
 RUN python -c "import jaclang" || true
 
-EXPOSE 8000 9601
+EXPOSE 8000 8001 9601
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
     CMD curl -f http://localhost:8000/ || exit 1
 
-# Run relay server in background + jac app in foreground
-CMD jasketch-relay & jac start --client pwa
+# Run relay server in background + chat server in background + jac app in foreground
+CMD jasketch-relay & jasketch-chat & jac start --client pwa
