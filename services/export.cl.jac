@@ -329,3 +329,115 @@ def:pub exportSelectionAsPDF(selectedElements: list, canvasRef: any) -> None {
         printWindow.print();
     }
 }
+
+def:pub saveAsJaSketch(elements: list, filename: str) -> None {
+    files = {};
+    processedElements = [];
+    fileCounter = 0;
+    i = 0;
+    while i < elements.length {
+        el = elements[i];
+        if el.type == "image" and el.src {
+            # Deduplication: reuse fileId if same dataURL already in files map
+            existingId = None;
+            existingKeys = Object.keys(files);
+            ki = 0;
+            while ki < existingKeys.length {
+                if files[existingKeys[ki]].dataURL == el.src {
+                    existingId = existingKeys[ki];
+                }
+                ki = ki + 1;
+            }
+            fileId = existingId;
+            if not fileId {
+                fileId = "img_" + String(Date.now()) + "_" + String(fileCounter);
+                fileCounter = fileCounter + 1;
+                mimeType = "image/png";
+                if el.src.indexOf("data:image/jpeg") == 0 or el.src.indexOf("data:image/jpg") == 0 {
+                    mimeType = "image/jpeg";
+                } elif el.src.indexOf("data:image/svg") == 0 {
+                    mimeType = "image/svg+xml";
+                } elif el.src.indexOf("data:image/gif") == 0 {
+                    mimeType = "image/gif";
+                } elif el.src.indexOf("data:image/webp") == 0 {
+                    mimeType = "image/webp";
+                }
+                files[fileId] = {
+                    "id": fileId,
+                    "mimeType": mimeType,
+                    "dataURL": el.src,
+                    "created": Date.now()
+                };
+            }
+            processedElements.push({
+                "type": el.type,
+                "x": el.x,
+                "y": el.y,
+                "width": el.width,
+                "height": el.height,
+                "fileId": fileId,
+                "opacity": el.opacity,
+                "groupId": el.groupId or None
+            });
+        } else {
+            processedElements.push(el);
+        }
+        i = i + 1;
+    }
+
+    data = {
+        "type": "jasketch",
+        "version": 1,
+        "source": "jasketch",
+        "elements": processedElements,
+        "appState": {
+            "viewBackgroundColor": "#ffffff"
+        },
+        "files": files
+    };
+
+    jsonStr = JSON.stringify(data, None, 2);
+    blob = Reflect.construct(Blob, [[jsonStr], {"type": "application/json"}]);
+    url = URL.createObjectURL(blob);
+    downloadBlob(url, filename);
+}
+
+def:pub loadFromJaSketch(file: any, onLoad: any, onError: any) -> None {
+    reader = Reflect.construct(FileReader, []);
+    reader.onload = lambda e: any -> None {
+        parsed = JSON.parse(e.target.result);
+        if not parsed or parsed.type != "jasketch" or not parsed.elements {
+            if onError { onError("Invalid .jasketch file"); }
+            return;
+        }
+        files = parsed.files or {};
+        restoredElements = [];
+        i = 0;
+        while i < parsed.elements.length {
+            el = parsed.elements[i];
+            if el.type == "image" and el.fileId {
+                fileData = files[el.fileId];
+                if fileData and fileData.dataURL {
+                    restoredElements.push({
+                        "type": el.type,
+                        "x": el.x,
+                        "y": el.y,
+                        "width": el.width,
+                        "height": el.height,
+                        "src": fileData.dataURL,
+                        "opacity": el.opacity,
+                        "groupId": el.groupId or None
+                    });
+                }
+            } else {
+                restoredElements.push(el);
+            }
+            i = i + 1;
+        }
+        onLoad(restoredElements);
+    };
+    reader.onerror = lambda -> None {
+        if onError { onError("Failed to read file"); }
+    };
+    reader.readAsText(file);
+}

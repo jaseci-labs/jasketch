@@ -9,7 +9,7 @@ import from "..hooks.useWebSocket" { useWebSocket }
 import from "..services.geometry" { getMousePosition, findNearestConnectionPoint, getConnectionPoints, findConnectedLineUpdates }
 import from "..services.canvas" { drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
 import from "..services.collision" { getResizeHandleAtPoint, getBendHandleAtPoint }
-import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, copySelectionAsPNG, copyCanvasAsPNG, copyCanvasAsSVG }
+import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, copySelectionAsPNG, copyCanvasAsPNG, copyCanvasAsSVG, saveAsJaSketch, loadFromJaSketch }
 import from "..constants.tools" { TOOL_SHORTCUTS }
 import from .canvas.CanvasRenderer { CanvasRenderer }
 import from .canvas.TextInput { TextInput }
@@ -107,6 +107,25 @@ def:pub Canvas(props: dict) -> JsxElement {
             }
         };
         imgInput.click();
+    }
+
+    def triggerJaSketchLoad() -> None {
+        loadInput = document.createElement("input");
+        loadInput.type = "file";
+        loadInput.accept = ".jasketch";
+        loadInput.onchange = lambda evt: any -> None {
+            loadFile = evt.target.files[0];
+            if loadFile {
+                loadFromJaSketch(loadFile, lambda loaded: any -> None {
+                    elementsHook.setElements(loaded);
+                    selectionHook.clearSelection();
+                    showToast("Diagram loaded");
+                }, lambda errMsg: any -> None {
+                    showToast(errMsg);
+                });
+            }
+        };
+        loadInput.click();
     }
 
     can with (textInputHook.textInput, elementsHook.elements) entry {
@@ -215,6 +234,14 @@ def:pub Canvas(props: dict) -> JsxElement {
                 viewportHook.setZoom(1);
                 viewportHook.setPanOffset({"x": 0, "y": 0});
             }
+            if not textInputHook.textInput and (e.key == "s" or e.key == "S") and (e.ctrlKey or e.metaKey) and not e.shiftKey {
+                e.preventDefault();
+                saveAsJaSketch(elementsHook.elements, "drawing.jasketch");
+            }
+            if not textInputHook.textInput and (e.key == "o" or e.key == "O") and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                triggerJaSketchLoad();
+            }
             if not textInputHook.textInput and not e.ctrlKey and not e.metaKey and not e.shiftKey and not e.altKey {
                 if e.key == "9" {
                     triggerImageUpload();
@@ -289,6 +316,22 @@ def:pub Canvas(props: dict) -> JsxElement {
                     elementsHook.updateElement(index, newElement);
                     selectionHook.setSelectedElement({"element": newElement, "index": index});
                 }
+            };
+        }
+        if props.saveRef {
+            props.saveRef.current = lambda -> None {
+                saveAsJaSketch(elementsHook.elements, "drawing.jasketch");
+            };
+        }
+        if props.loadElementsRef {
+            props.loadElementsRef.current = lambda file: any -> None {
+                loadFromJaSketch(file, lambda loaded: any -> None {
+                    elementsHook.setElements(loaded);
+                    selectionHook.clearSelection();
+                    showToast("Diagram loaded");
+                }, lambda errMsg: any -> None {
+                    showToast(errMsg);
+                });
             };
         }
     }

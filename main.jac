@@ -26,6 +26,8 @@ cl {
         clearCanvasRef = useRef(None);
         addElementRef = useRef(None);
         updateElementRef = useRef(None);
+        saveRef = useRef(None);
+        loadElementsRef = useRef(None);
 
         def handleUpdateElement(changes: dict) -> None {
             if selectedElement and updateElementRef.current {
@@ -42,6 +44,8 @@ cl {
                         addElementRef.current(element);
                     }
                 }}
+                onSave={lambda -> None { if saveRef.current { saveRef.current(); } }}
+                onLoad={lambda file: any -> None { if loadElementsRef.current { loadElementsRef.current(file); } }}
             />
 
             <div className="flex-1 overflow-hidden relative">
@@ -80,6 +84,8 @@ cl {
                         clearCanvasRef={clearCanvasRef}
                         addElementRef={addElementRef}
                         updateElementRef={updateElementRef}
+                        saveRef={saveRef}
+                        loadElementsRef={loadElementsRef}
                         onSelectionChange={lambda sel: any -> None { selectedElement = sel; }}
                         onToolChange={lambda tool: any -> None { currentTool = tool; }}
                     />
