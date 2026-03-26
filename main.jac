@@ -1,6 +1,6 @@
 """Main entry point for JaSketch - Modern Whiteboard Application."""
 
-import from chat.agent { _log as _chat_log }
+import from chat.agent { _boot as _chat_boot }
 
 cl {
     # Client-side imports
