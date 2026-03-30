@@ -100,7 +100,7 @@ def:pub getConnectionPoints(element: dict) -> list {
     return [];
 }
 
-def:pub findConnectedLineUpdates(shapeElement: dict, dx: float, dy: float, elements: list, skipIndex: int) -> list {
+def:pub findConnectedLineUpdates(shapeElement: dict, dx: float, dy: float, elements: list, skipId: str) -> list {
     # Find all line/arrow elements whose endpoints match this shape's connection points
     # and return updates with those endpoints shifted by dx, dy
     result = [];
@@ -110,8 +110,8 @@ def:pub findConnectedLineUpdates(shapeElement: dict, dx: float, dy: float, eleme
     }
     idx = 0;
     while idx < elements.length {
-        if idx != skipIndex {
-            el = elements[idx];
+        el = elements[idx];
+        if el.id != skipId {
             if el.type == "line" or el.type == "arrow" {
                 moveStart = False;
                 moveEnd = False;
@@ -142,7 +142,7 @@ def:pub findConnectedLineUpdates(shapeElement: dict, dx: float, dy: float, eleme
                         updatedEl.x2 = el.x2 + dx;
                         updatedEl.y2 = el.y2 + dy;
                     }
-                    result.push({"index": idx, "element": updatedEl});
+                    result.push({"id": el.id, "element": updatedEl});
                 }
             }
         }

@@ -348,7 +348,7 @@ async def create_element(
     groupId: str | None = None,
     points: list[dict] | None = None
 ) -> str {
-    element: dict = {"type": type};
+    element: dict = {"type": type, "id": str(uuid.uuid4())};
     params: dict = {
         "x": x, "y": y, "width": width, "height": height,
         "x1": x1, "y1": y1, "x2": x2, "y2": y2,
@@ -374,7 +374,14 @@ async def create_element(
 """Batch create multiple elements on the JaSketch canvas. More efficient for diagrams."""
 @mcp.tool()
 async def create_elements(elements: list[dict]) -> str {
-    processed: list = [_apply_defaults(dict(el)) for el in elements];
+    processed: list = [];
+    for el in elements {
+        item: dict = dict(el);
+        if "id" not in item {
+            item["id"] = str(uuid.uuid4());
+        }
+        processed.append(_apply_defaults(item));
+    }
     result: Any = await asyncio.to_thread(
         _send_command, "addMultipleElements", {"elements": processed}
     );
@@ -382,51 +389,55 @@ async def create_elements(elements: list[dict]) -> str {
 }
 
 
-"""Query elements currently on the JaSketch canvas. Optionally filter by type or index."""
+"""Query elements on the JaSketch canvas. Optionally filter by type. Returns each element with its id."""
 @mcp.tool()
 async def query_elements(
-    type: str | None = None,
-    index: int | None = None
+    type: str | None = None
 ) -> str {
     params: dict = {};
     if type is not None {
         params["type"] = type;
-    }
-    if index is not None {
-        params["index"] = index;
     }
     result: Any = await asyncio.to_thread(_send_command, "getElements", params);
     return json.dumps(result);
 }
 
 
-"""Update properties of an existing element by index."""
+"""Get a single element by its id."""
 @mcp.tool()
-async def update_element(index: int, changes: dict) -> str {
+async def get_element(id: str) -> str {
+    result: Any = await asyncio.to_thread(_send_command, "getElementById", {"id": id});
+    return json.dumps(result);
+}
+
+
+"""Update properties of an existing element by id."""
+@mcp.tool()
+async def update_element(id: str, changes: dict) -> str {
     result: Any = await asyncio.to_thread(
-        _send_command, "updateElement", {"index": index, "changes": changes}
+        _send_command, "updateElement", {"id": id, "changes": changes}
     );
     return json.dumps(result);
 }
 
 
-"""Delete element(s) by index or array of indices."""
+"""Delete element(s) by id or array of ids."""
 @mcp.tool()
 async def delete_element(
-    index: int | None = None,
-    indices: list[int] | None = None
+    id: str | None = None,
+    ids: list[str] | None = None
 ) -> str {
     result: Any = None;
-    if indices is not None and len(indices) > 0 {
+    if ids is not None and len(ids) > 0 {
         result = await asyncio.to_thread(
-            _send_command, "removeMultipleElements", {"indices": indices}
+            _send_command, "removeMultipleElements", {"ids": ids}
         );
-    } elif index is not None {
+    } elif id is not None {
         result = await asyncio.to_thread(
-            _send_command, "removeElement", {"index": index}
+            _send_command, "removeElement", {"id": id}
         );
     } else {
-        return "Error: Provide index or indices";
+        return "Error: Provide id or ids";
     }
     return json.dumps(result);
 }
