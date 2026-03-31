@@ -15,7 +15,7 @@ def:pub useCanvas() -> dict {
         canvasSize = val;
     }
 
-    def redrawCanvas(elements: list, zoom: float, panOffset: dict, selectedElement: any = None, selectedElements: list = [], isBoxSelecting: bool = False, boxStart: any = None, boxEnd: any = None, editingShapeIndex: any = None) -> None {
+    def redrawCanvas(elements: list, zoom: float, panOffset: dict, selectedElement: any = None, selectedElements: list = [], isBoxSelecting: bool = False, boxStart: any = None, boxEnd: any = None, editingShapeId: any = None) -> None {
         canvas = canvasRef.current;
         if not canvas {
             return;
@@ -34,13 +34,13 @@ def:pub useCanvas() -> dict {
 
         # Callback to redraw canvas when an image finishes loading
         imgLoadRedraw = lambda -> None {
-            redrawCanvas(elements, zoom, panOffset, selectedElement, selectedElements, isBoxSelecting, boxStart, boxEnd, editingShapeIndex);
+            redrawCanvas(elements, zoom, panOffset, selectedElement, selectedElements, isBoxSelecting, boxStart, boxEnd, editingShapeId);
         };
 
         drIdx = 0;
         while drIdx < elements.length {
             drEl = elements[drIdx];
-            if editingShapeIndex != None and editingShapeIndex != undefined and drIdx == editingShapeIndex and drEl.shapeText {
+            if editingShapeId != None and editingShapeId != undefined and drEl.id == editingShapeId and drEl.shapeText {
                 # Temporarily hide shapeText while editing this shape
                 drCopy = Object.assign({}, drEl);
                 drCopy.shapeText = None;

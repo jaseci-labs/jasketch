@@ -74,23 +74,16 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             elems = hook.elements;
             result = [];
             i = 0;
-            if data.index != undefined and data.index != None {
-                idx = data.index;
-                if idx >= 0 and idx < elems.length {
-                    result = [{"id": elems[idx].id, "index": idx, "element": elems[idx]}];
-                }
-            } elif data.type {
-                i = 0;
+            if data.type {
                 while i < elems.length {
                     if elems[i] and elems[i].type == data.type {
-                        result.push({"id": elems[i].id, "index": i, "element": elems[i]});
+                        result.push({"id": elems[i].id, "element": elems[i]});
                     }
                     i = i + 1;
                 }
             } else {
-                i = 0;
                 while i < elems.length {
-                    result.push({"id": elems[i].id, "index": i, "element": elems[i]});
+                    result.push({"id": elems[i].id, "element": elems[i]});
                     i = i + 1;
                 }
             }
@@ -221,17 +214,15 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             elems = hook.elements;
             targetId = data.id;
             foundEl = None;
-            foundIdx = -1;
             gei = 0;
             while gei < elems.length {
                 if elems[gei] and elems[gei].id == targetId {
                     foundEl = elems[gei];
-                    foundIdx = gei;
                 }
                 gei = gei + 1;
             }
             if foundEl {
-                sendResponse(ws, requestId, True, {"id": targetId, "index": foundIdx, "element": foundEl});
+                sendResponse(ws, requestId, True, {"id": targetId, "element": foundEl});
             } else {
                 sendError(ws, requestId, "Element not found: " + targetId);
             }

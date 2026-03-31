@@ -51,23 +51,16 @@ def:pub Canvas(props: dict) -> JsxElement {
     selectedElementsRef.current = selectionHook.selectedElements;
     drawingStateRef.current = drawingState;
 
-    # Get the editing shape index to suppress its shapeText during editing
-    editingShapeIdx = None;
-    if textInputHook.textInput and textInputHook.textInput.editingShapeId != None and textInputHook.textInput.editingShapeId != undefined {
+    # Pass editing shape id to suppress its shapeText during editing
+    editingShapeId = None;
+    if textInputHook.textInput {
         editingShapeId = textInputHook.textInput.editingShapeId;
-        esi = 0;
-        while esi < elementsHook.elements.length {
-            if elementsHook.elements[esi].id == editingShapeId {
-                editingShapeIdx = esi;
-            }
-            esi = esi + 1;
-        }
     }
 
     can with [elementsHook.elements, canvasHook.canvasSize, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, drawingState.isDrawing, textInputHook.textInput] entry {
         canvas = canvasRef.current;
         if canvas {
-            canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, editingShapeIdx);
+            canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, editingShapeId);
         }
         if props.onSelectionChange {
             props.onSelectionChange(selectionHook.selectedElement);

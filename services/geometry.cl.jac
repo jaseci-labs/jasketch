@@ -166,7 +166,7 @@ def:pub findNearestConnectionPoint(mousePos: dict, elements: list, threshold: fl
                 nearestDist = dist;
                 nearest = {
                     "point": connPoints[j],
-                    "elementIndex": i,
+                    "elementId": element.id,
                     "side": connPoints[j].side
                 };
             }
