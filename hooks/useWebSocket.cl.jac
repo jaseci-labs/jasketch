@@ -58,56 +58,61 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
 
         if action == "addElement" {
             hook.addElement(data);
-            newIndex = hook.elements.length;
-            sendResponse(ws, requestId, True, {"index": newIndex, "action": "created"});
+            addedId = data.id or "";
+            sendResponse(ws, requestId, True, {"id": addedId, "action": "created"});
         } elif action == "addMultipleElements" {
             items = data.elements or [];
             hook.addMultipleElements(items);
-            startIndex = hook.elements.length;
-            sendResponse(ws, requestId, True, {"count": items.length, "startIndex": startIndex, "action": "created"});
+            addedIds = [];
+            ami = 0;
+            while ami < items.length {
+                addedIds.push(items[ami].id or "");
+                ami = ami + 1;
+            }
+            sendResponse(ws, requestId, True, {"ids": addedIds, "count": items.length, "action": "created"});
         } elif action == "getElements" {
             elems = hook.elements;
             result = [];
             i = 0;
-            if data.index != undefined and data.index != None {
-                idx = data.index;
-                if idx >= 0 and idx < elems.length {
-                    result = [{"index": idx, "element": elems[idx]}];
-                }
-            } elif data.type {
-                i = 0;
+            if data.type {
                 while i < elems.length {
                     if elems[i] and elems[i].type == data.type {
-                        result.push({"index": i, "element": elems[i]});
+                        result.push({"id": elems[i].id, "element": elems[i]});
                     }
                     i = i + 1;
                 }
             } else {
-                i = 0;
                 while i < elems.length {
-                    result.push({"index": i, "element": elems[i]});
+                    result.push({"id": elems[i].id, "element": elems[i]});
                     i = i + 1;
                 }
             }
             sendResponse(ws, requestId, True, {"elements": result, "total": elems.length});
         } elif action == "updateElement" {
-            idx = data.index;
+            targetId = data.id;
             changes = data.changes or {};
             elems = hook.elements;
-            if idx >= 0 and idx < elems.length {
-                current = elems[idx];
-                updated = Object.assign({}, current, changes);
-                hook.updateElement(idx, updated);
-                sendResponse(ws, requestId, True, {"index": idx, "action": "updated"});
+            foundEl = None;
+            uei = 0;
+            while uei < elems.length {
+                if elems[uei] and elems[uei].id == targetId {
+                    foundEl = elems[uei];
+                }
+                uei = uei + 1;
+            }
+            if foundEl {
+                updated = Object.assign({}, foundEl, changes);
+                hook.updateElement(targetId, updated);
+                sendResponse(ws, requestId, True, {"id": targetId, "action": "updated"});
             } else {
-                sendError(ws, requestId, "Index out of range");
+                sendError(ws, requestId, "Element not found: " + targetId);
             }
         } elif action == "removeElement" {
-            hook.removeElement(data.index);
-            sendResponse(ws, requestId, True, {"index": data.index, "action": "deleted"});
+            hook.removeElement(data.id);
+            sendResponse(ws, requestId, True, {"id": data.id, "action": "deleted"});
         } elif action == "removeMultipleElements" {
-            hook.removeMultipleElements(data.indices or []);
-            sendResponse(ws, requestId, True, {"indices": data.indices, "action": "deleted"});
+            hook.removeMultipleElements(data.ids or []);
+            sendResponse(ws, requestId, True, {"ids": data.ids, "action": "deleted"});
         } elif action == "clearElements" {
             hook.clearElements();
             sendResponse(ws, requestId, True, {"action": "cleared"});
@@ -204,6 +209,22 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                     },
                     "elementCount": elems.length
                 });
+            }
+        } elif action == "getElementById" {
+            elems = hook.elements;
+            targetId = data.id;
+            foundEl = None;
+            gei = 0;
+            while gei < elems.length {
+                if elems[gei] and elems[gei].id == targetId {
+                    foundEl = elems[gei];
+                }
+                gei = gei + 1;
+            }
+            if foundEl {
+                sendResponse(ws, requestId, True, {"id": targetId, "element": foundEl});
+            } else {
+                sendError(ws, requestId, "Element not found: " + targetId);
             }
         } else {
             sendError(ws, requestId, "Unknown action: " + action);

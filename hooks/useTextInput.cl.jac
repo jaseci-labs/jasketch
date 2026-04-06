@@ -1,12 +1,12 @@
 def:pub useTextInput() -> dict {
     has textInput: any = None;
 
-    def startTextInput(x: float, y: float, initialText: str, shapeIndex: any, shapeElement: any) -> None {
+    def startTextInput(x: float, y: float, initialText: str, shapeId: any, shapeElement: any) -> None {
         textInput = {
             "x": x,
             "y": y,
             "text": initialText or "",
-            "editingShapeIndex": shapeIndex,
+            "editingShapeId": shapeId,
             "editingShapeElement": shapeElement
         };
     }
@@ -17,7 +17,7 @@ def:pub useTextInput() -> dict {
                 "x": textInput.x,
                 "y": textInput.y,
                 "text": text,
-                "editingShapeIndex": textInput.editingShapeIndex,
+                "editingShapeId": textInput.editingShapeId,
                 "editingShapeElement": textInput.editingShapeElement
             };
         }

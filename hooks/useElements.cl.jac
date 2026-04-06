@@ -28,6 +28,13 @@ def:pub useElements() -> dict {
         if stored {
             parsed = JSON.parse(stored);
             if parsed and parsed.length > 0 {
+                mi = 0;
+                while mi < parsed.length {
+                    if not parsed[mi].id {
+                        parsed[mi].id = crypto.randomUUID();
+                    }
+                    mi = mi + 1;
+                }
                 elements = parsed;
                 pushHistory(parsed);
             }
@@ -53,32 +60,62 @@ def:pub useElements() -> dict {
     }
 
     def addElement(element: dict) -> None {
+        if not element.id {
+            element.id = crypto.randomUUID();
+        }
         newElements = elements.concat([element]);
         setElementsWithHistory(newElements);
     }
 
     def addMultipleElements(newItems: list) -> None {
+        ni = 0;
+        while ni < newItems.length {
+            if not newItems[ni].id {
+                newItems[ni].id = crypto.randomUUID();
+            }
+            ni = ni + 1;
+        }
         newElements = elements.concat(newItems);
         setElementsWithHistory(newElements);
     }
 
-    def updateElement(index: int, newElement: dict) -> None {
-        newElements = elements.slice();
-        newElements[index] = newElement;
-        setElementsWithHistory(newElements);
+    def _findIndex(id: str) -> int {
+        fi = 0;
+        while fi < elements.length {
+            if elements[fi] and elements[fi].id == id {
+                return fi;
+            }
+            fi = fi + 1;
+        }
+        return -1;
     }
 
-    def updateElementSilent(index: int, newElement: dict) -> None {
-        newElements = elements.slice();
-        newElements[index] = newElement;
-        setElementsInternal(newElements);
+    def updateElement(id: str, newElement: dict) -> None {
+        idx = _findIndex(id);
+        if idx >= 0 {
+            newElements = elements.slice();
+            newElements[idx] = newElement;
+            setElementsWithHistory(newElements);
+        }
+    }
+
+    def updateElementSilent(id: str, newElement: dict) -> None {
+        idx = _findIndex(id);
+        if idx >= 0 {
+            newElements = elements.slice();
+            newElements[idx] = newElement;
+            setElementsInternal(newElements);
+        }
     }
 
     def updateMultipleElements(updates: list) -> None {
         newElements = elements.slice();
         i = 0;
         while i < updates.length {
-            newElements[updates[i].index] = updates[i].element;
+            idx = _findIndex(updates[i].id);
+            if idx >= 0 {
+                newElements[idx] = updates[i].element;
+            }
             i = i + 1;
         }
         setElementsWithHistory(newElements);
@@ -88,7 +125,10 @@ def:pub useElements() -> dict {
         newElements = elements.slice();
         i = 0;
         while i < updates.length {
-            newElements[updates[i].index] = updates[i].element;
+            idx = _findIndex(updates[i].id);
+            if idx >= 0 {
+                newElements[idx] = updates[i].element;
+            }
             i = i + 1;
         }
         setElementsInternal(newElements);
@@ -98,11 +138,11 @@ def:pub useElements() -> dict {
         pushHistory(elements);
     }
 
-    def removeElement(index: int) -> None {
+    def removeElement(id: str) -> None {
         newElements = [];
         ri = 0;
         while ri < elements.length {
-            if ri != index {
+            if elements[ri] and elements[ri].id != id {
                 newElements.push(elements[ri]);
             }
             ri = ri + 1;
@@ -110,17 +150,17 @@ def:pub useElements() -> dict {
         setElementsWithHistory(newElements);
     }
 
-    def removeMultipleElements(indices: list) -> None {
-        indexSet = {};
+    def removeMultipleElements(ids: list) -> None {
+        idSet = {};
         i = 0;
-        while i < indices.length {
-            indexSet[indices[i]] = True;
+        while i < ids.length {
+            idSet[ids[i]] = True;
             i = i + 1;
         }
         newElements = [];
         rmi = 0;
         while rmi < elements.length {
-            if not indexSet[rmi] {
+            if elements[rmi] and not idSet[elements[rmi].id] {
                 newElements.push(elements[rmi]);
             }
             rmi = rmi + 1;

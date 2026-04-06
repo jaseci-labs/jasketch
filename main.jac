@@ -31,7 +31,7 @@ cl {
 
         def handleUpdateElement(changes: dict) -> None {
             if selectedElement and updateElementRef.current {
-                updateElementRef.current(selectedElement.index, changes);
+                updateElementRef.current(selectedElement.id, changes);
             }
         }
 

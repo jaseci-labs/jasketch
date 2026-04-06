@@ -19,7 +19,7 @@ def:pub TextInput(props: dict) -> JsxElement {
     screenY = textInput.y * zoom + panOffset.y;
     scaledFontSize = currentFontSize * zoom;
 
-    isShapeEdit = textInput.editingShapeIndex != None and textInput.editingShapeIndex != undefined;
+    isShapeEdit = textInput.editingShapeId != None and textInput.editingShapeId != undefined;
 
     baseStyle = {
         "left": screenX + "px",
