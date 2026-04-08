@@ -332,13 +332,110 @@ def:pub exportSelectionAsPDF(selectedElements: list, canvasRef: any) -> None {
 
 def:pub saveAsJaSketch(elements: list, filename: str) -> None {
     files = {};
-    processedElements = [];
+    serialized = [];
     fileCounter = 0;
+
+    # Build boundElements map: elementId -> [{id, type}] for all bound arrows/lines
+    boundMap = {};
+    bmi = 0;
+    while bmi < elements.length {
+        bmel = elements[bmi];
+        if bmel.type == "line" or bmel.type == "arrow" {
+            if bmel.startBinding {
+                sbEId = bmel.startBinding.elementId;
+                if sbEId {
+                    if not boundMap[sbEId] {
+                        boundMap[sbEId] = [];
+                    }
+                    boundMap[sbEId].push({"id": bmel.id, "type": bmel.type});
+                }
+            }
+            if bmel.endBinding {
+                ebEId = bmel.endBinding.elementId;
+                if ebEId {
+                    if not boundMap[ebEId] {
+                        boundMap[ebEId] = [];
+                    }
+                    boundMap[ebEId].push({"id": bmel.id, "type": bmel.type});
+                }
+            }
+        }
+        bmi = bmi + 1;
+    }
+
     i = 0;
     while i < elements.length {
         el = elements[i];
-        if el.type == "image" and el.src {
-            # Deduplication: reuse fileId if same dataURL already in files map
+
+        if el.type == "line" or el.type == "arrow" {
+            # Build relative points array: [[0,0], [intermediate...], [dx, dy]]
+            slPts = [[0, 0]];
+            slCurve = el.curveStyle or "curved";
+            slBends = el.elbowBends or [];
+            slBendX = el.bendX;
+            slBendY = el.bendY;
+            if slCurve == "elbow" and slBends.length > 0 {
+                slBi = 0;
+                while slBi < slBends.length {
+                    slPts.push([slBends[slBi].x - el.x1, slBends[slBi].y - el.y1]);
+                    slBi = slBi + 1;
+                }
+            } elif slBendX != None and slBendX != undefined {
+                slPts.push([slBendX - el.x1, slBendY - el.y1]);
+            }
+            slPts.push([el.x2 - el.x1, el.y2 - el.y1]);
+            serialized.push({
+                "id": el.id,
+                "type": el.type,
+                "x": el.x1,
+                "y": el.y1,
+                "points": slPts,
+                "color": el.color or "#000000",
+                "strokeWidth": el.strokeWidth or 2,
+                "lineStyle": el.lineStyle or "solid",
+                "curveStyle": slCurve,
+                "opacity": el.opacity or 1,
+                "boundElements": None,
+                "startBinding": el.startBinding and {"elementId": el.startBinding.elementId, "side": el.startBinding.side or "", "mode": "inside"} or None,
+                "endBinding": el.endBinding and {"elementId": el.endBinding.elementId, "side": el.endBinding.side or "", "mode": "orbit"} or None
+            });
+
+        } elif el.type == "freehand" {
+            # Convert [{x,y}] to [[x,y]] for consistency with line/arrow points
+            fhPts = [];
+            fhI = 0;
+            while fhI < el.points.length {
+                fhPts.push([el.points[fhI].x, el.points[fhI].y]);
+                fhI = fhI + 1;
+            }
+            serialized.push({
+                "id": el.id,
+                "type": el.type,
+                "points": fhPts,
+                "color": el.color or "#000000",
+                "strokeWidth": el.strokeWidth or 2,
+                "lineStyle": el.lineStyle or "solid",
+                "opacity": el.opacity or 1,
+                "rotation": el.rotation or 0,
+                "boundElements": boundMap[el.id] or None
+            });
+
+        } elif el.type == "text" {
+            serialized.push({
+                "id": el.id,
+                "type": el.type,
+                "x": el.x,
+                "y": el.y,
+                "text": el.text or "",
+                "color": el.color or "#000000",
+                "fontSize": el.fontSize or 24,
+                "fontFamily": el.fontFamily or "Virgil",
+                "opacity": el.opacity or 1,
+                "rotation": el.rotation or 0,
+                "boundElements": boundMap[el.id] or None
+            });
+
+        } elif el.type == "image" and el.src {
             existingId = None;
             existingKeys = Object.keys(files);
             ki = 0;
@@ -369,27 +466,50 @@ def:pub saveAsJaSketch(elements: list, filename: str) -> None {
                     "created": Date.now()
                 };
             }
-            processedElements.push({
+            serialized.push({
+                "id": el.id,
                 "type": el.type,
                 "x": el.x,
                 "y": el.y,
                 "width": el.width,
                 "height": el.height,
                 "fileId": fileId,
-                "opacity": el.opacity,
-                "groupId": el.groupId or None
+                "opacity": el.opacity or 1,
+                "rotation": el.rotation or 0,
+                "boundElements": boundMap[el.id] or None
             });
+
         } else {
-            processedElements.push(el);
+            # Shapes: rectangle, circle, diamond
+            serialized.push({
+                "id": el.id,
+                "type": el.type,
+                "x": el.x,
+                "y": el.y,
+                "width": el.width,
+                "height": el.height,
+                "color": el.color or "#000000",
+                "fillColor": el.fillColor or "transparent",
+                "strokeWidth": el.strokeWidth or 2,
+                "lineStyle": el.lineStyle or "solid",
+                "opacity": el.opacity or 1,
+                "rotation": el.rotation or 0,
+                "boundElements": boundMap[el.id] or None,
+                "shapeText": el.shapeText or None,
+                "shapeTextColor": el.shapeTextColor or None,
+                "shapeTextFontSize": el.shapeTextFontSize or None,
+                "shapeTextFontFamily": el.shapeTextFontFamily or None
+            });
         }
+
         i = i + 1;
     }
 
     data = {
         "type": "jasketch",
-        "version": 1,
+        "version": 2,
         "source": "jasketch",
-        "elements": processedElements,
+        "elements": serialized,
         "appState": {
             "viewBackgroundColor": "#ffffff"
         },
@@ -415,23 +535,97 @@ def:pub loadFromJaSketch(file: any, onLoad: any, onError: any) -> None {
         i = 0;
         while i < parsed.elements.length {
             el = parsed.elements[i];
+
             if el.type == "image" and el.fileId {
                 fileData = files[el.fileId];
                 if fileData and fileData.dataURL {
                     restoredElements.push({
+                        "id": el.id,
                         "type": el.type,
                         "x": el.x,
                         "y": el.y,
                         "width": el.width,
                         "height": el.height,
                         "src": fileData.dataURL,
-                        "opacity": el.opacity,
-                        "groupId": el.groupId or None
+                        "opacity": el.opacity or 1,
+                        "rotation": el.rotation or 0
                     });
                 }
+
+            } elif (el.type == "line" or el.type == "arrow") and el.points {
+                # v2 format: restore x1,y1,x2,y2 and bend data from points array
+                lx1 = el.x;
+                ly1 = el.y;
+                lastPt = el.points[el.points.length - 1];
+                lx2 = lx1 + lastPt[0];
+                ly2 = ly1 + lastPt[1];
+                lCurve = el.curveStyle or "curved";
+                lBendX = None;
+                lBendY = None;
+                lElbowBends = None;
+                if el.points.length > 2 {
+                    if lCurve == "elbow" {
+                        lElbowBends = [];
+                        lpi = 1;
+                        while lpi < el.points.length - 1 {
+                            lElbowBends.push({"x": lx1 + el.points[lpi][0], "y": ly1 + el.points[lpi][1]});
+                            lpi = lpi + 1;
+                        }
+                    } else {
+                        midPt = el.points[1];
+                        lBendX = lx1 + midPt[0];
+                        lBendY = ly1 + midPt[1];
+                    }
+                }
+                restoredElements.push({
+                    "id": el.id,
+                    "type": el.type,
+                    "x1": lx1,
+                    "y1": ly1,
+                    "x2": lx2,
+                    "y2": ly2,
+                    "color": el.color or "#000000",
+                    "strokeWidth": el.strokeWidth or 2,
+                    "lineStyle": el.lineStyle or "solid",
+                    "curveStyle": lCurve,
+                    "opacity": el.opacity or 1,
+                    "startBinding": el.startBinding or None,
+                    "endBinding": el.endBinding or None,
+                    "bendX": lBendX,
+                    "bendY": lBendY,
+                    "elbowBends": lElbowBends
+                });
+
+            } elif el.type == "freehand" and el.points {
+                # Convert [[x,y]] (v2) back to [{x,y}]; pass [{x,y}] (v1) through
+                fhPoints = [];
+                fhIsV2 = el.points.length > 0 and Array.isArray(el.points[0]);
+                fhI = 0;
+                while fhI < el.points.length {
+                    fhPt = el.points[fhI];
+                    if fhIsV2 {
+                        fhPoints.push({"x": fhPt[0], "y": fhPt[1]});
+                    } else {
+                        fhPoints.push({"x": fhPt.x, "y": fhPt.y});
+                    }
+                    fhI = fhI + 1;
+                }
+                restoredElements.push({
+                    "id": el.id,
+                    "type": el.type,
+                    "points": fhPoints,
+                    "color": el.color or "#000000",
+                    "strokeWidth": el.strokeWidth or 2,
+                    "lineStyle": el.lineStyle or "solid",
+                    "opacity": el.opacity or 1,
+                    "rotation": el.rotation or 0
+                });
+
             } else {
+                # Shapes (rectangle, circle, diamond), text, and v1 line/arrow (has x1 not points)
                 restoredElements.push(el);
             }
+
             i = i + 1;
         }
         onLoad(restoredElements);

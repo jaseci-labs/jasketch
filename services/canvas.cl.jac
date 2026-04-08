@@ -1,4 +1,28 @@
-import from .geometry { getConnectionPoints }
+import from .geometry { getConnectionPoints, _rotate_points, getTextDimensions, get_elbow_full_points, get_freehand_center }
+
+# Helper: Apply rotation transform to canvas context
+def:pub apply_rotation_transform(ctx: any, element: dict) -> None {
+    if element.rotation and (element.rotation != 0) {
+        rotation = element.rotation;
+        # Compute center point based on element type
+        cx = 0;
+        cy = 0;
+        if element.type == "text" {
+            cx = element.x + element.fontSize / 2;
+            cy = element.y + element.fontSize / 2;
+        } elif element.type == "freehand" {
+            fc = get_freehand_center(element);
+            cx = fc.x;
+            cy = fc.y;
+        } else {
+            cx = element.x + (element.width or 0) / 2;
+            cy = element.y + (element.height or 0) / 2;
+        }
+        ctx.translate(cx, cy);
+        ctx.rotate(rotation * Math.PI / 180);
+        ctx.translate(-cx, -cy);
+    }
+}
 
 # Seeded random for consistent hand-drawn jitter per element
 def seedRandom(seed: float) -> float {
@@ -56,6 +80,10 @@ def:pub drawImageElement(ctx: any, element: dict, onImageLoad: any) -> None {
         ctx.shadowBlur = 6;
         ctx.shadowOffsetX = 0;
         ctx.shadowOffsetY = 3;
+
+        # Apply rotation transform if element has rotation
+        apply_rotation_transform(ctx, element);
+
         ctx.drawImage(element.imageObj, element.x, element.y, element.width, element.height);
         ctx.restore();
     }
@@ -71,6 +99,9 @@ def:pub drawTextElement(ctx: any, element: dict) -> None {
     ctx.shadowBlur = 2;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 1;
+
+    # Apply rotation transform if element has rotation
+    apply_rotation_transform(ctx, element);
 
     lines = element.text.split(String.fromCharCode(10));
     lineIdx = 0;
@@ -169,6 +200,9 @@ def:pub drawShapeElement(ctx: any, element: dict) -> None {
     ctx.shadowBlur = 4;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 2;
+
+    # Apply rotation transform if element has rotation
+    apply_rotation_transform(ctx, element);
 
     # Apply line style
     lineStyle = element.lineStyle or "solid";
@@ -338,16 +372,66 @@ def sketchyCurve(ctx: any, x1: float, y1: float, cpx: float, cpy: float, x2: flo
     ctx.quadraticCurveTo(cpx + jitter(seed + 3, wobble), cpy + jitter(seed + 4, wobble), x2 + jitter(seed + 5, wobble), y2 + jitter(seed + 6, wobble));
 }
 
+def drawElbowPath(ctx: any, element: dict, seed: float, pass_i: int) -> None {
+    elbowPts = get_elbow_full_points(element);
+    eptLen = elbowPts.length;
+    if eptLen >= 2 {
+        elj = jitter(seed + pass_i * 37, 1.2);
+        ctx.moveTo(elbowPts[0].x + elj, elbowPts[0].y + jitter(seed + pass_i * 37 + 1, 1.2));
+        ept_i = 1;
+        while ept_i < eptLen - 1 {
+            pPrev = elbowPts[ept_i - 1];
+            pCur = elbowPts[ept_i];
+            pNext = elbowPts[ept_i + 1];
+            segLen1 = Math.sqrt((pCur.x - pPrev.x) * (pCur.x - pPrev.x) + (pCur.y - pPrev.y) * (pCur.y - pPrev.y));
+            segLen2 = Math.sqrt((pNext.x - pCur.x) * (pNext.x - pCur.x) + (pNext.y - pCur.y) * (pNext.y - pCur.y));
+            elr = Math.min(16, segLen1 / 2, segLen2 / 2);
+            isH1 = Math.abs(pCur.x - pPrev.x) >= Math.abs(pCur.y - pPrev.y);
+            edx1 = isH1 and ((pCur.x > pPrev.x) and 1 or -1) or 0;
+            edy1 = (not isH1) and ((pCur.y > pPrev.y) and 1 or -1) or 0;
+            isH2 = Math.abs(pNext.x - pCur.x) >= Math.abs(pNext.y - pCur.y);
+            edx2 = isH2 and ((pNext.x > pCur.x) and 1 or -1) or 0;
+            edy2 = (not isH2) and ((pNext.y > pCur.y) and 1 or -1) or 0;
+            ctx.lineTo(pCur.x - edx1 * elr, pCur.y - edy1 * elr);
+            ctx.quadraticCurveTo(pCur.x, pCur.y, pCur.x + edx2 * elr, pCur.y + edy2 * elr);
+            ept_i = ept_i + 1;
+        }
+        ctx.lineTo(elbowPts[eptLen - 1].x + elj, elbowPts[eptLen - 1].y + jitter(seed + pass_i * 37 + 3, 1.2));
+    }
+}
+
 def:pub drawLine(ctx: any, element: dict) -> None {
     seed = element.x1 * 7 + element.y1 * 13 + element.x2 * 3 + element.y2 * 11;
+    curveStyle = element.curveStyle or "curved";
+
+    # Pre-compute sharp bend point (V-apex, defaults to midpoint)
+    sharpBX = (element.x1 + element.x2) / 2;
+    sharpBY = (element.y1 + element.y2) / 2;
+    if element.bendX != None and element.bendX != undefined {
+        sharpBX = element.bendX;
+        sharpBY = element.bendY;
+    }
 
     pass_i = 0;
     while pass_i < 2 {
         ctx.beginPath();
-        if element.bendX != None and element.bendX != undefined {
-            sketchyCurve(ctx, element.x1, element.y1, element.bendX, element.bendY, element.x2, element.y2, seed + pass_i * 100);
+        if curveStyle == "sharp" or curveStyle == "straight" {
+            # sharp: straight segments — V-shape if bend point set, else direct line
+            if element.bendX != None and element.bendX != undefined {
+                sketchyLine(ctx, element.x1, element.y1, sharpBX, sharpBY, seed + pass_i * 100);
+                sketchyLine(ctx, sharpBX, sharpBY, element.x2, element.y2, seed + pass_i * 100 + 50);
+            } else {
+                sketchyLine(ctx, element.x1, element.y1, element.x2, element.y2, seed + pass_i * 100);
+            }
+        } elif curveStyle == "elbow" {
+            drawElbowPath(ctx, element, seed, pass_i);
         } else {
-            sketchyLine(ctx, element.x1, element.y1, element.x2, element.y2, seed + pass_i * 100);
+            # curved (default): quadratic bezier if bend set, else straight sketchy line
+            if element.bendX != None and element.bendX != undefined {
+                sketchyCurve(ctx, element.x1, element.y1, element.bendX, element.bendY, element.x2, element.y2, seed + pass_i * 100);
+            } else {
+                sketchyLine(ctx, element.x1, element.y1, element.x2, element.y2, seed + pass_i * 100);
+            }
         }
         ctx.stroke();
         pass_i = pass_i + 1;
@@ -356,25 +440,63 @@ def:pub drawLine(ctx: any, element: dict) -> None {
 
 def:pub drawArrow(ctx: any, element: dict) -> None {
     seed = element.x1 * 7 + element.y1 * 13 + element.x2 * 3 + element.y2 * 11;
+    curveStyle = element.curveStyle or "curved";
+
+    # Pre-compute sharp bend point (V-apex for sharp style)
+    sharpBX = (element.x1 + element.x2) / 2;
+    sharpBY = (element.y1 + element.y2) / 2;
+    if element.bendX != None and element.bendX != undefined {
+        sharpBX = element.bendX;
+        sharpBY = element.bendY;
+    }
+    # Pre-compute arrowhead angle for sharp
+    sharpAngle = Math.atan2(element.y2 - element.y1, element.x2 - element.x1);
+    if element.bendX != None and element.bendX != undefined {
+        sharpAngle = Math.atan2(element.y2 - sharpBY, element.x2 - sharpBX);
+    }
 
     pass_i = 0;
     while pass_i < 2 {
         ctx.beginPath();
-        if element.bendX != None and element.bendX != undefined {
-            sketchyCurve(ctx, element.x1, element.y1, element.bendX, element.bendY, element.x2, element.y2, seed + pass_i * 100);
+        if curveStyle == "sharp" or curveStyle == "straight" {
+            if element.bendX != None and element.bendX != undefined {
+                sketchyLine(ctx, element.x1, element.y1, sharpBX, sharpBY, seed + pass_i * 100);
+                sketchyLine(ctx, sharpBX, sharpBY, element.x2, element.y2, seed + pass_i * 100 + 50);
+            } else {
+                sketchyLine(ctx, element.x1, element.y1, element.x2, element.y2, seed + pass_i * 100);
+            }
+        } elif curveStyle == "elbow" {
+            drawElbowPath(ctx, element, seed, pass_i);
         } else {
-            sketchyLine(ctx, element.x1, element.y1, element.x2, element.y2, seed + pass_i * 100);
+            if element.bendX != None and element.bendX != undefined {
+                sketchyCurve(ctx, element.x1, element.y1, element.bendX, element.bendY, element.x2, element.y2, seed + pass_i * 100);
+            } else {
+                sketchyLine(ctx, element.x1, element.y1, element.x2, element.y2, seed + pass_i * 100);
+            }
         }
         ctx.stroke();
         pass_i = pass_i + 1;
     }
 
+    # Arrowhead — angle based on direction of last segment
     headLen = 14;
-    arrowAngle = 0;
-    if element.bendX != None and element.bendX != undefined {
-        arrowAngle = Math.atan2(element.y2 - element.bendY, element.x2 - element.bendX);
+    arrowAngle = Math.atan2(element.y2 - element.y1, element.x2 - element.x1);
+    if curveStyle == "elbow" {
+        elbowPtsA = get_elbow_full_points(element);
+        eptLenA = elbowPtsA.length;
+        if eptLenA >= 2 {
+            pSecondLast = elbowPtsA[eptLenA - 2];
+            pLast = elbowPtsA[eptLenA - 1];
+            arrowAngle = Math.atan2(pLast.y - pSecondLast.y, pLast.x - pSecondLast.x);
+        }
+    } elif curveStyle == "sharp" or curveStyle == "straight" {
+        arrowAngle = sharpAngle;
     } else {
-        arrowAngle = Math.atan2(element.y2 - element.y1, element.x2 - element.x1);
+        if element.bendX != None and element.bendX != undefined {
+            arrowAngle = Math.atan2(element.y2 - element.bendY, element.x2 - element.bendX);
+        } else {
+            arrowAngle = Math.atan2(element.y2 - element.y1, element.x2 - element.x1);
+        }
     }
     ax1 = element.x2 - headLen * Math.cos(arrowAngle - Math.PI / 6);
     ay1 = element.y2 - headLen * Math.sin(arrowAngle - Math.PI / 6);
@@ -588,7 +710,69 @@ def:pub drawSelectionBox(ctx: any, element: dict) -> None {
     ctx.save();
     bounds = getElementBounds(ctx, element);
 
-    # Solid selection border
+    # Apply rotation transform if element has rotation
+    if element.rotation and (element.rotation != 0) {
+        rotation = element.rotation;
+        cx = bounds.x + bounds.width / 2;
+        cy = bounds.y + bounds.height / 2;
+        ctx.translate(cx, cy);
+        ctx.rotate(rotation * Math.PI / 180);
+        ctx.translate(-cx, -cy);
+    }
+
+    if element.type == "line" or element.type == "arrow" {
+        # For lines/arrows: draw only start vertex, end vertex, and bend handle
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "#f97316";
+        ctx.lineWidth = 1.5;
+        # Start vertex handle
+        ctx.beginPath();
+        ctx.arc(element.x1, element.y1, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        # End vertex handle
+        ctx.beginPath();
+        ctx.arc(element.x2, element.y2, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        selCurveStyle = element.curveStyle or "curved";
+        if selCurveStyle == "elbow" {
+            # Elbow: ghost segment midpoint handles at each segment center
+            elbowSelPts = get_elbow_full_points(element);
+            ctx.fillStyle = "rgba(130, 100, 230, 0.65)";
+            ctx.strokeStyle = "rgba(100, 70, 200, 0.5)";
+            ctx.lineWidth = 1;
+            shi = 1;
+            while shi < elbowSelPts.length {
+                segMidX = (elbowSelPts[shi - 1].x + elbowSelPts[shi].x) / 2;
+                segMidY = (elbowSelPts[shi - 1].y + elbowSelPts[shi].y) / 2;
+                ctx.beginPath();
+                ctx.arc(segMidX, segMidY, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                shi = shi + 1;
+            }
+        } elif selCurveStyle != "straight" {
+            # sharp/curved: bend handle at bendX/bendY or midpoint
+            ctx.fillStyle = "#ffffff";
+            ctx.strokeStyle = "#f97316";
+            ctx.lineWidth = 1.5;
+            bendHandleX = (element.x1 + element.x2) / 2;
+            bendHandleY = (element.y1 + element.y2) / 2;
+            if element.bendX != None and element.bendX != undefined {
+                bendHandleX = element.bendX;
+                bendHandleY = element.bendY;
+            }
+            ctx.beginPath();
+            ctx.arc(bendHandleX, bendHandleY, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
+        ctx.restore();
+        return;
+    }
+
+    # Solid selection border for shapes
     ctx.strokeStyle = "#f97316";
     ctx.lineWidth = 1.5;
     ctx.setLineDash([]);
@@ -621,18 +805,21 @@ def:pub drawSelectionBox(ctx: any, element: dict) -> None {
         i = i + 1;
     }
 
-    if (element.type == "line" or element.type == "arrow") {
-        bendHandleX = 0;
-        bendHandleY = 0;
-        if element.bendX != None and element.bendX != undefined {
-            bendHandleX = element.bendX;
-            bendHandleY = element.bendY;
-        } else {
-            bendHandleX = (element.x1 + element.x2) / 2;
-            bendHandleY = (element.y1 + element.y2) / 2;
-        }
+    # Draw rotation handle for supported element types
+    supportedForRotation = element.type == "rectangle" or element.type == "circle" or element.type == "diamond" or element.type == "image" or element.type == "text" or element.type == "freehand";
+    if supportedForRotation {
+        rotHandleX = bounds.x + bounds.width / 2;
+        rotHandleY = bounds.y - 28;
+        # Draw connecting line from top-center to handle
         ctx.beginPath();
-        ctx.arc(bendHandleX, bendHandleY, 5, 0, Math.PI * 2);
+        ctx.moveTo(bounds.x + bounds.width / 2, bounds.y);
+        ctx.lineTo(rotHandleX, rotHandleY);
+        ctx.strokeStyle = "#f97316";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        # Draw rotation handle circle
+        ctx.beginPath();
+        ctx.arc(rotHandleX, rotHandleY, 5, 0, Math.PI * 2);
         ctx.fillStyle = "#ffffff";
         ctx.fill();
         ctx.strokeStyle = "#f97316";
@@ -712,6 +899,17 @@ def:pub drawConnectionPoints(ctx: any, element: dict) -> None {
     points = getConnectionPoints(element);
     if points.length == 0 {
         return;
+    }
+    # Apply rotation to connection points if element is rotated
+    if element.rotation and (element.rotation != 0) {
+        dc_cx = element.x + element.width / 2;
+        dc_cy = element.y + element.height / 2;
+        if element.type == "text" {
+            dc_dims = getTextDimensions(element.text, element.fontSize);
+            dc_cx = element.x + dc_dims.width / 2;
+            dc_cy = element.y + dc_dims.height / 2;
+        }
+        points = _rotate_points(points, dc_cx, dc_cy, element.rotation);
     }
     ctx.save();
     ctx.fillStyle = "rgba(249, 115, 22, 0.3)";

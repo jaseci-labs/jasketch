@@ -6,9 +6,9 @@ import from "..hooks.useSelection" { useSelection }
 import from "..hooks.useViewport" { useViewport }
 import from "..hooks.useTextInput" { useTextInput }
 import from "..hooks.useWebSocket" { useWebSocket }
-import from "..services.geometry" { getMousePosition, findNearestConnectionPoint, getConnectionPoints, findConnectedLineUpdates }
+import from "..services.geometry" { getMousePosition, findNearestConnectionPoint, find_bound_line_updates_for_shape, get_elbow_full_points, move_elbow_segment }
 import from "..services.canvas" { drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
-import from "..services.collision" { getResizeHandleAtPoint, getBendHandleAtPoint }
+import from "..services.collision" { getResizeHandleAtPoint, getBendHandleAtPoint, get_rotation_handle_at_point, getLineEndpointAtPoint, get_elbow_segment_at_point }
 import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, copySelectionAsPNG, copyCanvasAsPNG, copyCanvasAsSVG, saveAsJaSketch, loadFromJaSketch }
 import from "..constants.tools" { TOOL_SHORTCUTS }
 import from .canvas.CanvasRenderer { CanvasRenderer }
@@ -23,6 +23,7 @@ def:pub Canvas(props: dict) -> JsxElement {
     currentFontFamily = props.currentFontFamily or "Virgil";
     currentOpacity = props.currentOpacity or 1.0;
     currentLineStyle = props.currentLineStyle or "solid";
+    currentCurveStyle = props.currentCurveStyle or "curved";
     currentFillColor = props.currentFillColor or "transparent";
 
     canvasHook = useCanvas();
@@ -45,7 +46,14 @@ def:pub Canvas(props: dict) -> JsxElement {
     altDragCopiedRef = useRef(False);
     drawingStateRef = useRef(drawingState);
     has isDraggingBend: bool = False;
-    has bendDragElement: any = None;
+    has isRotating: bool = False;
+    has rotatingElementId: any = None;
+    has rotatingCenter: dict = {"x": 0, "y": 0};
+    has pendingStartBinding: any = None;
+    has isDraggingVertex: bool = False;
+    has draggingVertexHandle: str = "";
+    has isDraggingElbowSegment: bool = False;
+    has draggingElbowSegIndex: int = 0;
 
     selectedElementRef.current = selectionHook.selectedElement;
     selectedElementsRef.current = selectionHook.selectedElements;
@@ -906,17 +914,46 @@ def:pub Canvas(props: dict) -> JsxElement {
 
             if selectionHook.selectedElement and selectionHook.selectedElement.element {
                 selEl = selectionHook.selectedElement.element;
-                if (selEl.type == "line" or selEl.type == "arrow") and getBendHandleAtPoint(pos, selEl) {
-                    isDraggingBend = True;
-                    bendDragElement = Object.assign({}, selEl);
-                    selectionHook.setDragStartPos(pos);
+                # Check vertex handles (start/end) before bend handle
+                vertexHandle = getLineEndpointAtPoint(pos, selEl);
+                if vertexHandle {
+                    isDraggingVertex = True;
+                    draggingVertexHandle = vertexHandle;
+                    selectionHook.setResizeStartElement(Object.assign({}, selEl));
                     return;
+                }
+                if selEl.type == "line" or selEl.type == "arrow" {
+                    selCurveStyle2 = selEl.curveStyle or "curved";
+                    if selCurveStyle2 == "elbow" {
+                        elbowSegIdx = get_elbow_segment_at_point(pos, selEl);
+                        if elbowSegIdx >= 1 {
+                            isDraggingElbowSegment = True;
+                            draggingElbowSegIndex = elbowSegIdx;
+                            selectionHook.setResizeStartElement(Object.assign({}, selEl));
+                            return;
+                        }
+                    } else {
+                        if getBendHandleAtPoint(pos, selEl) {
+                            isDraggingBend = True;
+                            selectionHook.setDragStartPos(pos);
+                            return;
+                        }
+                    }
                 }
 
                 canvas = canvasRef.current;
                 if canvas {
                     ctx = canvas.getContext("2d");
                     bounds = getElementBounds(ctx, selEl);
+
+                    # Check for rotation handle click
+                    if get_rotation_handle_at_point(pos, bounds, selEl) {
+                        isRotating = True;
+                        rotatingElementId = selectionHook.selectedElement.id;
+                        rotatingCenter = {"x": bounds.x + bounds.width / 2, "y": bounds.y + bounds.height / 2};
+                        return;
+                    }
+
                     handle = getResizeHandleAtPoint(pos, bounds);
                     if handle {
                         selectionHook.setIsResizing(True);
@@ -1007,9 +1044,11 @@ def:pub Canvas(props: dict) -> JsxElement {
         if currentTool == "line" or currentTool == "arrow" {
             if drawingState.isDrawing and drawingState.startPoint {
                 endPos = pos;
+                endBinding = None;
                 endSnap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
                 if endSnap {
                     endPos = endSnap.point;
+                    endBinding = {"elementId": endSnap.elementId, "side": endSnap.side};
                 }
                 lineElement = {
                     "type": currentTool,
@@ -1020,8 +1059,12 @@ def:pub Canvas(props: dict) -> JsxElement {
                     "color": currentColor,
                     "strokeWidth": currentStrokeWidth,
                     "lineStyle": currentLineStyle,
-                    "opacity": currentOpacity
+                    "curveStyle": currentCurveStyle,
+                    "opacity": currentOpacity,
+                    "startBinding": pendingStartBinding,
+                    "endBinding": endBinding
                 };
+                pendingStartBinding = None;
                 elementsHook.addElement(lineElement);
                 drawingState.setIsDrawing(False);
                 drawingState.setStartPoint(None);
@@ -1033,8 +1076,10 @@ def:pub Canvas(props: dict) -> JsxElement {
                 startSnap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
                 if startSnap {
                     drawingState.setStartPoint(startSnap.point);
+                    pendingStartBinding = {"elementId": startSnap.elementId, "side": startSnap.side};
                 } else {
                     drawingState.setStartPoint(pos);
+                    pendingStartBinding = None;
                 }
                 drawingState.setIsDrawing(True);
             }
@@ -1063,6 +1108,82 @@ def:pub Canvas(props: dict) -> JsxElement {
             updatedEl.bendX = pos.x;
             updatedEl.bendY = pos.y;
             elementsHook.updateElement(selId, updatedEl);
+            return;
+        }
+
+        if isDraggingElbowSegment and selectionHook.selectedElement and selectionHook.resizeStartElement {
+            selId = selectionHook.selectedElement.id;
+            fullPts = get_elbow_full_points(selectionHook.resizeStartElement);
+            newPts = move_elbow_segment(fullPts, draggingElbowSegIndex, pos);
+            updatedEl = Object.assign({}, selectionHook.resizeStartElement);
+            # Extract intermediate bends (exclude first and last = start/end endpoints)
+            newBends = [];
+            bi2 = 1;
+            while bi2 < newPts.length - 1 {
+                newBends.push({"x": newPts[bi2].x, "y": newPts[bi2].y});
+                bi2 = bi2 + 1;
+            }
+            updatedEl.elbowBends = newBends;
+            elementsHook.updateElementSilent(selId, updatedEl);
+            selectionHook.setSelectedElement({"element": updatedEl, "id": selId});
+            return;
+        }
+
+        if isDraggingVertex and selectionHook.selectedElement and selectionHook.resizeStartElement {
+            selId = selectionHook.selectedElement.id;
+            updatedEl = Object.assign({}, selectionHook.resizeStartElement);
+            vertexPos = pos;
+            # Snap to connection points
+            vertexSnap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
+            if vertexSnap {
+                vertexPos = vertexSnap.point;
+            }
+            if draggingVertexHandle == "start" {
+                updatedEl.x1 = vertexPos.x;
+                updatedEl.y1 = vertexPos.y;
+                if vertexSnap {
+                    updatedEl.startBinding = {"elementId": vertexSnap.elementId, "side": vertexSnap.side};
+                } else {
+                    updatedEl.startBinding = None;
+                }
+            } else {
+                updatedEl.x2 = vertexPos.x;
+                updatedEl.y2 = vertexPos.y;
+                if vertexSnap {
+                    updatedEl.endBinding = {"elementId": vertexSnap.elementId, "side": vertexSnap.side};
+                } else {
+                    updatedEl.endBinding = None;
+                }
+            }
+            elementsHook.updateElementSilent(selId, updatedEl);
+            selectionHook.setSelectedElement({"element": updatedEl, "id": selId});
+            return;
+        }
+
+        if isRotating and rotatingElementId and rotatingCenter {
+            dx = pos.x - rotatingCenter.x;
+            dy = pos.y - rotatingCenter.y;
+            angle_rad = Math.atan2(dy, dx);
+            # +90° offset so 0° = upright (handle points up), +360 to keep positive
+            new_rotation = (angle_rad * 180 / 3.14159265359 + 90 + 360) % 360;
+            # Shift key: snap to 15° increments
+            if e.shiftKey {
+                new_rotation = Math.round(new_rotation / 15) * 15;
+            }
+            if selectionHook.selectedElement {
+                updatedEl = Object.assign({}, selectionHook.selectedElement.element);
+                updatedEl.rotation = new_rotation;
+
+                connLineUpdates = find_bound_line_updates_for_shape(updatedEl, elementsHook.elements);
+                if connLineUpdates.length > 0 {
+                    connLineUpdates.push({"id": rotatingElementId, "element": updatedEl});
+                    elementsHook.updateMultipleElementsSilent(connLineUpdates);
+                } else {
+                    elementsHook.updateElementSilent(rotatingElementId, updatedEl);
+                }
+
+                selectionHook.setSelectedElement({"element": updatedEl, "id": rotatingElementId});
+            }
             return;
         }
 
@@ -1183,7 +1304,13 @@ def:pub Canvas(props: dict) -> JsxElement {
                 }
             }
 
-            elementsHook.updateElementSilent(selectionHook.selectedElement.id, newElement);
+            resizeConnUpdates = find_bound_line_updates_for_shape(newElement, elementsHook.elements);
+            if resizeConnUpdates.length > 0 {
+                resizeConnUpdates.push({"id": selectionHook.selectedElement.id, "element": newElement});
+                elementsHook.updateMultipleElementsSilent(resizeConnUpdates);
+            } else {
+                elementsHook.updateElementSilent(selectionHook.selectedElement.id, newElement);
+            }
             selectionHook.setSelectedElement({"element": newElement, "id": selectionHook.selectedElement.id});
             return;
         }
@@ -1243,6 +1370,15 @@ def:pub Canvas(props: dict) -> JsxElement {
                             newElement.bendX = originalElement.bendX + multiDx;
                             newElement.bendY = originalElement.bendY + multiDy;
                         }
+                        if originalElement.elbowBends and originalElement.elbowBends.length > 0 {
+                            multiTransBends = [];
+                            mebi = 0;
+                            while mebi < originalElement.elbowBends.length {
+                                multiTransBends.push({"x": originalElement.elbowBends[mebi].x + multiDx, "y": originalElement.elbowBends[mebi].y + multiDy});
+                                mebi = mebi + 1;
+                            }
+                            newElement.elbowBends = multiTransBends;
+                        }
                     } elif originalElement.type == "freehand" {
                         multiPoints: list = [];
                         for point in originalElement.points {
@@ -1264,8 +1400,16 @@ def:pub Canvas(props: dict) -> JsxElement {
                 mci = 0;
                 while mci < selectionHook.selectedElements.length {
                     mcSelInfo = selectionHook.selectedElements[mci];
-                    mcSelEl = mcSelInfo.element;
-                    mcLineUpdates = findConnectedLineUpdates(mcSelEl, multiDx, multiDy, elementsHook.elements, mcSelInfo.id);
+                    # Find the already-computed updated element for this id
+                    mcUpdatedEl = mcSelInfo.element;
+                    ui2 = 0;
+                    while ui2 < updates.length {
+                        if updates[ui2].id == mcSelInfo.id {
+                            mcUpdatedEl = updates[ui2].element;
+                        }
+                        ui2 = ui2 + 1;
+                    }
+                    mcLineUpdates = find_bound_line_updates_for_shape(mcUpdatedEl, elementsHook.elements);
                     mcli = 0;
                     while mcli < mcLineUpdates.length {
                         if not selectedIdSet[mcLineUpdates[mcli].id] {
@@ -1319,6 +1463,15 @@ def:pub Canvas(props: dict) -> JsxElement {
                         newElement.bendX = element.bendX + lineDx;
                         newElement.bendY = element.bendY + lineDy;
                     }
+                    if element.elbowBends and element.elbowBends.length > 0 {
+                        translatedBends = [];
+                        ebi = 0;
+                        while ebi < element.elbowBends.length {
+                            translatedBends.push({"x": element.elbowBends[ebi].x + lineDx, "y": element.elbowBends[ebi].y + lineDy});
+                            ebi = ebi + 1;
+                        }
+                        newElement.elbowBends = translatedBends;
+                    }
                 } elif element.type == "freehand" {
                     fhDx = pos.x - selectionHook.dragOffset.x - element.points[0].x;
                     fhDy = pos.y - selectionHook.dragOffset.y - element.points[0].y;
@@ -1332,9 +1485,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 # Move connected lines/arrows along with the shape
                 hasXY = element.type == "rectangle" or element.type == "circle" or element.type == "diamond" or element.type == "text" or element.type == "image";
                 if hasXY {
-                    shapeDx = newElement.x - element.x;
-                    shapeDy = newElement.y - element.y;
-                    connLineUpdates = findConnectedLineUpdates(element, shapeDx, shapeDy, elementsHook.elements, selectionHook.selectedElement.id);
+                    connLineUpdates = find_bound_line_updates_for_shape(newElement, elementsHook.elements);
                     if connLineUpdates.length > 0 {
                         connLineUpdates.push({"id": selectionHook.selectedElement.id, "element": newElement});
                         elementsHook.updateMultipleElementsSilent(connLineUpdates);
@@ -1400,10 +1551,10 @@ def:pub Canvas(props: dict) -> JsxElement {
             previewCtx.translate(viewportHook.panOffset.x, viewportHook.panOffset.y);
             previewCtx.scale(viewportHook.zoom, viewportHook.zoom);
 
-            # For line/arrow, show connection points and snap endpoint
+            # For line/arrow, show connection points and snap endpoint (only while actively drawing)
             previewEnd = pos;
             if currentTool == "line" or currentTool == "arrow" {
-                # Draw connection points on all shapes
+                # Draw connection points on all shapes when line/arrow tool is active
                 ei = 0;
                 while ei < elementsHook.elements.length {
                     el = elementsHook.elements[ei];
@@ -1413,11 +1564,13 @@ def:pub Canvas(props: dict) -> JsxElement {
                     ei = ei + 1;
                 }
 
-                # Snap end point
-                snap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
-                if snap {
-                    previewEnd = snap.point;
-                    drawSnapIndicator(previewCtx, snap.point);
+                # Snap end point (only when actively drawing)
+                if drawingState.isDrawing {
+                    snap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
+                    if snap {
+                        previewEnd = snap.point;
+                        drawSnapIndicator(previewCtx, snap.point);
+                    }
                 }
             }
 
@@ -1427,10 +1580,31 @@ def:pub Canvas(props: dict) -> JsxElement {
     }
 
     def handleMouseUp(e: dict) -> None {
+        if isRotating {
+            elementsHook.commitToHistory();
+            isRotating = False;
+            rotatingElementId = None;
+            rotatingCenter = {"x": 0, "y": 0};
+            return;
+        }
+
+        if isDraggingElbowSegment {
+            elementsHook.commitToHistory();
+            isDraggingElbowSegment = False;
+            draggingElbowSegIndex = 0;
+            return;
+        }
+
+        if isDraggingVertex {
+            elementsHook.commitToHistory();
+            isDraggingVertex = False;
+            draggingVertexHandle = "";
+            return;
+        }
+
         if isDraggingBend {
             elementsHook.commitToHistory();
             isDraggingBend = False;
-            bendDragElement = None;
             if selectionHook.selectedElement {
                 bendId = selectionHook.selectedElement.id;
                 updatedBendEl = selectionHook.selectedElement.element;
@@ -1466,9 +1640,11 @@ def:pub Canvas(props: dict) -> JsxElement {
                 dragEndPos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
                 dragDist = Math.sqrt(Math.pow(dragEndPos.x - drawingState.startPoint.x, 2) + Math.pow(dragEndPos.y - drawingState.startPoint.y, 2));
                 if dragDist > 5 {
+                    dragEndBinding = None;
                     dragEndSnap = findNearestConnectionPoint(dragEndPos, elementsHook.elements, 20.0);
                     if dragEndSnap {
                         dragEndPos = dragEndSnap.point;
+                        dragEndBinding = {"elementId": dragEndSnap.elementId, "side": dragEndSnap.side};
                     }
                     dragLineEl = {
                         "type": currentTool,
@@ -1479,8 +1655,12 @@ def:pub Canvas(props: dict) -> JsxElement {
                         "color": currentColor,
                         "strokeWidth": currentStrokeWidth,
                         "lineStyle": currentLineStyle,
-                        "opacity": currentOpacity
+                        "curveStyle": currentCurveStyle,
+                        "opacity": currentOpacity,
+                        "startBinding": pendingStartBinding,
+                        "endBinding": dragEndBinding
                     };
+                    pendingStartBinding = None;
                     elementsHook.addElement(dragLineEl);
                     drawingState.setIsDrawing(False);
                     drawingState.setStartPoint(None);
@@ -1574,6 +1754,11 @@ def:pub Canvas(props: dict) -> JsxElement {
         selectionHook.stopResizing();
         viewportHook.stopPanning();
         isDraggingBend = False;
+        isDraggingVertex = False;
+        draggingVertexHandle = "";
+        isDraggingElbowSegment = False;
+        draggingElbowSegIndex = 0;
+        isRotating = False;
     }
 
     cursorClass = "cursor-crosshair";
@@ -1582,7 +1767,9 @@ def:pub Canvas(props: dict) -> JsxElement {
     } elif currentTool == "text" {
         cursorClass = "cursor-text";
     } elif currentTool == "select" {
-        if selectionHook.isResizing {
+        if isRotating {
+            cursorClass = "cursor-grabbing";
+        } elif selectionHook.isResizing {
             cursorClass = "cursor-grabbing";
         } elif selectionHook.isDragging {
             cursorClass = "cursor-grabbing";

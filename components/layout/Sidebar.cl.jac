@@ -1,6 +1,6 @@
 import from "...constants.colors" { PRESET_COLORS }
 import from "...constants.fonts" { FONTS, FONT_SIZES }
-import from "...constants.tools" { LINE_STYLES }
+import from "...constants.tools" { LINE_STYLES, CURVE_STYLES }
 
 def:pub Sidebar(props: dict) -> JsxElement {
     currentTool = props.currentTool or "select";
@@ -10,6 +10,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
     currentFontSize = props.currentFontSize or 24;
     currentFontFamily = props.currentFontFamily or "Virgil";
     currentLineStyle = props.currentLineStyle or "solid";
+    currentCurveStyle = props.currentCurveStyle or "curved";
     currentFillColor = props.currentFillColor or "transparent";
 
     selectedElement = props.selectedElement;
@@ -19,6 +20,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
     onFontSizeChange = props.onFontSizeChange;
     onFontFamilyChange = props.onFontFamilyChange;
     onLineStyleChange = props.onLineStyleChange;
+    onCurveStyleChange = props.onCurveStyleChange;
     onFillColorChange = props.onFillColorChange;
     onUpdateElement = props.onUpdateElement;
 
@@ -26,6 +28,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
     fontSizes = FONT_SIZES();
     fonts = FONTS();
     lineStyles = LINE_STYLES();
+    curveStyles = CURVE_STYLES();
 
     # Determine if we're editing an existing element or setting defaults for new ones
     hasSelection = selectedElement and selectedElement.element;
@@ -41,6 +44,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
     showFont = False;
     showFontSize = False;
     showLineStyle = False;
+    showCurveStyle = False;
     showFillColor = False;
     showShapeTextColor = False;
 
@@ -50,6 +54,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
     activeFontSize = currentFontSize;
     activeFontFamily = currentFontFamily;
     activeLineStyle = currentLineStyle;
+    activeCurveStyle = currentCurveStyle;
     activeFillColor = currentFillColor;
     activeShapeTextColor = currentColor;
 
@@ -74,6 +79,12 @@ def:pub Sidebar(props: dict) -> JsxElement {
             showOpacity = True;
             if elType != "freehand" {
                 showLineStyle = True;
+            }
+            if elType == "line" or elType == "arrow" {
+                showCurveStyle = True;
+                selRawCurve = sel.curveStyle or "curved";
+                # Map legacy "straight" to "sharp" for display
+                activeCurveStyle = (selRawCurve == "straight") and "sharp" or selRawCurve;
             }
             activeColor = sel.color;
             activeStrokeWidth = sel.strokeWidth;
@@ -111,6 +122,9 @@ def:pub Sidebar(props: dict) -> JsxElement {
             if currentTool != "freehand" {
                 showLineStyle = True;
             }
+            if currentTool == "line" or currentTool == "arrow" {
+                showCurveStyle = True;
+            }
             if currentTool == "rectangle" or currentTool == "circle" or currentTool == "diamond" {
                 showFillColor = True;
             }
@@ -118,7 +132,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
     }
 
     # Hide sidebar entirely when nothing to show
-    hasContent = showColor or showStroke or showOpacity or showFont or showFontSize or showLineStyle or showFillColor or hasSelection;
+    hasContent = showColor or showStroke or showOpacity or showFont or showFontSize or showLineStyle or showCurveStyle or showFillColor or hasSelection;
     if not hasContent {
         return None;
     }
@@ -178,6 +192,13 @@ def:pub Sidebar(props: dict) -> JsxElement {
         onLineStyleChange(style);
         if hasSelection {
             onUpdateElement({"lineStyle": style});
+        }
+    }
+
+    def handleCurveStyleChange(style: str) -> None {
+        onCurveStyleChange(style);
+        if hasSelection {
+            onUpdateElement({"curveStyle": style});
         }
     }
 
@@ -315,6 +336,28 @@ def:pub Sidebar(props: dict) -> JsxElement {
                         </svg>
                     </button>
                     for style in lineStyles
+                ]}
+            </div>
+        </div> or None}
+
+        {showCurveStyle and <div>
+            <span className="sidebar-label">Arrow Type</span>
+            <div className="flex items-center gap-1 mt-1.5">
+                {[
+                    <button
+                        key={cs.id}
+                        onClick={lambda -> None { handleCurveStyleChange(cs.id); }}
+                        title={cs.label}
+                        className={"flex-1 h-9 rounded-lg flex flex-col items-center justify-center gap-0.5 transition-all duration-150 " + (activeCurveStyle == cs.id and "bg-orange-50 ring-1 ring-orange-200" or "bg-gray-50 hover:bg-gray-100")}
+                    >
+                        <svg width="32" height="16" viewBox="0 0 32 16">
+                            {cs.id == "sharp" and <path d="M2 14 L16 4 L30 14" stroke={activeCurveStyle == cs.id and "#ea580c" or "#9ca3af"} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" /> or None}
+                            {cs.id == "curved" and <path d="M2 14 Q16 2 30 14" stroke={activeCurveStyle == cs.id and "#ea580c" or "#9ca3af"} strokeWidth="1.8" fill="none" strokeLinecap="round" /> or None}
+                            {cs.id == "elbow" and <path d="M2 14 L2 8 Q2 4 6 4 L30 4" stroke={activeCurveStyle == cs.id and "#ea580c" or "#9ca3af"} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" /> or None}
+                        </svg>
+                        <span className={"text-[9px] font-medium " + (activeCurveStyle == cs.id and "text-orange-600" or "text-gray-400")}>{cs.label}</span>
+                    </button>
+                    for cs in curveStyles
                 ]}
             </div>
         </div> or None}
