@@ -1,4 +1,4 @@
-import from .geometry { calculateDistance, getTextDimensions }
+import from .geometry { calculateDistance, getTextDimensions, get_elbow_full_points, get_freehand_center }
 
 def:pub isPointInRectangle(point: dict, rect: dict) -> bool {
     return (
@@ -66,18 +66,36 @@ def:pub isPointNearLine(point: dict, line: dict, tolerance: float) -> bool {
     return False;
 }
 
+def:pub getLineEndpointAtPoint(point: dict, element: dict) -> str {
+    if element.type != "line" and element.type != "arrow" {
+        return None;
+    }
+    handleRadius = 8;
+    distStart = Math.sqrt((point.x - element.x1) * (point.x - element.x1) + (point.y - element.y1) * (point.y - element.y1));
+    if distStart <= handleRadius {
+        return "start";
+    }
+    distEnd = Math.sqrt((point.x - element.x2) * (point.x - element.x2) + (point.y - element.y2) * (point.y - element.y2));
+    if distEnd <= handleRadius {
+        return "end";
+    }
+    return None;
+}
+
 def:pub getBendHandleAtPoint(point: dict, element: dict) -> bool {
+    # Only for sharp/curved arrows (elbow arrows use get_elbow_segment_at_point instead)
     if element.type != "line" and element.type != "arrow" {
         return False;
     }
-    handleX = 0;
-    handleY = 0;
+    if element.curveStyle == "straight" or element.curveStyle == "elbow" {
+        return False;
+    }
+    # Handle at explicit bend point, or midpoint by default
+    handleX = (element.x1 + element.x2) / 2;
+    handleY = (element.y1 + element.y2) / 2;
     if element.bendX != None and element.bendX != undefined {
         handleX = element.bendX;
         handleY = element.bendY;
-    } else {
-        handleX = (element.x1 + element.x2) / 2;
-        handleY = (element.y1 + element.y2) / 2;
     }
     dist = Math.sqrt((point.x - handleX) * (point.x - handleX) + (point.y - handleY) * (point.y - handleY));
     return dist <= 8;
@@ -161,19 +179,105 @@ def:pub getResizeHandleAtPoint(point: dict, bounds: dict) -> str {
     return None;
 }
 
+def:pub get_rotation_handle_at_point(point: dict, bounds: dict, element: dict) -> bool {
+    # Check if element supports rotation
+    supportedTypes = ["rectangle", "circle", "diamond", "image", "text", "freehand"];
+    isSupported = False;
+    i = 0;
+    while i < supportedTypes.length {
+        if element.type == supportedTypes[i] {
+            isSupported = True;
+        }
+        i = i + 1;
+    }
+    if not isSupported {
+        return False;
+    }
+
+    # If element is rotated, transform the test point by inverse rotation
+    testPoint = point;
+    if element.rotation and (element.rotation != 0) {
+        cx = bounds.x + bounds.width / 2;
+        cy = bounds.y + bounds.height / 2;
+        rad = -element.rotation * 0.0174533;  # PI / 180
+        cos_r = Math.cos(rad);
+        sin_r = Math.sin(rad);
+        dx = point.x - cx;
+        dy = point.y - cy;
+        testPoint = {
+            "x": cx + dx * cos_r - dy * sin_r,
+            "y": cy + dx * sin_r + dy * cos_r
+        };
+    }
+
+    # Rotation handle is at the top-center of bounds, 28px above (in element's local space)
+    rotHandleX = bounds.x + bounds.width / 2;
+    rotHandleY = bounds.y - 28;
+
+    # Handle radius for click detection
+    dist = calculateDistance(testPoint, {"x": rotHandleX, "y": rotHandleY});
+    return dist <= 10;
+}
+
 def:pub isPointInElement(point: dict, element: dict) -> bool {
+    # Handle rotation by transforming the test point to element's local space
+    testPoint = point;
+    if element.rotation and (element.rotation != 0) {
+        rotation = element.rotation;
+        cx = element.x + (element.width or 0) / 2;
+        cy = element.y + (element.height or 0) / 2;
+        if element.type == "freehand" {
+            fc = get_freehand_center(element);
+            cx = fc.x;
+            cy = fc.y;
+        }
+        # Apply inverse rotation: rotate point by -rotation around element center
+        rad = -rotation * 0.0174533;  # PI / 180
+        cos_r = Math.cos(rad);
+        sin_r = Math.sin(rad);
+        dx = point.x - cx;
+        dy = point.y - cy;
+        testPoint = {
+            "x": cx + dx * cos_r - dy * sin_r,
+            "y": cy + dx * sin_r + dy * cos_r
+        };
+    }
+
     if element.type == "text" {
-        return isPointInText(point, element);
+        return isPointInText(testPoint, element);
     } elif element.type == "rectangle" or element.type == "image" {
-        return isPointInRectangle(point, element);
+        return isPointInRectangle(testPoint, element);
     } elif element.type == "circle" {
-        return isPointInCircle(point, element);
+        return isPointInCircle(testPoint, element);
     } elif element.type == "diamond" {
-        return isPointInDiamond(point, element);
+        return isPointInDiamond(testPoint, element);
     } elif element.type == "line" or element.type == "arrow" {
-        return isPointNearLine(point, element, 20.0);
+        return isPointNearLine(testPoint, element, 20.0);
     } elif element.type == "freehand" {
-        return isPointInFreehandPath(point, element.points, 15.0);
+        return isPointInFreehandPath(testPoint, element.points, 15.0);
     }
     return False;
+}
+
+def:pub get_elbow_segment_at_point(point: dict, element: dict) -> int {
+    # Returns segment index (1-based) if point is near a segment midpoint handle, else -1.
+    if element.type != "line" and element.type != "arrow" {
+        return -1;
+    }
+    if (element.curveStyle or "curved") != "elbow" {
+        return -1;
+    }
+    fullPts = get_elbow_full_points(element);
+    handleRadius = 8;
+    si = 1;
+    while si < fullPts.length {
+        midX = (fullPts[si - 1].x + fullPts[si].x) / 2;
+        midY = (fullPts[si - 1].y + fullPts[si].y) / 2;
+        dist = Math.sqrt((point.x - midX) * (point.x - midX) + (point.y - midY) * (point.y - midY));
+        if dist <= handleRadius {
+            return si;
+        }
+        si = si + 1;
+    }
+    return -1;
 }

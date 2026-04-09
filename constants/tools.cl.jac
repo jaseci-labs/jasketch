@@ -32,3 +32,11 @@ def:pub LINE_STYLES() -> list {
         {"id": "dotted", "label": "Dotted", "dash": [3, 6]}
     ];
 }
+
+def:pub CURVE_STYLES() -> list {
+    return [
+        {"id": "sharp", "label": "Sharp"},
+        {"id": "curved", "label": "Curved"},
+        {"id": "elbow", "label": "Elbow"}
+    ];
+}

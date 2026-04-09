@@ -97,13 +97,6 @@ def:pub useSelection() -> dict {
         stopResizing();
     }
 
-    def addToSelection(elementInfo: dict) -> None {
-        newList = selectedElements.slice();
-        newList.push(elementInfo);
-        selectedElements = newList;
-        selectedElement = None;
-    }
-
     def removeFromSelection(id: str) -> None {
         newList = [sel for sel in selectedElements if sel.id != id];
         selectedElements = newList;
@@ -214,7 +207,6 @@ def:pub useSelection() -> dict {
         "stopDragging": stopDragging,
         "stopResizing": stopResizing,
         "clearSelection": clearSelection,
-        "addToSelection": addToSelection,
         "removeFromSelection": removeFromSelection,
         "startBoxSelection": startBoxSelection,
         "updateBoxSelection": updateBoxSelection,

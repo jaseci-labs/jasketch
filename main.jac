@@ -17,6 +17,7 @@ cl {
         has currentFontFamily: str = "Virgil";
         has currentOpacity: float = 1.0;
         has currentLineStyle: str = "solid";
+        has currentCurveStyle: str = "curved";
         has currentFillColor: str = "transparent";
 
         # Selection state (updated by Canvas via callback)
@@ -58,6 +59,7 @@ cl {
                         currentFontSize={currentFontSize}
                         currentFontFamily={currentFontFamily}
                         currentLineStyle={currentLineStyle}
+                        currentCurveStyle={currentCurveStyle}
                         currentFillColor={currentFillColor}
                         selectedElement={selectedElement}
                         onColorChange={lambda color: any -> None { currentColor = color; }}
@@ -66,6 +68,7 @@ cl {
                         onFontSizeChange={lambda size: any -> None { currentFontSize = size; }}
                         onFontFamilyChange={lambda font: any -> None { currentFontFamily = font; }}
                         onLineStyleChange={lambda style: any -> None { currentLineStyle = style; }}
+                        onCurveStyleChange={lambda style: any -> None { currentCurveStyle = style; }}
                         onFillColorChange={lambda color: any -> None { currentFillColor = color; }}
                         onUpdateElement={handleUpdateElement}
                     />
@@ -80,6 +83,7 @@ cl {
                         currentFontFamily={currentFontFamily}
                         currentOpacity={currentOpacity}
                         currentLineStyle={currentLineStyle}
+                        currentCurveStyle={currentCurveStyle}
                         currentFillColor={currentFillColor}
                         clearCanvasRef={clearCanvasRef}
                         addElementRef={addElementRef}
