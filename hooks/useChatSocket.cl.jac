@@ -113,6 +113,17 @@ def:pub useChatSocket() -> dict {
         wsRef.current = ws;
     }
 
+    def getSessionId() -> Any {
+        # Same key as useWebSocket — both hooks read the same stable per-tab ID
+        key = "jasketch_session_id";
+        sid = sessionStorage.getItem(key);
+        if not sid {
+            sid = crypto.randomUUID();
+            sessionStorage.setItem(key, sid);
+        }
+        return sid;
+    }
+
     def sendMessage(apiKey: str, model: str, message: str) -> None {
         if not wsRef.current or not connectedRef.current {
             return;
@@ -138,7 +149,8 @@ def:pub useChatSocket() -> dict {
             "apiKey": apiKey,
             "model": model,
             "message": message,
-            "history": history
+            "history": history,
+            "sessionId": getSessionId()
         }));
     }
 

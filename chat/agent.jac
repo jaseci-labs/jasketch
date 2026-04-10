@@ -7,10 +7,11 @@ import sys;
 import threading;
 import uuid;
 
+import subprocess;
 import websockets;
 import litellm;
 import from typing { Any }
-import from chat.agent_tools { init_send, get_tools, execute }
+import from chat.agent_tools { get_tools, execute }
 
 glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "ws://localhost:9601");
 glob CHAT_PORT: int = int(os.environ.get("JASKETCH_CHAT_PORT", "9602"));
@@ -27,13 +28,13 @@ def log(msg: str) -> None { print(f"[jasketch-chat] {msg}", file=sys.stderr, flu
 glob _lock: Any = threading.Lock();
 glob _ws: Any = None;
 glob _connected: bool = False;
-glob _canvas_connected: bool = False;
+glob _canvas_sessions: Any = set();  # set of currently connected sessionIds
 glob _pending: dict = {};
 glob _relay_loop: Any = None;
 glob _relay_ready: Any = threading.Event();
 
 async def _relay_connect() -> None {
-    global _ws, _connected, _canvas_connected;
+    global _ws, _connected, _canvas_sessions;
     while True {
         try {
             async with websockets.connect(RELAY_URL, compression=None) as ws {
@@ -44,9 +45,14 @@ async def _relay_connect() -> None {
                     try {
                         m: dict = json.loads(raw);
                         mt: str = m.get("type", "");
-                        if mt == "registered" { _canvas_connected = bool(m.get("canvasConnected", False)); continue; }
-                        if mt == "canvasConnected" { _canvas_connected = True; continue; }
-                        if mt == "canvasDisconnected" { _canvas_connected = False; continue; }
+                        if mt == "registered" {
+                            # Relay sends currently connected sessions on registration
+                            existing: list = m.get("connectedSessions", []);
+                            for sid in existing { _canvas_sessions.add(sid); }
+                            continue;
+                        }
+                        if mt == "canvasConnected" { _canvas_sessions.add(m.get("sessionId", "")); continue; }
+                        if mt == "canvasDisconnected" { _canvas_sessions.discard(m.get("sessionId", "")); continue; }
                         rid: str = m.get("requestId", "");
                         e: Any = None;
                         with _lock { e = _pending.pop(rid, None); }
@@ -60,7 +66,7 @@ async def _relay_connect() -> None {
                 }
             }
         } except Exception as ex { log(f"Relay conn err: {ex}"); }
-        _ws = None; _connected = False; _canvas_connected = False;
+        _ws = None; _connected = False; _canvas_sessions = set();
         await asyncio.sleep(3);
     }
 }
@@ -73,9 +79,10 @@ def _relay_thread() -> None {
     _relay_loop.run_until_complete(_relay_connect());
 }
 
-def send_command(action: str, data: dict | None = None) -> Any {
+def send_command(action: str, data: dict | None = None, session_id: str = "") -> Any {
     if (not _connected) or (_ws is None) { raise Exception("Not connected to relay."); }
-    if not _canvas_connected { raise Exception("No canvas. Open JaSketch in browser."); }
+    if not session_id { raise Exception("No sessionId provided."); }
+    if session_id not in _canvas_sessions { raise Exception(f"No canvas for session '{session_id}'. Open JaSketch in browser."); }
     _relay_ready.wait(timeout=5);
     rid: str = str(uuid.uuid4());
     evt: Any = threading.Event();
@@ -83,7 +90,7 @@ def send_command(action: str, data: dict | None = None) -> Any {
     with _lock { _pending[rid] = (evt, res); }
     try {
         f: Any = asyncio.run_coroutine_threadsafe(
-            _ws.send(json.dumps({"requestId": rid, "action": action, "data": data or {}})), _relay_loop);
+            _ws.send(json.dumps({"requestId": rid, "sessionId": session_id, "action": action, "data": data or {}})), _relay_loop);
         f.result(timeout=5);
     } except Exception as ex {
         with _lock { _pending.pop(rid, None); }
@@ -143,8 +150,13 @@ async def _acc_tc(acc: dict, tc: Any) -> None {
     }
 }
 
-async def _chat_loop(ws: Any, api_key: str, model: str, msgs: list) -> None {
+async def _chat_loop(ws: Any, api_key: str, model: str, msgs: list, session_id: str) -> None {
     tools: list = get_tools();
+    # Closure capturing session_id — passed directly into execute() per call.
+    # Never stored globally, so concurrent users never share send context.
+    def _session_send(action: str, data: dict | None = None) -> Any {
+        return send_command(action, data, session_id);
+    }
     it: int = 0;
     while it < MAX_ITERS {
         it = it + 1;
@@ -175,7 +187,7 @@ async def _chat_loop(ws: Any, api_key: str, model: str, msgs: list) -> None {
             await _ws_send(ws, "tool_call", name=tn, arguments=ta);
             try { parsed: dict = json.loads(ta); }
             except Exception { parsed = {}; }
-            tr: str = await asyncio.to_thread(execute, tn, parsed);
+            tr: Any = await asyncio.to_thread(execute, tn, parsed, _session_send);
             await _ws_send(ws, "tool_result", name=tn, result=tr);
             msgs.append({"role": "tool", "tool_call_id": ci["id"], "content": tr});
         }
@@ -193,13 +205,15 @@ async def _handler(ws: Any) -> None {
                 if m.get("type") != "chat" { continue; }
                 ak: str = m.get("apiKey", ""); md: str = m.get("model", "gpt-4o-mini");
                 um: str = m.get("message", ""); hi: list = m.get("history", []);
+                sid: str = m.get("sessionId", "");
                 if not ak { await _ws_send(ws, "error", message="API key required."); continue; }
                 if not um { continue; }
-                log(f"Chat: {md}, {um[:60]}");
+                if not sid { await _ws_send(ws, "error", message="No sessionId. Refresh the page."); continue; }
+                log(f"Chat: {md}, session={sid}, {um[:60]}");
                 msgs: list = [{"role": "system", "content": SYSTEM_PROMPT}];
                 for h in hi { msgs.append({"role": h.get("role", "user"), "content": h.get("content", "")}); }
                 msgs.append({"role": "user", "content": um});
-                try { await _chat_loop(ws, ak, md, msgs); }
+                try { await _chat_loop(ws, ak, md, msgs, sid); }
                 except Exception as e { log(f"LLM err: {e}"); await _ws_send(ws, "error", message=str(e)); }
             } except Exception as e {
                 try { await _ws_send(ws, "error", message=str(e)); }
@@ -217,11 +231,10 @@ async def _handler(ws: Any) -> None {
 
 def _boot() -> None {
     log("Booting...");
+    # Start relay server as a subprocess — keeps it fully isolated, avoids Jac import issues
+    subprocess.Popen(["jasketch-relay"], stderr=sys.stderr, stdout=sys.stdout);
     threading.Thread(target=_relay_thread, daemon=True).start();
     _relay_ready.wait(timeout=5);
-
-    # Wire send_command into tools
-    init_send(send_command);
 
     def _ws_server() -> None {
         loop: Any = asyncio.new_event_loop();

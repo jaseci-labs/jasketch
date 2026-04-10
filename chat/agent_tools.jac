@@ -2,6 +2,7 @@
 
 import json;
 import math;
+import threading;
 import from typing { Any }
 
 
@@ -11,19 +12,13 @@ import from typing { Any }
 
 glob _registry: list = [];
 glob _executors: dict = {};
-glob _send_fn: Any = None;
-
-
-"""Wire the send_command function from agent.jac."""
-def init_send(send_fn: Any) -> None {
-    global _send_fn;
-    _send_fn = send_fn;
-}
+glob _local: Any = threading.local();  # thread-local storage for send_fn
 
 
 def _send(action: str, data: dict | None = None) -> Any {
-    if _send_fn is None { raise Exception("Tools not initialized. Call init_send() first."); }
-    return _send_fn(action, data);
+    fn: Any = getattr(_local, "send_fn", None);
+    if fn is None { raise Exception("No session send_fn. Tool called outside of execute()."); }
+    return fn(action, data);
 }
 
 
@@ -52,7 +47,10 @@ def tool(description: str, props: dict | None = None, required: list | None = No
 def get_tools() -> list { return _registry; }
 
 
-def execute(name: str, args: dict) -> str {
+def execute(name: str, args: dict, send_fn: Any) -> str {
+    # Set send_fn in THIS worker thread so _send() calls route to the right canvas.
+    # threading.local ensures concurrent users never share state.
+    _local.send_fn = send_fn;
     fn: Any = _executors.get(name);
     if fn is not None {
         try { return fn(args); }
