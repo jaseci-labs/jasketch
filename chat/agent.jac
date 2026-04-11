@@ -7,11 +7,10 @@ import sys;
 import threading;
 import uuid;
 
-import subprocess;
 import websockets;
 import litellm;
 import from typing { Any }
-import from chat.agent_tools { get_tools, execute }
+import from .agent_tools { get_tools, execute }
 
 glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "ws://localhost:9601");
 glob CHAT_PORT: int = int(os.environ.get("JASKETCH_CHAT_PORT", "9602"));
@@ -231,8 +230,7 @@ async def _handler(ws: Any) -> None {
 
 def _boot() -> None {
     log("Booting...");
-    # Start relay server as a subprocess — keeps it fully isolated, avoids Jac import issues
-    subprocess.Popen(["jasketch-relay"], stderr=sys.stderr, stdout=sys.stdout);
+    # Relay is started at app level in main.jac before this agent loads
     threading.Thread(target=_relay_thread, daemon=True).start();
     _relay_ready.wait(timeout=5);
 
@@ -249,5 +247,3 @@ def _boot() -> None {
     }
     threading.Thread(target=_ws_server, daemon=True).start();
 }
-
-glob _booted: Any = _boot();
