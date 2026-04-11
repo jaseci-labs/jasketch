@@ -67,6 +67,7 @@ obj CanvasToolProvider {
                         "shapeText": {"type": "string", "description": "Label inside shape"},
                         "shapeTextColor": {"type": "string", "description": "Shape label color"},
                         "shapeTextFontSize": {"type": "number", "description": "Shape label font size"},
+                        "shapeTextFontFamily": {"type": "string", "description": "Font family for shape label text (e.g. Virgil, Inter, Georgia, Courier New)"},
                         "groupId": {"type": "string", "description": "Group ID for grouping elements"},
                         "points": {"type": "array", "description": "Freehand points [{x,y}]", "items": {"type": "object"}}
                     },

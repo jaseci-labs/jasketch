@@ -116,18 +116,18 @@ def:pub useChatSocket() -> dict {
             return;
         }
 
-        messagesRef.current = messagesRef.current.concat([{"id": nextId(), "role": "user", "content": message}]);
-        messages = messagesRef.current;
-        loadingRef.current = True;
-        isLoading = True;
-        currentAssistantRef.current = "";
-
         history = [];
         for m in messagesRef.current {
             if m.role == "user" or m.role == "assistant" {
                 history.push({"role": m.role, "content": m.content});
             }
         }
+
+        messagesRef.current = messagesRef.current.concat([{"id": nextId(), "role": "user", "content": message}]);
+        messages = messagesRef.current;
+        loadingRef.current = True;
+        isLoading = True;
+        currentAssistantRef.current = "";
 
         wsRef.current.send(JSON.stringify({
             "type": "chat",

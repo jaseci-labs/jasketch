@@ -47,11 +47,11 @@ async def _relay_connect() -> None {
                         if mt == "registered" {
                             # Relay sends currently connected sessions on registration
                             existing: list = m.get("connectedSessions", []);
-                            for sid in existing { _canvas_sessions.add(sid); }
+                            with _lock { for sid in existing { _canvas_sessions.add(sid); } }
                             continue;
                         }
-                        if mt == "canvasConnected" { _canvas_sessions.add(m.get("sessionId", "")); continue; }
-                        if mt == "canvasDisconnected" { _canvas_sessions.discard(m.get("sessionId", "")); continue; }
+                        if mt == "canvasConnected" { with _lock { _canvas_sessions.add(m.get("sessionId", "")); } continue; }
+                        if mt == "canvasDisconnected" { with _lock { _canvas_sessions.discard(m.get("sessionId", "")); } continue; }
                         rid: str = m.get("requestId", "");
                         e: Any = None;
                         with _lock { e = _pending.pop(rid, None); }
@@ -65,7 +65,7 @@ async def _relay_connect() -> None {
                 }
             }
         } except Exception as ex { log(f"Relay conn err: {ex}"); }
-        _ws = None; _connected = False; _canvas_sessions = set();
+        _ws = None; _connected = False; with _lock { _canvas_sessions = set(); }
         await asyncio.sleep(3);
     }
 }
@@ -81,7 +81,7 @@ def _relay_thread() -> None {
 def send_command(action: str, data: dict | None = None, session_id: str = "") -> Any {
     if (not _connected) or (_ws is None) { raise Exception("Not connected to relay."); }
     if not session_id { raise Exception("No sessionId provided."); }
-    if session_id not in _canvas_sessions { raise Exception(f"No canvas for session '{session_id}'. Open JaSketch in browser."); }
+    with _lock { if session_id not in _canvas_sessions { raise Exception(f"No canvas for session '{session_id}'. Open JaSketch in browser."); } }
     _relay_ready.wait(timeout=5);
     rid: str = str(uuid.uuid4());
     evt: Any = threading.Event();
@@ -217,6 +217,7 @@ async def _chat_loop(ws: Any, api_key: str, model: str, msgs: list, session_id: 
                 chat_history=chat_history,
                 system_prompt=SYSTEM_PROMPT
             ) {
+                # stream_event is of type StreamEvent (with event_type: str, data: dict)
                 event_type: str = stream_event.event_type;
                 event_data: dict = stream_event.data;
 
@@ -239,8 +240,14 @@ async def _chat_loop(ws: Any, api_key: str, model: str, msgs: list, session_id: 
                             result=str(event_data.get("result", ""))),
                         event_loop
                     ).result();
+                } elif event_type == "thought" {
+                    asyncio.run_coroutine_threadsafe(
+                        _ws_send(ws, "thought",
+                            content=event_data.get("content", "")),
+                        event_loop
+                    ).result();
                 }
-                # thought / steps_done / usage events dropped (not in WS protocol)
+                # steps_done / usage events dropped (not in WS protocol)
             }
             asyncio.run_coroutine_threadsafe(_ws_send(ws, "done"), event_loop).result();
         } except Exception as error {
