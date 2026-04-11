@@ -17,6 +17,7 @@ dependencies = [
 [project.scripts]
 jasketch-mcp-server = "jasketch_mcp.__main__:run_server"
 jasketch-mcp-server-http = "jasketch_mcp.__main__:run_server_http"
+jasketch-relay = "jasketch_mcp.__main__:run_relay"
 
 [tool.setuptools.package-data]
 jasketch_mcp = ["*.jac"]

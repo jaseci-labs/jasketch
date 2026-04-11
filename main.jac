@@ -1,22 +1,10 @@
 """Main entry point for JaSketch - Modern Whiteboard Application."""
 
-import from typing { Any }
-import os;
-import from infrastructure.relay { start_relay_server }
-
-# Start relay by default unless explicitly disabled via JASKETCH_START_RELAY (helps avoid port conflicts when turned off in multi-process/reload scenarios)
-glob _relay_started: Any = start_relay_server() if os.environ.get("JASKETCH_START_RELAY", "true").lower() == "true" else None;
-
-# Load and initialize agent
-import from chat.agent { _boot }
-glob _agent_booted: Any = _boot();
-
 cl {
     # Client-side imports
     import from react { useRef }
     import from .components.layout.TopBar { TopBar }
     import from .components.layout.Sidebar { Sidebar }
-    import from .components.layout.ChatPanel { ChatPanel }
     import from .components.Canvas { Canvas }
     import ".styles.css";
 
@@ -34,9 +22,6 @@ cl {
 
         # Selection state (updated by Canvas via callback)
         has selectedElement: any = None;
-
-        # Chat panel state
-        has chatOpen: bool = False;
 
         # Refs for cross-component communication
         clearCanvasRef = useRef(None);
@@ -109,11 +94,6 @@ cl {
                         onToolChange={lambda tool: any -> None { currentTool = tool; }}
                     />
                 </div>
-
-                <ChatPanel
-                    isOpen={chatOpen}
-                    onToggle={lambda -> None { chatOpen = not chatOpen; }}
-                />
 
                 <div className="absolute bottom-3 right-4 z-10 pointer-events-none">
                     <span className="text-[10px] tracking-wider text-gray-300 font-medium uppercase">

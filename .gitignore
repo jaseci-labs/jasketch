@@ -231,4 +231,3 @@ package-lock.json
 .jac/
 *.session
 *.session.*
-.claude/
