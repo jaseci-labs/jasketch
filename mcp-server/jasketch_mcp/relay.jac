@@ -1,143 +1,224 @@
-"""JaSketch WebSocket Relay Server.
+"""JaSketch WebSocket Relay Server - session-isolated, multi-controller.
 
-Pairs MCP controllers with browser canvas clients.
-Both connect as WebSocket clients to this relay.
+Each browser tab registers as a canvas with a unique sessionId.
+Controllers (AI agents, MCP tools) are global — they can target any session.
+Commands are routed to the correct canvas via sessionId in each message.
+Responses route back to the originating controller via requestId tracking.
 
 Protocol:
-  On connect, client sends: {"role": "controller"} or {"role": "canvas"}
-  Controller sends commands -> relay forwards to canvas
-  Canvas sends responses -> relay forwards to controller
+  Canvas:     {"role": "canvas",      "sessionId": "<uuid>"}
+  Controller: {"role": "controller"}
+  Command:    {"requestId": "r1", "sessionId": "<uuid>", "action": "...", "data": {...}}
+  Response:   {"requestId": "r1", "success": true, "data": {...}}
+
+State:
+  _canvases[sessionId]    = ws                              (one canvas per tab)
+  _controllers            = [ws, ...]                       (all agents, global)
+  _request_map[requestId] = {"ctrl": ws, "session_id": str} (response routing)
 """
 
 import asyncio;
 import json;
 import os;
+import re;
 import sys;
+import threading;
 
 import websockets;
 import from typing { Any }
 
 glob PORT: int = int(os.environ.get("JASKETCH_RELAY_PORT", "9601"));
 
-# Simple pairing: one controller <-> one canvas
-glob controller: Any = None;
-glob canvas: Any = None;
+glob _canvases: dict = {};      # sessionId -> ws
+glob _controllers: Any = [];    # [ws, ...]
+glob _request_map: dict = {};   # requestId -> {"ctrl": ws, "session_id": str}
 
 
-"""Log to stderr."""
 def log(msg: str) -> None {
     print(f"[relay] {msg}", file=sys.stderr, flush=True);
 }
 
+def _valid_session_id(sid: str) -> bool {
+    if not sid or len(sid) > 128 { return False; }
+    return bool(re.match(r'^[a-zA-Z0-9_\-]+$', sid));
+}
 
-"""Handle a single WebSocket connection."""
+
 async def handler(ws: Any) -> None {
-    global controller, canvas;
     role: str | None = None;
+    session_id: str = "";
 
     try {
         async for raw in ws {
             try {
                 msg: dict = json.loads(raw);
 
-                # Registration message
+                # ── Registration (first message only) ────────────────────────
                 if msg.get("role") is not None and role is None {
                     role = msg["role"];
 
                     if role == "controller" {
-                        controller = ws;
-                        log("Controller connected");
+                        _controllers.append(ws);
+                        log(f"Controller connected ({len(_controllers)} total)");
+                        sessions: Any = list(_canvases.keys());
                         await ws.send(json.dumps({
                             "type": "registered",
                             "role": "controller",
-                            "canvasConnected": canvas is not None
+                            "connectedSessions": sessions
                         }));
+
                     } elif role == "canvas" {
-                        canvas = ws;
-                        log("Canvas connected");
+                        sid: str = msg.get("sessionId", "");
+                        if not _valid_session_id(sid) {
+                            await ws.send(json.dumps({
+                                "type": "error",
+                                "message": "Invalid or missing sessionId. Must be alphanumeric/hyphens, max 128 chars."
+                            }));
+                            return;
+                        }
+                        session_id = sid;
+                        _canvases[session_id] = ws;
+                        log(f"Canvas connected: session={session_id}");
                         await ws.send(json.dumps({
                             "type": "registered",
-                            "role": "canvas"
+                            "role": "canvas",
+                            "sessionId": session_id
                         }));
-                        # Notify controller that canvas is available
-                        if controller is not None {
-                            try {
-                                await controller.send(json.dumps({
-                                    "type": "canvasConnected"
-                                }));
-                            } except Exception {
-                                _ = 0;
-                            }
+                        # Notify all controllers that this canvas is ready
+                        for ctrl in _controllers {
+                            try { await ctrl.send(json.dumps({"type": "canvasConnected", "sessionId": session_id})); }
+                            except Exception { _ = 0; }
                         }
                     }
                     continue;
                 }
 
-                # Relay messages between controller and canvas
-                if role == "controller" and canvas is not None {
-                    try {
-                        await canvas.send(raw);
-                    } except Exception {
-                        if msg.get("requestId") is not None {
+                # ── Controller → Canvas ───────────────────────────────────────
+                if role == "controller" {
+                    rid: str = msg.get("requestId", "");
+                    target_sid: str = msg.get("sessionId", "");
+
+                    if not _valid_session_id(target_sid) {
+                        if rid {
                             await ws.send(json.dumps({
-                                "requestId": msg["requestId"],
-                                "success": False,
-                                "error": "No canvas connected. Open jasketch in a browser."
+                                "requestId": rid, "success": False,
+                                "error": "Command missing valid sessionId."
                             }));
                         }
+                        continue;
                     }
-                } elif role == "canvas" and controller is not None {
-                    try {
-                        await controller.send(raw);
-                    } except Exception {
-                        _ = 0;
-                    }
-                } elif role == "controller" {
-                    # Canvas not connected, send error back
-                    if msg.get("requestId") is not None {
+
+                    if rid { _request_map[rid] = {"ctrl": ws, "session_id": target_sid}; }
+
+                    canvas_ws: Any = _canvases.get(target_sid);
+                    if canvas_ws is not None {
+                        try { await canvas_ws.send(raw); }
+                        except Exception {
+                            if rid {
+                                _request_map.pop(rid, None);
+                                await ws.send(json.dumps({
+                                    "requestId": rid, "success": False, "error": "Canvas send failed."
+                                }));
+                            }
+                        }
+                    } elif rid {
+                        _request_map.pop(rid, None);
                         await ws.send(json.dumps({
-                            "requestId": msg["requestId"],
-                            "success": False,
-                            "error": "No canvas connected. Open jasketch in a browser."
+                            "requestId": rid, "success": False,
+                            "error": f"No canvas for session '{target_sid}'. Open JaSketch in browser."
                         }));
                     }
-                }
-            } except Exception as e {
-                log(f"Bad message: {e}");
-            }
-        }
-    } except websockets.ConnectionClosed {
-        _ = 0;
-    }
 
-    # Cleanup on disconnect
-    if ws == controller {
-        controller = None;
-        log("Controller disconnected");
-    } elif ws == canvas {
-        canvas = None;
-        log("Canvas disconnected");
-        # Notify controller
-        if controller is not None {
-            try {
-                await controller.send(json.dumps({
-                    "type": "canvasDisconnected"
-                }));
-            } except Exception {
-                _ = 0;
+                # ── Canvas → Controller (response keyed by requestId) ─────────
+                } elif role == "canvas" {
+                    rid: str = msg.get("requestId", "");
+                    if rid {
+                        entry: Any = _request_map.pop(rid, None);
+                        if entry is not None {
+                            ctrl_ws: Any = entry["ctrl"];
+                            try { await ctrl_ws.send(raw); }
+                            except Exception { _ = 0; }
+                        }
+                    }
+                }
+
+            } except Exception as e { log(f"Bad message: {e}"); }
+        }
+    } except Exception { _ = 0; }
+
+    # ── Cleanup on disconnect ─────────────────────────────────────────────────
+    if role == "canvas" and session_id and _canvases.get(session_id) is ws {
+        _canvases.pop(session_id, None);
+        log(f"Canvas disconnected: session={session_id}");
+
+        # Actively fail all pending requests targeting this session
+        dead: Any = [];
+        items: Any = list(_request_map.items());
+        for (rid_key, entry_val) in items {
+            ev: Any = entry_val;
+            if ev["session_id"] == session_id { dead.append(rid_key); }
+        }
+        for dead_rid in dead {
+            dead_entry: Any = _request_map.pop(dead_rid, None);
+            if dead_entry is not None {
+                ctrl_ws: Any = dead_entry["ctrl"];
+                try {
+                    await ctrl_ws.send(json.dumps({
+                        "requestId": dead_rid, "success": False,
+                        "error": "Canvas disconnected."
+                    }));
+                } except Exception { _ = 0; }
             }
         }
+
+        # Notify all controllers
+        for ctrl in _controllers {
+            try { await ctrl.send(json.dumps({"type": "canvasDisconnected", "sessionId": session_id})); }
+            except Exception { _ = 0; }
+        }
+
+    } elif role == "controller" {
+        if ws in _controllers { _controllers.remove(ws); }
+        log(f"Controller disconnected ({len(_controllers)} remaining)");
+
+        # Release pending requests from this controller (no error response needed — controller is gone)
+        dead: Any = [];
+        items: Any = list(_request_map.items());
+        for (rid_key, entry_val) in items {
+            ev: Any = entry_val;
+            if ev["ctrl"] is ws { dead.append(rid_key); }
+        }
+        for dead_rid in dead { _request_map.pop(dead_rid, None); }
     }
 }
 
 
-with entry {
-    async def main() -> None {
-        async with websockets.serve(handler, "0.0.0.0", PORT) {
+"""Start relay in a background daemon thread. Blocks until the port is listening."""
+def start_relay_server() -> None {
+    ready: Any = threading.Event();
+
+    def _thread() -> None {
+        loop: Any = asyncio.new_event_loop();
+        asyncio.set_event_loop(loop);
+        async def _start() {
+            _srv: Any = await websockets.serve(handler, "0.0.0.0", PORT);
             log(f"WebSocket relay running on port {PORT}");
+            ready.set();
             await asyncio.Future();
         }
+        loop.run_until_complete(_start());
     }
 
+    threading.Thread(target=_thread, daemon=True).start();
+    ready.wait(timeout=5);
+}
+
+
+with entry {
+    async def main() {
+        _srv: Any = await websockets.serve(handler, "0.0.0.0", PORT);
+        log(f"WebSocket relay running on port {PORT}");
+        await asyncio.Future();
+    }
     asyncio.run(main());
 }

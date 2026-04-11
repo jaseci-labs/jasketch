@@ -231,14 +231,25 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         }
     }
 
+    def getSessionId() -> Any {
+        # Stable per browser tab — survives page refresh, cleared when tab closes
+        key = "jasketch_session_id";
+        sid = sessionStorage.getItem(key);
+        if not sid {
+            sid = crypto.randomUUID();
+            sessionStorage.setItem(key, sid);
+        }
+        return sid;
+    }
+
     def connect() -> None {
         url = getRelayUrl();
         ws = Reflect.construct(WebSocket, [url]);
 
         ws.onopen = lambda -> None {
             connectedRef.current = True;
-            # Register as canvas with the relay
-            ws.send(JSON.stringify({"role": "canvas"}));
+            # Register as canvas with a stable per-tab sessionId
+            ws.send(JSON.stringify({"role": "canvas", "sessionId": getSessionId()}));
             console.log("[JaSketch MCP] Connected to relay at " + url);
         };
 

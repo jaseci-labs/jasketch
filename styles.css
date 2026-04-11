@@ -207,3 +207,59 @@ button, input, select, textarea {
     background-image: radial-gradient(circle, #d1d5db 0.8px, transparent 0.8px);
     background-size: 24px 24px;
 }
+
+/* Chat panel glassmorphism */
+.chat-panel {
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+}
+
+/* Chat panel slide-in animation */
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.animate-slide-in-right {
+    animation: slideInRight 0.2s ease-out;
+}
+
+/* Chat input styling */
+.chat-input {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+}
+
+.chat-input::-webkit-scrollbar {
+    width: 4px;
+}
+
+.chat-input::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 2px;
+}
+
+/* Chat typing dots animation */
+.chat-typing-dots {
+    display: inline-block;
+    animation: typingPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes typingPulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+}
+
+/* Chat message animations */
+.chat-msg-user,
+.chat-msg-assistant,
+.chat-msg-tool,
+.chat-msg-error {
+    animation: fadeIn 0.15s ease-out;
+}
