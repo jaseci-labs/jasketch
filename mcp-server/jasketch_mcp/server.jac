@@ -20,7 +20,7 @@ glob MCP_PORT: int = int(os.environ.get("JASKETCH_MCP_PORT", "3003"));
 glob MCP_HOST: str = os.environ.get("JASKETCH_MCP_HOST", "0.0.0.0");
 
 # Thread-safe state
-glob _lock: Any = threading.Lock();
+glob _lock = threading.Lock();
 glob _ws: Any = None;
 glob _connected: bool = False;
 glob _canvas_sessions: Any = set();
@@ -58,18 +58,40 @@ async def _connect_to_relay() -> None {
 
                         if msg_type == "registered" {
                             existing: list = msg.get("connectedSessions", []);
-                            for sid in existing { _canvas_sessions.add(sid); }
-                            log(f"Registered as controller, {len(_canvas_sessions)} canvas(es) connected");
+                            count: int = 0;
+                            with _lock {
+                                for sid in existing { _canvas_sessions.add(sid); }
+                                count = len(_canvas_sessions);
+                            }
+                            log(f"Registered as controller, {count} canvas(es) connected");
                             continue;
                         }
                         if msg_type == "canvasConnected" {
-                            _canvas_sessions.add(msg.get("sessionId", ""));
-                            log(f"Canvas connected: {len(_canvas_sessions)} total");
+                            session_id: Any = msg.get("sessionId");
+                            if not isinstance(session_id, str) or not session_id {
+                                log(f"Ignoring canvasConnected: invalid sessionId (expected non-empty string, got {type(session_id).__name__})");
+                                continue;
+                            }
+                            count: int = 0;
+                            with _lock {
+                                _canvas_sessions.add(session_id);
+                                count = len(_canvas_sessions);
+                            }
+                            log(f"Canvas connected: {count} total");
                             continue;
                         }
                         if msg_type == "canvasDisconnected" {
-                            _canvas_sessions.discard(msg.get("sessionId", ""));
-                            log(f"Canvas disconnected: {len(_canvas_sessions)} remaining");
+                            session_id: Any = msg.get("sessionId");
+                            if not isinstance(session_id, str) or not session_id {
+                                log(f"Ignoring canvasDisconnected: invalid sessionId (expected non-empty string, got {type(session_id).__name__})");
+                                continue;
+                            }
+                            count: int = 0;
+                            with _lock {
+                                _canvas_sessions.discard(session_id);
+                                count = len(_canvas_sessions);
+                            }
+                            log(f"Canvas disconnected: {count} remaining");
                             continue;
                         }
 
@@ -99,7 +121,9 @@ async def _connect_to_relay() -> None {
 
         _ws = None;
         _connected = False;
-        _canvas_sessions = set();
+        with _lock {
+            _canvas_sessions.clear();
+        }
         log("Disconnected from relay, reconnecting in 3s...");
         await asyncio.sleep(3);
     }
@@ -120,8 +144,11 @@ def _start_relay_thread() -> None {
 def _resolve_session(session_id: str = "") -> str {
     sid: str = session_id or os.environ.get("JASKETCH_SESSION_ID", "");
     if sid { return sid; }
-    if len(_canvas_sessions) == 1 { return next(iter(_canvas_sessions)); }
-    if len(_canvas_sessions) == 0 { raise Exception("No canvas connected. Open JaSketch in browser."); }
+    with _lock {
+        session_count: int = len(_canvas_sessions);
+        if session_count == 1 { return next(iter(_canvas_sessions)); }
+        if session_count == 0 { raise Exception("No canvas connected. Open JaSketch in browser."); }
+    }
     raise Exception(f"Multiple canvases open. Set JASKETCH_SESSION_ID env var to select one.");
 }
 

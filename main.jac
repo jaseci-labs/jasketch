@@ -1,9 +1,11 @@
 """Main entry point for JaSketch - Modern Whiteboard Application."""
 
 import from typing { Any }
+import os;
 import from infrastructure.relay { start_relay_server }
 
-glob _relay_started: Any = start_relay_server();
+# Only start relay if explicitly enabled (prevents port conflicts in multi-process/reload scenarios)
+glob _relay_started: Any = start_relay_server() if os.environ.get("JASKETCH_START_RELAY", "true").lower() == "true" else None;
 
 # Load and initialize agent
 import from chat.agent { _boot }
