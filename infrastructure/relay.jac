@@ -85,9 +85,16 @@ async def handler(ws: Any) -> None {
                             "sessionId": session_id
                         }));
                         # Notify all controllers that this canvas is ready
+                        dead_ctrls: list = [];
                         for ctrl in _controllers {
                             try { await ctrl.send(json.dumps({"type": "canvasConnected", "sessionId": session_id})); }
-                            except Exception { _ = 0; }
+                            except Exception { dead_ctrls.append(ctrl); }
+                        }
+                        # Prune dead controllers
+                        for ctrl in dead_ctrls {
+                            if ctrl in _controllers { _controllers.remove(ctrl); }
+                            dead_reqs: list = [rid for (rid, e) in list(_request_map.items()) if e["ctrl"] is ctrl];
+                            for rid in dead_reqs { _request_map.pop(rid, None); }
                         }
                     }
                     continue;
@@ -171,10 +178,16 @@ async def handler(ws: Any) -> None {
             }
         }
 
-        # Notify all controllers
+        # Notify all controllers, prune dead ones
+        dead_ctrls: list = [];
         for ctrl in _controllers {
             try { await ctrl.send(json.dumps({"type": "canvasDisconnected", "sessionId": session_id})); }
-            except Exception { _ = 0; }
+            except Exception { dead_ctrls.append(ctrl); }
+        }
+        for ctrl in dead_ctrls {
+            if ctrl in _controllers { _controllers.remove(ctrl); }
+            dead_reqs: list = [rid for (rid, e) in list(_request_map.items()) if e["ctrl"] is ctrl];
+            for rid in dead_reqs { _request_map.pop(rid, None); }
         }
 
     } elif role == "controller" {
@@ -214,11 +227,3 @@ def start_relay_server() -> None {
 }
 
 
-with entry {
-    async def main() {
-        _srv: Any = await websockets.serve(handler, "0.0.0.0", PORT);
-        log(f"WebSocket relay running on port {PORT}");
-        await asyncio.Future();
-    }
-    asyncio.run(main());
-}

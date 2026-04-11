@@ -1,6 +1,13 @@
 """Main entry point for JaSketch - Modern Whiteboard Application."""
 
-import from chat.agent { _boot as _chat_boot }
+import from typing { Any }
+import from infrastructure.relay { start_relay_server }
+
+glob _relay_started: Any = start_relay_server();
+
+# Load and initialize agent
+import from chat.agent { _boot }
+glob _agent_booted: Any = _boot();
 
 cl {
     # Client-side imports
