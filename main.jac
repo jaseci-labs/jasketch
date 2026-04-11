@@ -4,7 +4,7 @@ import from typing { Any }
 import os;
 import from infrastructure.relay { start_relay_server }
 
-# Only start relay if explicitly enabled (prevents port conflicts in multi-process/reload scenarios)
+# Start relay by default unless explicitly disabled via JASKETCH_START_RELAY (helps avoid port conflicts when turned off in multi-process/reload scenarios)
 glob _relay_started: Any = start_relay_server() if os.environ.get("JASKETCH_START_RELAY", "true").lower() == "true" else None;
 
 # Load and initialize agent
