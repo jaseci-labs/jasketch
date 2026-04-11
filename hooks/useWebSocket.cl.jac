@@ -72,7 +72,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             elems = hook.elements;
             result = [];
             for el in elems {
-                if not data.type or el.type == data.type {
+                if el and (not data.type or el.type == data.type) {
                     result.push({"id": el.id, "element": el});
                 }
             }
