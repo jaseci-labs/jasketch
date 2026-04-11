@@ -39,45 +39,32 @@ def:pub useChatSocket() -> dict {
 
         if data.type == "token" {
             currentAssistantRef.current = currentAssistantRef.current + data.content;
-            cur = messagesRef.current.slice();
-            if cur.length > 0 and cur[cur.length - 1].role == "assistant" {
-                cur[cur.length - 1] = {
-                    "id": cur[cur.length - 1].id,
+            if messagesRef.current.length > 0 and messagesRef.current[messagesRef.current.length - 1].role == "assistant" {
+                messagesRef.current = messagesRef.current.slice(0, messagesRef.current.length - 1).concat([{
+                    "id": messagesRef.current[messagesRef.current.length - 1].id,
                     "role": "assistant",
                     "content": currentAssistantRef.current
-                };
+                }]);
             } else {
-                cur.push({"id": nextId(), "role": "assistant", "content": currentAssistantRef.current});
+                messagesRef.current = messagesRef.current.concat([{"id": nextId(), "role": "assistant", "content": currentAssistantRef.current}]);
             }
-            messagesRef.current = cur;
-            messages = cur;
+            messages = messagesRef.current;
         } elif data.type == "tool_call" {
-            cur = messagesRef.current.slice();
-            cur.push({"id": nextId(), "role": "tool", "content": "Using " + data.name + "...", "status": "running"});
-            messagesRef.current = cur;
-            messages = cur;
+            messagesRef.current = messagesRef.current.concat([{"id": nextId(), "role": "tool", "content": "Using " + data.name + "...", "status": "running"}]);
+            messages = messagesRef.current;
         } elif data.type == "tool_result" {
-            cur = messagesRef.current.slice();
-            i = cur.length - 1;
-            while i >= 0 {
-                if cur[i].role == "tool" and cur[i].status == "running" {
-                    cur[i] = {"id": cur[i].id, "role": "tool", "content": data.name + " done", "status": "done"};
-                    break;
-                }
-                i = i - 1;
+            if messagesRef.current.length > 0 and messagesRef.current[messagesRef.current.length - 1].role == "tool" and messagesRef.current[messagesRef.current.length - 1].status == "running" {
+                messagesRef.current = messagesRef.current.slice(0, messagesRef.current.length - 1).concat([{"id": messagesRef.current[messagesRef.current.length - 1].id, "role": "tool", "content": data.name + " done", "status": "done"}]);
             }
-            messagesRef.current = cur;
-            messages = cur;
+            messages = messagesRef.current;
             currentAssistantRef.current = "";
         } elif data.type == "done" {
             loadingRef.current = False;
             isLoading = False;
             currentAssistantRef.current = "";
         } elif data.type == "error" {
-            cur = messagesRef.current.slice();
-            cur.push({"id": nextId(), "role": "error", "content": data.message or "Unknown error"});
-            messagesRef.current = cur;
-            messages = cur;
+            messagesRef.current = messagesRef.current.concat([{"id": nextId(), "role": "error", "content": data.message or "Unknown error"}]);
+            messages = messagesRef.current;
             loadingRef.current = False;
             isLoading = False;
             currentAssistantRef.current = "";
@@ -129,20 +116,18 @@ def:pub useChatSocket() -> dict {
             return;
         }
 
-        cur = messagesRef.current.slice();
-        cur.push({"id": nextId(), "role": "user", "content": message});
-        messagesRef.current = cur;
-        messages = cur;
-        loadingRef.current = True;
-        isLoading = True;
-        currentAssistantRef.current = "";
-
         history = [];
         for m in messagesRef.current {
             if m.role == "user" or m.role == "assistant" {
                 history.push({"role": m.role, "content": m.content});
             }
         }
+
+        messagesRef.current = messagesRef.current.concat([{"id": nextId(), "role": "user", "content": message}]);
+        messages = messagesRef.current;
+        loadingRef.current = True;
+        isLoading = True;
+        currentAssistantRef.current = "";
 
         wsRef.current.send(JSON.stringify({
             "type": "chat",

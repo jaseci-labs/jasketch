@@ -64,27 +64,16 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             items = data.elements or [];
             hook.addMultipleElements(items);
             addedIds = [];
-            ami = 0;
-            while ami < items.length {
-                addedIds.push(items[ami].id or "");
-                ami = ami + 1;
+            for it in items {
+                addedIds.push(it.id or "");
             }
             sendResponse(ws, requestId, True, {"ids": addedIds, "count": items.length, "action": "created"});
         } elif action == "getElements" {
             elems = hook.elements;
             result = [];
-            i = 0;
-            if data.type {
-                while i < elems.length {
-                    if elems[i] and elems[i].type == data.type {
-                        result.push({"id": elems[i].id, "element": elems[i]});
-                    }
-                    i = i + 1;
-                }
-            } else {
-                while i < elems.length {
-                    result.push({"id": elems[i].id, "element": elems[i]});
-                    i = i + 1;
+            for el in elems {
+                if el and (not data.type or el.type == data.type) {
+                    result.push({"id": el.id, "element": el});
                 }
             }
             sendResponse(ws, requestId, True, {"elements": result, "total": elems.length});
@@ -93,12 +82,10 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             changes = data.changes or {};
             elems = hook.elements;
             foundEl = None;
-            uei = 0;
-            while uei < elems.length {
-                if elems[uei] and elems[uei].id == targetId {
-                    foundEl = elems[uei];
+            for el in elems {
+                if el and el.id == targetId {
+                    foundEl = el;
                 }
-                uei = uei + 1;
             }
             if foundEl {
                 updated = Object.assign({}, foundEl, changes);
@@ -161,9 +148,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                 bbMinY = 999999;
                 bbMaxX = -999999;
                 bbMaxY = -999999;
-                bbi = 0;
-                while bbi < elems.length {
-                    bbEl = elems[bbi];
+                for bbEl in elems {
                     if bbEl.type == "line" or bbEl.type == "arrow" {
                         if bbEl.x1 < bbMinX { bbMinX = bbEl.x1; }
                         if bbEl.y1 < bbMinY { bbMinY = bbEl.y1; }
@@ -174,13 +159,11 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                         if bbEl.x2 < bbMinX { bbMinX = bbEl.x2; }
                         if bbEl.y2 < bbMinY { bbMinY = bbEl.y2; }
                     } elif bbEl.type == "freehand" and bbEl.points and bbEl.points.length > 0 {
-                        bbpi = 0;
-                        while bbpi < bbEl.points.length {
-                            if bbEl.points[bbpi].x < bbMinX { bbMinX = bbEl.points[bbpi].x; }
-                            if bbEl.points[bbpi].y < bbMinY { bbMinY = bbEl.points[bbpi].y; }
-                            if bbEl.points[bbpi].x > bbMaxX { bbMaxX = bbEl.points[bbpi].x; }
-                            if bbEl.points[bbpi].y > bbMaxY { bbMaxY = bbEl.points[bbpi].y; }
-                            bbpi = bbpi + 1;
+                        for bbPt in bbEl.points {
+                            if bbPt.x < bbMinX { bbMinX = bbPt.x; }
+                            if bbPt.y < bbMinY { bbMinY = bbPt.y; }
+                            if bbPt.x > bbMaxX { bbMaxX = bbPt.x; }
+                            if bbPt.y > bbMaxY { bbMaxY = bbPt.y; }
                         }
                     } elif bbEl.type == "text" {
                         textW = (bbEl.fontSize or 16) * (bbEl.text or "").length * 0.6;
@@ -198,7 +181,6 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                             if bbEl.y + (bbEl.height or 0) > bbMaxY { bbMaxY = bbEl.y + (bbEl.height or 0); }
                         }
                     }
-                    bbi = bbi + 1;
                 }
                 sendResponse(ws, requestId, True, {
                     "boundingBox": {
@@ -214,12 +196,10 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             elems = hook.elements;
             targetId = data.id;
             foundEl = None;
-            gei = 0;
-            while gei < elems.length {
-                if elems[gei] and elems[gei].id == targetId {
-                    foundEl = elems[gei];
+            for el in elems {
+                if el and el.id == targetId {
+                    foundEl = el;
                 }
-                gei = gei + 1;
             }
             if foundEl {
                 sendResponse(ws, requestId, True, {"id": targetId, "element": foundEl});

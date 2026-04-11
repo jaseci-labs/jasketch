@@ -223,7 +223,7 @@ def start_relay_server() -> None {
     }
 
     threading.Thread(target=_thread, daemon=True).start();
-    ready.wait(timeout=5);
+    if not ready.wait(timeout=5) { raise Exception(f"Relay server failed to start on port {PORT} within 5 seconds."); }
 }
 
 
