@@ -1,4 +1,4 @@
-"""JaSketch Chat Agent - relay + LLM chat handler."""
+"""JaSketch Chat Agent - relay + byllm ReAct chat handler."""
 
 import asyncio;
 import json;
@@ -8,9 +8,9 @@ import threading;
 import uuid;
 
 import websockets;
-import litellm;
+import from byllm.lib { Model, StreamEvent }
 import from typing { Any }
-import from .agent_tools { get_tools, execute }
+import from jasketch_mcp.canvas_tool_provider { CanvasToolProvider }
 
 glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "ws://localhost:9601");
 glob CHAT_PORT: int = int(os.environ.get("JASKETCH_CHAT_PORT", "9602"));
@@ -127,6 +127,62 @@ Keep responses brief.""";
 
 
 # ============================================================
+# Agent node
+# ============================================================
+
+node AgentNode {
+    has session_id: str;
+    has llm: Model;
+    has tool_provider: CanvasToolProvider;
+
+    def use_canvas_tool(name: str, arguments: str) -> str {
+        args: dict = {};
+        try {
+            if isinstance(arguments, dict) { args = arguments; }
+            elif arguments { args = json.loads(arguments); }
+        } except Exception { args = {}; }
+        return self.tool_provider.call_tool(name, args);
+    }
+
+    def run_agent(message: str, chat_history: list[dict], system_prompt: str) -> str
+        by self.llm(
+            tools=[self.use_canvas_tool],
+            max_react_iterations=MAX_ITERS,
+            stream=True,
+            logging=True,
+            incl_info={
+                "system_instructions": system_prompt,
+                "conversation_history": chat_history,
+                "available_canvas_tools": self.tool_provider.list_tools()
+            }
+        );
+}
+
+sem AgentNode.use_canvas_tool = """
+Execute a JaSketch canvas tool by name.
+The complete list of available tools with their descriptions and argument schemas
+is in available_canvas_tools in your context — use those exact names.
+Pass arguments as a flat dict matching the tool's inputSchema.
+Returns the tool result as a JSON string.
+""";
+sem AgentNode.use_canvas_tool.name = "Tool name from available_canvas_tools, e.g. 'create_elements'.";
+sem AgentNode.use_canvas_tool.arguments = "Tool arguments as a JSON-encoded string. Pass '{}' if no arguments needed.";
+
+sem AgentNode.run_agent = """You are an AI sketch assistant in JaSketch, a hand-drawn whiteboard.
+
+CANVAS: (0,0) top-left, X right, Y down, ~2000x1500. Start at (100,100).
+RULES: Use create_elements for 2+ items. Use draw_labeled_shape for shapes with text.
+Use draw_connector to connect shapes by index. Use add_title for titles.
+Check get_bounding_box before adding to existing content.
+LAYOUT: Shapes min 140x60. Gap 200px H, 150px V.
+COLORS: #1971c2 blue #1e1e1e black #e03131 red #2b8a3e green #f08c00 amber #868e96 gray
+Keep responses brief.""";
+sem AgentNode.run_agent.message = "The user's latest message.";
+sem AgentNode.run_agent.chat_history = "Prior conversation turns [{role, content}, ...].";
+sem AgentNode.run_agent.system_prompt = "High-level canvas assistant instructions.";
+
+
+# ============================================================
 # Chat WebSocket handler
 # ============================================================
 
@@ -135,64 +191,66 @@ async def _ws_send(ws: Any, t: str, **kw: Any) -> None {
     await ws.send(json.dumps(kw));
 }
 
-async def _acc_tc(acc: dict, tc: Any) -> None {
-    i: Any = getattr(tc, "index", 0);
-    if i not in acc { acc[i] = {"id": "", "name": "", "arguments": ""}; }
-    tid: Any = getattr(tc, "id", None);
-    if tid { acc[i]["id"] = tid; }
-    fn: Any = getattr(tc, "function", None);
-    if fn is not None {
-        n: Any = getattr(fn, "name", None);
-        a: Any = getattr(fn, "arguments", None);
-        if n { acc[i]["name"] = n; }
-        if a { acc[i]["arguments"] = acc[i]["arguments"] + a; }
-    }
-}
-
 async def _chat_loop(ws: Any, api_key: str, model: str, msgs: list, session_id: str) -> None {
-    tools: list = get_tools();
-    # Closure capturing session_id — passed directly into execute() per call.
-    # Never stored globally, so concurrent users never share send context.
+    llm: Model = Model(model_name=model, api_key=api_key, call_params={});
+
     def _session_send(action: str, data: dict | None = None) -> Any {
         return send_command(action, data, session_id);
     }
-    it: int = 0;
-    while it < MAX_ITERS {
-        it = it + 1;
-        resp: Any = await litellm.acompletion(model=model, messages=msgs, tools=tools, api_key=api_key, stream=True);
-        content: str = "";
-        tca: dict = {};
-        async for chunk in resp {
-            ch: Any = getattr(chunk, "choices", None);
-            if not ch or len(ch) == 0 { continue; }
-            d: Any = getattr(ch[0], "delta", None);
-            if d is None { continue; }
-            c: Any = getattr(d, "content", None);
-            if c { content = content + c; await _ws_send(ws, "token", content=c); }
-            tl: Any = getattr(d, "tool_calls", None);
-            if tl is not None { for tc in tl { await _acc_tc(tca, tc); } }
-        }
-        if len(tca) == 0 { await _ws_send(ws, "done"); return; }
-        calls: list = [];
-        for (_, td) in sorted(tca.items()) {
-            calls.append({"id": td["id"], "type": "function", "function": {"name": td["name"], "arguments": td["arguments"]}});
-        }
-        am: dict = {"role": "assistant", "tool_calls": calls};
-        if content { am["content"] = content; }
-        msgs.append(am);
-        for ci in calls {
-            tn: str = ci["function"]["name"];
-            ta: str = ci["function"]["arguments"];
-            await _ws_send(ws, "tool_call", name=tn, arguments=ta);
-            try { parsed: dict = json.loads(ta); }
-            except Exception { parsed = {}; }
-            tr: Any = await asyncio.to_thread(execute, tn, parsed, _session_send);
-            await _ws_send(ws, "tool_result", name=tn, result=tr);
-            msgs.append({"role": "tool", "tool_call_id": ci["id"], "content": tr});
+    tool_provider: CanvasToolProvider = CanvasToolProvider(send_fn=_session_send);
+
+    agent: AgentNode = AgentNode(
+        session_id=session_id, llm=llm, tool_provider=tool_provider
+    );
+
+    non_system_msgs: list = [msg for msg in msgs if msg.get("role") != "system"];
+    chat_history: list = non_system_msgs[:-1];
+    last_msg: dict[str, Any] = non_system_msgs[-1] if non_system_msgs else {};
+    user_message: str = str(last_msg.get("content", ""));
+
+    event_loop: Any = asyncio.get_event_loop();
+
+    def _run_in_thread() -> None {
+        try {
+            for stream_event in agent.run_agent(
+                message=user_message,
+                chat_history=chat_history,
+                system_prompt=SYSTEM_PROMPT
+            ) {
+                event_type: str = stream_event.event_type;
+                event_data: dict = stream_event.data;
+
+                if event_type == "chunk" {
+                    asyncio.run_coroutine_threadsafe(
+                        _ws_send(ws, "token", content=event_data.get("content", "")),
+                        event_loop
+                    ).result();
+                } elif event_type == "tool_call" {
+                    asyncio.run_coroutine_threadsafe(
+                        _ws_send(ws, "tool_call",
+                            name=event_data.get("tool", ""),
+                            arguments=json.dumps(event_data.get("args", {}))),
+                        event_loop
+                    ).result();
+                } elif event_type == "tool_result" {
+                    asyncio.run_coroutine_threadsafe(
+                        _ws_send(ws, "tool_result",
+                            name=event_data.get("tool", ""),
+                            result=str(event_data.get("result", ""))),
+                        event_loop
+                    ).result();
+                }
+                # thought / steps_done / usage events dropped (not in WS protocol)
+            }
+            asyncio.run_coroutine_threadsafe(_ws_send(ws, "done"), event_loop).result();
+        } except Exception as error {
+            asyncio.run_coroutine_threadsafe(
+                _ws_send(ws, "error", message=str(error)), event_loop
+            ).result();
         }
     }
-    await _ws_send(ws, "error", message="Max iterations.");
-    await _ws_send(ws, "done");
+
+    await asyncio.to_thread(_run_in_thread);
 }
 
 async def _handler(ws: Any) -> None {

@@ -1,4 +1,8 @@
-"""JaSketch MCP Server - connects to infra relay as a controller."""
+"""JaSketch MCP Server - connects to infra relay as a controller.
+
+Tool logic lives in canvas_tool_provider.jac (CanvasToolProvider).
+This file owns relay connection, session resolution, and thin @mcp.tool() wrappers.
+"""
 
 import asyncio;
 import json;
@@ -10,6 +14,7 @@ import uuid;
 import websockets;
 import from mcp.server.fastmcp { FastMCP }
 import from typing { Any }
+import from .canvas_tool_provider { CanvasToolProvider }
 
 glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "ws://localhost:9601");
 glob REQUEST_TIMEOUT: float = 40.0;
@@ -19,7 +24,7 @@ glob MCP_TRANSPORT: str = os.environ.get("JASKETCH_MCP_TRANSPORT", "stdio");
 glob MCP_PORT: int = int(os.environ.get("JASKETCH_MCP_PORT", "3003"));
 glob MCP_HOST: str = os.environ.get("JASKETCH_MCP_HOST", "0.0.0.0");
 
-# Thread-safe state
+# Thread-safe relay state
 glob _lock = threading.Lock();
 glob _ws: Any = None;
 glob _connected: bool = False;
@@ -31,15 +36,13 @@ glob _relay_ready: Any = threading.Event();
 glob mcp: FastMCP = FastMCP("jasketch", host=MCP_HOST, port=MCP_PORT, streamable_http_path="/mcp/");
 
 
-"""Log to stderr (stdout is reserved for MCP stdio transport)."""
 def log(msg: str) -> None {
     print(f"[jasketch-mcp] {msg}", file=sys.stderr, flush=True);
 }
 
 
-# --- MCP controller WebSocket connection ---
+# ── Relay connection ──────────────────────────────────────────────────────────
 
-"""Connect to relay as controller, handle responses."""
 async def _connect_to_relay() -> None {
     global _ws, _connected, _canvas_sessions;
 
@@ -69,7 +72,7 @@ async def _connect_to_relay() -> None {
                         if msg_type == "canvasConnected" {
                             session_id: Any = msg.get("sessionId");
                             if not isinstance(session_id, str) or not session_id {
-                                log(f"Ignoring canvasConnected: invalid sessionId (expected non-empty string, got {type(session_id).__name__})");
+                                log(f"Ignoring canvasConnected: invalid sessionId");
                                 continue;
                             }
                             count: int = 0;
@@ -83,7 +86,7 @@ async def _connect_to_relay() -> None {
                         if msg_type == "canvasDisconnected" {
                             session_id: Any = msg.get("sessionId");
                             if not isinstance(session_id, str) or not session_id {
-                                log(f"Ignoring canvasDisconnected: invalid sessionId (expected non-empty string, got {type(session_id).__name__})");
+                                log(f"Ignoring canvasDisconnected: invalid sessionId");
                                 continue;
                             }
                             count: int = 0;
@@ -110,13 +113,13 @@ async def _connect_to_relay() -> None {
                             }
                             evt.set();
                         }
-                    } except Exception as e {
-                        log(f"Bad message: {e}");
+                    } except Exception as error {
+                        log(f"Bad message: {error}");
                     }
                 }
             }
-        } except Exception as e {
-            log(f"Relay connection error: {e}");
+        } except Exception as error {
+            log(f"Relay connection error: {error}");
         }
 
         _ws = None;
@@ -130,7 +133,6 @@ async def _connect_to_relay() -> None {
 }
 
 
-"""Run relay connection in a dedicated thread."""
 def _start_relay_thread() -> None {
     global _relay_loop;
     _relay_loop = asyncio.new_event_loop();
@@ -149,16 +151,14 @@ def _resolve_session(session_id: str = "") -> str {
         if session_count == 1 { return next(iter(_canvas_sessions)); }
         if session_count == 0 { raise Exception("No canvas connected. Open JaSketch in browser."); }
     }
-    raise Exception(f"Multiple canvases open. Set JASKETCH_SESSION_ID env var to select one.");
+    raise Exception("Multiple canvases open. Set JASKETCH_SESSION_ID env var to select one.");
 }
 
 
 """Send a command to the canvas via relay (blocking, thread-safe)."""
 def _send_command(action: str, data: dict | None = None, session_id: str = "", timeout: float | None = None) -> Any {
     if (not _connected) or (_ws is None) {
-        raise Exception(
-            f"Not connected to relay. Ensure the relay is running at {RELAY_URL}"
-        );
+        raise Exception(f"Not connected to relay. Ensure the relay is running at {RELAY_URL}");
     }
     if not _relay_ready.wait(timeout=5) {
         raise Exception("Relay event loop not ready");
@@ -182,11 +182,11 @@ def _send_command(action: str, data: dict | None = None, session_id: str = "", t
     try {
         future: Any = asyncio.run_coroutine_threadsafe(_ws.send(payload), _relay_loop);
         future.result(timeout=5);
-    } except Exception as e {
+    } except Exception as error {
         with _lock {
             _pending.pop(request_id, None);
         }
-        raise Exception(f"Failed to send command: {e}");
+        raise Exception(f"Failed to send command: {error}");
     }
 
     effective_timeout: float = timeout if timeout is not None else REQUEST_TIMEOUT;
@@ -204,33 +204,19 @@ def _send_command(action: str, data: dict | None = None, session_id: str = "", t
 }
 
 
-# --- Element defaults ---
+# ── MCP tool dispatch helper ──────────────────────────────────────────────────
 
-"""Apply default styling to an element."""
-def _apply_defaults(el: dict) -> dict {
-    defaults: dict = {
-        "color": "#000000",
-        "strokeWidth": 2,
-        "fillColor": "transparent",
-        "lineStyle": "solid",
-        "opacity": 1.0
-    };
-    if el.get("type") in ("rectangle", "circle", "diamond") {
-        el.setdefault("width", 100);
-        el.setdefault("height", 100);
-    }
-    if el.get("type") == "text" {
-        el.setdefault("fontSize", 24);
-        el.setdefault("fontFamily", "Virgil");
-    }
-    for (k, v) in defaults.items() {
-        el.setdefault(k, v);
-    }
-    return el;
+"""Create a session-bound CanvasToolProvider and execute the named tool."""
+async def _run_mcp_tool(tool_name: str, args: dict, session_id: str | None) -> str {
+    sid: str = _resolve_session(session_id or "");
+    provider: CanvasToolProvider = CanvasToolProvider(
+        send_fn=lambda action, data: _send_command(action, data, sid)
+    );
+    return await asyncio.to_thread(provider.call_tool, tool_name, args);
 }
 
 
-# --- MCP Tools ---
+# ── MCP Tools ─────────────────────────────────────────────────────────────────
 
 """Create a single element on the JaSketch canvas. Types: rectangle, circle, diamond, line, arrow, text, freehand."""
 @mcp.tool()
@@ -262,39 +248,79 @@ async def create_element(
     points: list[dict] | None = None,
     session_id: str | None = None
 ) -> str {
-    sid: str = _resolve_session(session_id or "");
-    element: dict = {"type": type};
     params: dict = {
-        "x": x, "y": y, "width": width, "height": height,
-        "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-        "bendX": bendX, "bendY": bendY,
-        "color": color, "strokeWidth": strokeWidth,
-        "fillColor": fillColor, "lineStyle": lineStyle, "opacity": opacity,
-        "text": text, "fontSize": fontSize, "fontFamily": fontFamily,
-        "shapeText": shapeText, "shapeTextColor": shapeTextColor,
-        "shapeTextFontSize": shapeTextFontSize, "shapeTextFontFamily": shapeTextFontFamily,
-        "groupId": groupId, "points": points
+        "type": type, "x": x, "y": y, "width": width, "height": height,
+        "x1": x1, "y1": y1, "x2": x2, "y2": y2, "bendX": bendX, "bendY": bendY,
+        "color": color, "strokeWidth": strokeWidth, "fillColor": fillColor,
+        "lineStyle": lineStyle, "opacity": opacity, "text": text,
+        "fontSize": fontSize, "fontFamily": fontFamily, "shapeText": shapeText,
+        "shapeTextColor": shapeTextColor, "shapeTextFontSize": shapeTextFontSize,
+        "shapeTextFontFamily": shapeTextFontFamily, "groupId": groupId, "points": points
     };
-    for (k, v) in params.items() {
-        if v is not None {
-            element[k] = v;
-        }
-    }
-    element = _apply_defaults(element);
-    result: Any = await asyncio.to_thread(_send_command, "addElement", element, sid);
-    return json.dumps(result);
+    args: dict = {k: v for (k, v) in params.items() if v is not None};
+    return await _run_mcp_tool("create_element", args, session_id);
 }
 
 
 """Batch create multiple elements on the JaSketch canvas. More efficient for diagrams."""
 @mcp.tool()
 async def create_elements(elements: list[dict], session_id: str | None = None) -> str {
-    sid: str = _resolve_session(session_id or "");
-    processed: list = [_apply_defaults(dict(el)) for el in elements];
-    result: Any = await asyncio.to_thread(
-        _send_command, "addMultipleElements", {"elements": processed}, sid
-    );
-    return json.dumps(result);
+    return await _run_mcp_tool("create_elements", {"elements": elements}, session_id);
+}
+
+
+"""Connect two canvas shapes by index with an arrow/line. Auto-selects nearest edges."""
+@mcp.tool()
+async def draw_connector(
+    from_index: int,
+    to_index: int,
+    type: str = "arrow",
+    label: str | None = None,
+    color: str = "#1e1e1e",
+    line_style: str = "solid",
+    session_id: str | None = None
+) -> str {
+    args: dict = {
+        "from_index": from_index, "to_index": to_index,
+        "type": type, "color": color, "line_style": line_style
+    };
+    if label is not None { args["label"] = label; }
+    return await _run_mcp_tool("draw_connector", args, session_id);
+}
+
+
+"""Create an auto-sized shape with a centered label. Width is calculated from label length."""
+@mcp.tool()
+async def draw_labeled_shape(
+    shape: str,
+    label: str,
+    x: float,
+    y: float,
+    color: str = "#1e1e1e",
+    fill_color: str = "transparent",
+    width: float | None = None,
+    height: float | None = None,
+    session_id: str | None = None
+) -> str {
+    args: dict = {
+        "shape": shape, "label": label, "x": x, "y": y,
+        "color": color, "fill_color": fill_color
+    };
+    if width is not None { args["width"] = width; }
+    if height is not None { args["height"] = height; }
+    return await _run_mcp_tool("draw_labeled_shape", args, session_id);
+}
+
+
+"""Add a large title text element at the specified position."""
+@mcp.tool()
+async def add_title(
+    text: str,
+    x: float = 100,
+    y: float = 40,
+    session_id: str | None = None
+) -> str {
+    return await _run_mcp_tool("add_title", {"text": text, "x": x, "y": y}, session_id);
 }
 
 
@@ -305,27 +331,17 @@ async def query_elements(
     index: int | None = None,
     session_id: str | None = None
 ) -> str {
-    sid: str = _resolve_session(session_id or "");
-    params: dict = {};
-    if type is not None {
-        params["type"] = type;
-    }
-    if index is not None {
-        params["index"] = index;
-    }
-    result: Any = await asyncio.to_thread(_send_command, "getElements", params, sid);
-    return json.dumps(result);
+    args: dict = {};
+    if type is not None { args["type"] = type; }
+    if index is not None { args["index"] = index; }
+    return await _run_mcp_tool("query_elements", args, session_id);
 }
 
 
 """Update properties of an existing element by index."""
 @mcp.tool()
 async def update_element(index: int, changes: dict, session_id: str | None = None) -> str {
-    sid: str = _resolve_session(session_id or "");
-    result: Any = await asyncio.to_thread(
-        _send_command, "updateElement", {"index": index, "changes": changes}, sid
-    );
-    return json.dumps(result);
+    return await _run_mcp_tool("update_element", {"index": index, "changes": changes}, session_id);
 }
 
 
@@ -336,60 +352,42 @@ async def delete_element(
     indices: list[int] | None = None,
     session_id: str | None = None
 ) -> str {
-    sid: str = _resolve_session(session_id or "");
-    result: Any = None;
-    if indices is not None and len(indices) > 0 {
-        result = await asyncio.to_thread(
-            _send_command, "removeMultipleElements", {"indices": indices}, sid
-        );
-    } elif index is not None {
-        result = await asyncio.to_thread(
-            _send_command, "removeElement", {"index": index}, sid
-        );
-    } else {
-        return "Error: Provide index or indices";
-    }
-    return json.dumps(result);
+    args: dict = {};
+    if indices is not None { args["indices"] = indices; }
+    if index is not None { args["index"] = index; }
+    return await _run_mcp_tool("delete_element", args, session_id);
 }
 
 
 """Clear all elements from the JaSketch canvas."""
 @mcp.tool()
 async def clear_canvas(session_id: str | None = None) -> str {
-    sid: str = _resolve_session(session_id or "");
-    result: Any = await asyncio.to_thread(_send_command, "clearElements", None, sid);
-    return json.dumps(result);
+    return await _run_mcp_tool("clear_canvas", {}, session_id);
 }
 
 
-"""Get the current viewport state: zoom level, pan offset, canvas dimensions, and visible area in world coordinates."""
+"""Get the current viewport state: zoom level, pan offset, canvas dimensions, and visible area."""
 @mcp.tool()
 async def get_viewport(session_id: str | None = None) -> str {
-    sid: str = _resolve_session(session_id or "");
-    result: Any = await asyncio.to_thread(_send_command, "getViewport", None, sid);
-    return json.dumps(result);
+    return await _run_mcp_tool("get_viewport", {}, session_id);
 }
 
 
-"""Get a JPEG screenshot of the current canvas as a base64 data URL. Use this to visually verify what has been drawn."""
+"""Get a JPEG screenshot of the current canvas as a base64 data URL. Use to visually verify what has been drawn."""
 @mcp.tool()
 async def get_canvas_snapshot(session_id: str | None = None) -> str {
-    sid: str = _resolve_session(session_id or "");
-    result: Any = await asyncio.to_thread(_send_command, "getCanvasSnapshot", None, sid, 40);
-    return json.dumps(result);
+    return await _run_mcp_tool("get_canvas_snapshot", {}, session_id);
 }
 
 
 """Get the bounding box of all elements on the canvas. Useful for layout planning and finding free space."""
 @mcp.tool()
 async def get_bounding_box(session_id: str | None = None) -> str {
-    sid: str = _resolve_session(session_id or "");
-    result: Any = await asyncio.to_thread(_send_command, "getBoundingBox", None, sid);
-    return json.dumps(result);
+    return await _run_mcp_tool("get_bounding_box", {}, session_id);
 }
 
 
-# --- Start server ---
+# ── Start server ──────────────────────────────────────────────────────────────
 
 with entry {
     log(f"Starting MCP server, relay at {RELAY_URL}");
