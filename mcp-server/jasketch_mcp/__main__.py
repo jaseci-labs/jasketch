@@ -1,4 +1,4 @@
-"""CLI entry points for jasketch-mcp-server."""
+"""CLI entry points for jasketch-mcp-server and jasketch-relay."""
 
 import os
 import subprocess
@@ -23,8 +23,15 @@ def run_server_http():
     _run_jac("server.jac")
 
 
+def run_relay():
+    """Run the JaSketch WebSocket relay."""
+    _run_jac("relay.jac")
+
+
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "http":
+    if len(sys.argv) > 1 and sys.argv[1] == "relay":
+        run_relay()
+    elif len(sys.argv) > 1 and sys.argv[1] == "http":
         run_server_http()
     else:
         run_server()
