@@ -30,7 +30,7 @@ obj CanvasToolProvider {
         return [
             {
                 "name": "create_elements",
-                "description": "Batch create elements. ALWAYS prefer for 2+ items.\nEach: {type, x, y, width, height, color, fillColor, shapeText, ...}\nTypes: rectangle/circle/diamond (x,y,w,h+shapeText), line/arrow (x1,y1,x2,y2+bendX,bendY), text (x,y,text,fontSize).",
+                "description": "Batch create elements. ALWAYS prefer for 2+ items.\nShapes: {type, x, y, width, height, shapeText, color, fillColor, boundElements:[\"ar-id\"]}.\nArrows: {type:\"arrow\", curveStyle:\"elbow\", startBinding:{elementId,side}, endBinding:{elementId,side}} — NO x1/y1/x2/y2.\nServer resolves arrow coordinates from bindings automatically.\nText: {type:\"text\", x, y, text, fontSize}.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -632,18 +632,30 @@ obj CanvasToolProvider {
                 "start_position": {"x": 100, "y": 100},
                 "padding": 60
             },
-            "colors": {
-                "primary": "#1e1e1e",
-                "success": "#2f9e44",
-                "warning": "#f59f00",
-                "danger": "#f03e3e",
-                "info": "#1971c2",
-                "neutral": "#868e96"
+            "curve_styles": {
+                "sharp":  "Straight lines with V-angle bends — best for simple left-to-right flows and state machines",
+                "curved": "Smooth quadratic arcs — best for mindmaps and organic relational diagrams",
+                "elbow":  "Right-angle L/Z routing — best for architecture, flowchart, ER, and sequence diagrams (RECOMMENDED DEFAULT)"
             },
-            "fills": {
-                "transparent": "transparent",
-                "light": "#f1f3f5",
-                "dark": "#212529"
+            "line_styles": {
+                "solid":  "Direct dependency, mandatory data flow (default)",
+                "dashed": "Optional, asynchronous, or event-driven connection",
+                "dotted": "Annotation, inheritance hint, or conceptual/weak link"
+            },
+            "fill_palette": {
+                "user_facing":    {"color": "#1971c2", "fillColor": "#e7f5ff",  "note": "client, browser, mobile"},
+                "processing":     {"color": "#2b8a3e", "fillColor": "#ebfbee",  "note": "service, microservice, handler"},
+                "storage":        {"color": "#0c8599", "fillColor": "#e3fafc",  "note": "database, cache, queue"},
+                "gateway_router": {"color": "#e8590c", "fillColor": "#fff4e6",  "note": "API gateway, load balancer, proxy"},
+                "async_queue":    {"color": "#9c36b5", "fillColor": "#f8f0fc",  "note": "message queue, event bus, topic"},
+                "external":       {"color": "#868e96", "fillColor": "#f1f3f5",  "note": "third-party, external system"},
+                "decision":       {"color": "#f08c00", "fillColor": "#fff9db",  "note": "condition, branch — use diamond shape"},
+                "error_warning":  {"color": "#e03131", "fillColor": "#fff5f5",  "note": "error handler, dead-letter, alert"}
+            },
+            "shape_semantics": {
+                "rectangle": "Standard process, service, component, module",
+                "diamond":   "Decision point, condition, branch",
+                "circle":    "Start/end terminal, actor, external entity"
             },
             "shape_labels": {
                 "field": "shapeText",

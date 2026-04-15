@@ -50,6 +50,7 @@ import from .subagents {
 import from .subagents.analyzer { _set_analyst_provider }
 import from .subagents.synthesizer { _set_composer_provider }
 import from .subagents.refiner { _set_editor_provider }
+import from .llm_factory { create_llm }
 
 # ── Globals ────────────────────────────────────────────────────────────────────
 
@@ -485,32 +486,42 @@ def _ensure_agent_singletons(api_key: str, model_name: str) -> None {
     global _intent_router, _diagram_planner, _diagram_analyst, _diagram_composer, _diagram_editor;
 
     root_node: Any = root();
+    llm_model: Any = create_llm(model_name, api_key);
 
     if _intent_router is None {
         new_ir: IntentRouter = IntentRouter(model=model_name, api_key=api_key);
         _intent_router = new_ir;
         root_node ++> new_ir;
     }
+    _intent_router.llm = llm_model;
+
     if _diagram_planner is None {
         new_dp: DiagramPlanner = DiagramPlanner(model=model_name, api_key=api_key);
         _diagram_planner = new_dp;
         root_node ++> new_dp;
     }
+    _diagram_planner.llm = llm_model;
+
     if _diagram_analyst is None {
         new_da: DiagramAnalyst = DiagramAnalyst(model=model_name, api_key=api_key);
         _diagram_analyst = new_da;
         root_node ++> new_da;
     }
+    _diagram_analyst.llm = llm_model;
+
     if _diagram_composer is None {
         new_dc: DiagramComposer = DiagramComposer(model=model_name, api_key=api_key);
         _diagram_composer = new_dc;
         root_node ++> new_dc;
     }
+    _diagram_composer.llm = llm_model;
+
     if _diagram_editor is None {
         new_de: DiagramEditor = DiagramEditor(model=model_name, api_key=api_key);
         _diagram_editor = new_de;
         root_node ++> new_de;
     }
+    _diagram_editor.llm = llm_model;
 }
 
 

@@ -12,10 +12,11 @@ import json;
 node DiagramComposer {
     has model: str = "";
     has api_key: str = "";
+    has llm: Any = None;
 
     def compose(message: str, conversation_log: str, diagram_blueprint: str,
                 canvas_mode: str, existing_elements_json: str) -> str
-        by llm(
+        by self.llm(
             tools=[use_canvas_tool],
             max_react_iterations=8,
             incl_info={
@@ -38,17 +39,21 @@ Inputs (from incl_info):
   - conversation: rolling transcript of recent turns
 
 Workflow for replace mode:
-  1. Call use_canvas_tool("get_viewport", "{}") to get canvas dimensions
-  2. Follow diagram_blueprint if provided; otherwise infer structure from message
-  3. Design the COMPLETE elements[] array (all shapes, arrows, text labels)
-  4. Call use_canvas_tool("render_elements", "{\"elements\": [...]}") with ALL elements
-  5. Describe what was created
+  1. Call use_canvas_tool("get_drawing_guide", "{}") to load element schemas and styling palette
+  2. Call use_canvas_tool("get_viewport", "{}") to get canvas dimensions
+  3. Follow diagram_blueprint if provided; otherwise infer structure from message
+  4. Design the COMPLETE elements[] array (all shapes, arrows, text labels) using the styling guide
+  5. Run the PRE-RENDER CHECKLIST below — fix any issues before rendering
+  6. Call use_canvas_tool("render_elements", "{\"elements\": [...]}") with ALL elements
+  7. Describe what was created
 
 Workflow for additive mode:
-  1. Call use_canvas_tool("get_viewport", "{}") to get canvas dimensions and existing bounding box
-  2. Parse existing_elements_json to understand current layout
-  3. Position new elements beside/below existing ones (no overlap)
-  4. Call use_canvas_tool("create_elements", "{\"elements\": [...]}") to add without clearing
+  1. Call use_canvas_tool("get_drawing_guide", "{}") to load element schemas and styling palette
+  2. Call use_canvas_tool("get_viewport", "{}") to get canvas dimensions and existing bounding box
+  3. Parse existing_elements_json to understand current layout
+  4. Position new elements beside/below existing ones (no overlap)
+  5. Run the PRE-RENDER CHECKLIST below
+  6. Call use_canvas_tool("create_elements", "{\"elements\": [...]}") to add without clearing
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ELEMENT SCHEMAS
@@ -61,7 +66,7 @@ Shape (rectangle / circle / diamond):
     "x": 100, "y": 100, "width": 200, "height": 80,
     "shapeText": "Label text here",
     "color": "#1971c2",
-    "fillColor": "transparent",
+    "fillColor": "#e7f5ff",
     "strokeWidth": 2,
     "lineStyle": "solid",
     "opacity": 1.0,
@@ -73,6 +78,7 @@ Shape (rectangle / circle / diamond):
     CORRECT:   "boundElements": ["ar1", "ar2"]
     WRONG:     "boundElements": [{"id":"ar1","type":"arrow"}]
   - List EVERY arrow ID that connects to this shape.
+  - Always set a semantic fillColor — see STYLING GUIDE below.
 
 Arrow:
   {
@@ -81,7 +87,7 @@ Arrow:
     "color": "#1e1e1e",
     "strokeWidth": 2,
     "lineStyle": "solid",
-    "curveStyle": "curved",
+    "curveStyle": "elbow",
     "opacity": 1.0,
     "startBinding": {"elementId": "<source-shape-id>", "side": "right"},
     "endBinding":   {"elementId": "<target-shape-id>", "side": "left"},
@@ -108,6 +114,35 @@ Text label (standalone):
   }
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STYLING GUIDE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+curveStyle — choose based on diagram type:
+  "elbow"  → right-angle L/Z routing — USE FOR: architecture, flowchart, ER, sequence diagrams (DEFAULT)
+  "curved" → smooth arcs — USE FOR: mindmaps, organic/relational diagrams
+  "sharp"  → straight V-angle bends — USE FOR: simple linear flows, state machines
+
+lineStyle — choose based on connection semantics:
+  "solid"  → direct dependency, mandatory data flow (DEFAULT)
+  "dashed" → optional, async, or event-driven connection
+  "dotted" → annotation, inheritance hint, or conceptual/weak link
+
+fillColor semantic palette — assign by node ROLE, not randomly:
+  User-facing (client, browser, mobile):     color="#1971c2"  fillColor="#e7f5ff"
+  Processing (service, handler, microservice): color="#2b8a3e"  fillColor="#ebfbee"
+  Storage (database, cache, queue):           color="#0c8599"  fillColor="#e3fafc"
+  Gateway/Router (API gw, load balancer):     color="#e8590c"  fillColor="#fff4e6"
+  Async/Queue (message bus, event topic):     color="#9c36b5"  fillColor="#f8f0fc"
+  External (third-party, external system):    color="#868e96"  fillColor="#f1f3f5"
+  Decision (condition, branch — diamond):     color="#f08c00"  fillColor="#fff9db"
+  Error/Warning (error handler, dead-letter): color="#e03131"  fillColor="#fff5f5"
+
+Shape type semantics:
+  "rectangle" → standard component, service, process, module
+  "diamond"   → decision point, condition, branch
+  "circle"    → start/end terminal, actor, external entity
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 LAYOUT RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   - Start at x=100, y=100
@@ -121,13 +156,25 @@ LAYOUT RULES
       startBinding.side = "bottom", endBinding.side = "top"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WORKED EXAMPLE — two shapes A → B (horizontal)
+PRE-RENDER CHECKLIST — verify ALL before calling render_elements
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Shape A: {"id":"a1","type":"rectangle","x":100,"y":100,"width":200,"height":80,"shapeText":"Service A","color":"#1971c2","fillColor":"transparent","strokeWidth":2,"lineStyle":"solid","opacity":1.0,"rotation":0,"boundElements":["ar1"]}
-Shape B: {"id":"b1","type":"rectangle","x":500,"y":100,"width":200,"height":80,"shapeText":"Service B","color":"#1971c2","fillColor":"transparent","strokeWidth":2,"lineStyle":"solid","opacity":1.0,"rotation":0,"boundElements":["ar1"]}
-Arrow:   {"id":"ar1","type":"arrow","color":"#1e1e1e","strokeWidth":2,"lineStyle":"solid","curveStyle":"curved","opacity":1.0,"startBinding":{"elementId":"a1","side":"right"},"endBinding":{"elementId":"b1","side":"left"},"boundElements":null}
+  ✓ Every arrow has startBinding.elementId pointing to a valid shape ID in the array
+  ✓ Every arrow has endBinding.elementId pointing to a valid shape ID in the array
+  ✓ Every shape lists ALL connected arrow IDs in boundElements: ["ar1", ...]
+  ✓ NO arrow has x, y, x1, y1, x2, y2, or points fields set
+  ✓ All element IDs are unique strings across the entire elements array
+  ✓ Every shape has a semantic fillColor (not all transparent)
+  ✓ curveStyle matches the diagram type (elbow for architecture/flowchart, curved for mindmaps)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WORKED EXAMPLE — two shapes A → B (horizontal, architecture style)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Shape A: {"id":"a1","type":"rectangle","x":100,"y":100,"width":200,"height":80,"shapeText":"Client","color":"#1971c2","fillColor":"#e7f5ff","strokeWidth":2,"lineStyle":"solid","opacity":1.0,"rotation":0,"boundElements":["ar1"]}
+Shape B: {"id":"b1","type":"rectangle","x":500,"y":100,"width":200,"height":80,"shapeText":"API Service","color":"#2b8a3e","fillColor":"#ebfbee","strokeWidth":2,"lineStyle":"solid","opacity":1.0,"rotation":0,"boundElements":["ar1"]}
+Arrow:   {"id":"ar1","type":"arrow","color":"#1e1e1e","strokeWidth":2,"lineStyle":"solid","curveStyle":"elbow","opacity":1.0,"startBinding":{"elementId":"a1","side":"right"},"endBinding":{"elementId":"b1","side":"left"},"boundElements":null}
 
 Note: x=500 = 100 + 200 + 200 (prev_x + prev_width + 200px gap)
+      Client uses user-facing palette (blue), API Service uses processing palette (green)
 
 User message: {{message}}
 

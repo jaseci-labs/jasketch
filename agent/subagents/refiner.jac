@@ -13,9 +13,10 @@ import json;
 node DiagramEditor {
     has model: str = "";
     has api_key: str = "";
+    has llm: Any = None;
 
     def revise(message: str, conversation_log: str) -> str
-        by llm(
+        by self.llm(
             tools=[use_canvas_tool],
             max_react_iterations=10,
             incl_info={
@@ -29,27 +30,26 @@ sem DiagramEditor.revise = """
 Modify the existing canvas diagram based on user request.
 
 Workflow:
-  1. Call use_canvas_tool("get_canvas_elements", "{}") to fetch the current diagram
-  2. Analyze the current elements
-  3. Choose a strategy:
+  1. Call use_canvas_tool("get_drawing_guide", "{}") to load element schemas and styling palette
+  2. Call use_canvas_tool("get_canvas_elements", "{}") to fetch the current diagram
+  3. Analyze the current elements
+  4. Choose a strategy:
      - Small changes (recolor, relabel, move 1-3 elements):
          use use_canvas_tool("update_element", "{\"index\": N, \"changes\": {field: value}}")
      - Structural changes (add layers, restructure, major additions):
          use use_canvas_tool("render_elements", "{\"elements\": [...]}")
-  4. Preserve element IDs when re-rendering for visual continuity
-  5. Describe what changed
+  5. Preserve element IDs when re-rendering for visual continuity
+  6. Describe what changed
 
 Arrow Binding Rules for full re-render (CRITICAL — follow exactly):
   - EVERY arrow MUST have both startBinding AND endBinding referencing valid shape IDs
   - Each shape's boundElements MUST list ALL arrow IDs connected to it
-  - Arrow format: {"id":"<id>","type":"arrow","x":<start-x>,"y":<start-y>,"points":[[0,0],[dx,dy]],...,
+  - Arrow format: {"id":"<id>","type":"arrow","curveStyle":"elbow",
                    "startBinding":{"elementId":"<src-id>","side":"<side>"},
                    "endBinding":{"elementId":"<dst-id>","side":"<side>"},"boundElements":null}
-  - Valid side values: "top","bottom","left","right","top-right","top-left","bottom-right","bottom-left"
-  - points[0] is always [0,0] (relative start); last point is [dx,dy] offset to end point
-  - arrow.x,y = physical position of the start point (source shape's connecting edge)
-  - For horizontal A→B: arrow.x=A.x+A.width, arrow.y=A.y+A.height/2,
-    points=[[0,0],[B.x-(A.x+A.width),0]], startBinding.side="right", endBinding.side="left"
+  - DO NOT set x, y, x1, y1, x2, y2, or points on arrows — server computes from bindings
+  - Valid side values: "top", "bottom", "left", "right" (no diagonals)
+  - Use semantic fillColor and curveStyle from the drawing guide to maintain visual quality
 
 User message: {{message}}
 
