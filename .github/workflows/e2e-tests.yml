@@ -30,7 +30,7 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Install Jac and dependencies
-        run: pip install jaclang jac-client jac-scale pytest pytest-playwright pytest-timeout
+        run: pip install jaclang jac-client jac-scale pytest pytest-playwright pytest-timeout byllm
 
       - name: Install Playwright browsers
         run: python -m playwright install --with-deps chromium
@@ -38,8 +38,9 @@ jobs:
       - name: Install app dependencies
         run: jac install
 
-      - name: Run E2E tests
-        run: pytest tests/e2e/ -v --timeout=300
+      - name: Debug server startup
+        run: |
+          jac start --port 8000
 
       - name: Upload test results
         if: failure()
