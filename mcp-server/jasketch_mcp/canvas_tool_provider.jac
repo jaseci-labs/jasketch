@@ -305,13 +305,48 @@ obj CanvasToolProvider {
         return (from_point, to_point);
     }
 
+    # ── Binding resolution ────────────────────────────────────────────────────
+
+    """Resolve startBinding/endBinding on an arrow to concrete x1,y1,x2,y2 coordinates.
+
+    id_map must be a dict of element_id -> element dict (shapes only).
+    Mutates el in-place and returns it. No-ops if bindings are missing or
+    the referenced shapes aren't in id_map (LLM may have provided coords directly).
+    """
+    def _resolve_arrow_bindings(el: dict, id_map: dict) -> dict {
+        if el.get("type") not in ("arrow", "line") { return el; }
+        start_b: Any = el.get("startBinding");
+        end_b: Any = el.get("endBinding");
+        if not (start_b and end_b) { return el; }
+        start_id: str = (start_b.get("elementId") if isinstance(start_b, dict) else "") or "";
+        end_id: str = (end_b.get("elementId") if isinstance(end_b, dict) else "") or "";
+        start_el: Any = id_map.get(start_id);
+        end_el: Any = id_map.get(end_id);
+        if not (start_el and end_el) { return el; }
+        start_edges: dict = self._compute_edges(start_el);
+        end_edges: dict = self._compute_edges(end_el);
+        start_side: str = (start_b.get("side") if isinstance(start_b, dict) else "") or "right";
+        end_side: str = (end_b.get("side") if isinstance(end_b, dict) else "") or "left";
+        # Fall back to the nearest valid side if the LLM specified a diagonal like "top-right"
+        valid_sides: list = ["top", "bottom", "left", "right"];
+        if start_side not in start_edges { start_side = "right" if "right" in start_edges else valid_sides[0]; }
+        if end_side not in end_edges { end_side = "left" if "left" in end_edges else valid_sides[0]; }
+        from_pt: dict = start_edges[start_side];
+        to_pt: dict = end_edges[end_side];
+        el["x1"] = from_pt["x"];
+        el["y1"] = from_pt["y"];
+        el["x2"] = to_pt["x"];
+        el["y2"] = to_pt["y"];
+        return el;
+    }
+
     # ── Tool implementations ──────────────────────────────────────────────────
 
     def _create_elements(args: dict) -> str {
-        elements: list = [
-            self._apply_defaults(dict(el))
-            for el in args.get("elements", [])
-        ];
+        raw: list = [self._apply_defaults(dict(el)) for el in args.get("elements", [])];
+        # Build a shape id_map from this batch so arrows can reference them
+        id_map: dict = {el["id"]: el for el in raw if el.get("id") and el.get("type") not in ("arrow", "line", "text")};
+        elements: list = [self._resolve_arrow_bindings(el, id_map) for el in raw];
         return json.dumps(self._send("addMultipleElements", {"elements": elements}));
     }
 
@@ -548,9 +583,10 @@ obj CanvasToolProvider {
 
     """Atomically replace canvas with a new elements[] array and auto-fit viewport."""
     def _render_elements(args: dict) -> str {
-        elements: list = [
-            self._apply_defaults(dict(el)) for el in args.get("elements", [])
-        ];
+        raw: list = [self._apply_defaults(dict(el)) for el in args.get("elements", [])];
+        # Build a shape id_map so arrows with startBinding/endBinding get x1,y1,x2,y2 resolved
+        id_map: dict = {el["id"]: el for el in raw if el.get("id") and el.get("type") not in ("arrow", "line", "text")};
+        elements: list = [self._resolve_arrow_bindings(el, id_map) for el in raw];
         self._send("setElements", {"elements": elements});
         return json.dumps({"action": "rendered", "count": len(elements)});
     }
@@ -564,10 +600,17 @@ obj CanvasToolProvider {
                 "rectangle": ["type", "x", "y", "width", "height"],
                 "circle": ["type", "x", "y", "width", "height"],
                 "diamond": ["type", "x", "y", "width", "height"],
-                "line": ["type", "x1", "y1", "x2", "y2"],
-                "arrow": ["type", "x1", "y1", "x2", "y2"],
+                "line": ["type", "startBinding", "endBinding"],
+                "arrow": ["type", "startBinding", "endBinding"],
                 "text": ["type", "x", "y", "text"],
                 "freehand": ["type", "x", "y", "points"]
+            },
+            "arrow_binding": {
+                "note": "Do NOT set x1/y1/x2/y2 or points on arrows — the server computes coordinates from bindings.",
+                "startBinding": {"elementId": "<source-shape-id>", "side": "right"},
+                "endBinding": {"elementId": "<target-shape-id>", "side": "left"},
+                "valid_sides": ["top", "bottom", "left", "right"],
+                "shape_boundElements": "List every connected arrow ID as a flat string array: [\"ar1\", \"ar2\"]"
             },
             "defaults": {
                 "color": "#1e1e1e",

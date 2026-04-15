@@ -3,11 +3,11 @@
 # ── Routing ────────────────────────────────────────────────────────────────────
 
 enum RouteTag {
-    NO_ROUTE,
-    ROUTE_PLAN,
-    ROUTE_SYNTHESIZE,
-    ROUTE_ANALYZE,
-    ROUTE_REFINE
+    NO_ROUTE = "NO_ROUTE",
+    ROUTE_PLAN = "ROUTE_PLAN",
+    ROUTE_SYNTHESIZE = "ROUTE_SYNTHESIZE",
+    ROUTE_ANALYZE = "ROUTE_ANALYZE",
+    ROUTE_REFINE = "ROUTE_REFINE"
 }
 sem RouteTag.NO_ROUTE = "Handle directly — send a conversational reply to the user, no agent needed";
 sem RouteTag.ROUTE_PLAN = "User wants to discuss, plan, or draw a diagram — route to DiagramPlanner";
@@ -42,8 +42,8 @@ sem BlueprintSpec.relationships = "Descriptions of how components connect, e.g. 
 sem BlueprintSpec.style = "Color scheme or visual style preferences, e.g. 'blue tones, minimal'";
 
 enum PlannerNextStep {
-    DONE,
-    SYNTHESIZE
+    DONE = "DONE",
+    SYNTHESIZE = "SYNTHESIZE"
 }
 sem PlannerNextStep.DONE = "Planning complete, no drawing needed this turn";
 sem PlannerNextStep.SYNTHESIZE = "Blueprint is ready and the diagram should be rendered immediately";
