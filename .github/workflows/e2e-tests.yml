@@ -39,7 +39,7 @@ jobs:
         run: jac install
 
       - name: Install local MCP server (editable, overrides PyPI)
-        run: pip install -e ./mcp-server --force-reinstall --no-deps
+        run: pip install -e ./mcp-server --force-reinstall --no-deps --config-settings editable_mode=compat
 
       - name: Debug server startup
         run: |
