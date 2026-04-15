@@ -38,12 +38,10 @@ jobs:
       - name: Install app dependencies
         run: jac install
 
-      - name: Remove PyPI jasketch-mcp-server (use local source)
-        run: pip uninstall -y jasketch-mcp-server || true
+      - name: Install local MCP server
+        run: pip install ./mcp-server --force-reinstall --no-deps
 
       - name: Debug server startup
-        env:
-          PYTHONPATH: ${{ github.workspace }}/mcp-server
         run: |
           jac start --port 8000
 
