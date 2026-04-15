@@ -159,6 +159,14 @@ def ChatMessage(props: dict) -> JsxElement {
             </div>
         </div>;
     }
+    if msg.role == "agent" {
+        agentStatusClass = msg.status == "running" and "bg-purple-50 text-purple-600" or "bg-purple-100 text-purple-700";
+        return <div className="flex justify-center">
+            <div className={"chat-msg-agent px-2.5 py-1 rounded-full text-[10px] font-medium " + agentStatusClass}>
+                {msg.status == "running" and "⚙ " or "✓ "}{msg.content}
+            </div>
+        </div>;
+    }
     return None;
 }
 

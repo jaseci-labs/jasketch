@@ -8,7 +8,7 @@ import from infrastructure.relay { start_relay_server }
 glob _relay_started: Any = start_relay_server() if os.environ.get("JASKETCH_START_RELAY", "true").lower() == "true" else None;
 
 # Load and initialize agent
-import from chat.agent { _boot }
+import from agent.server { _boot }
 glob _agent_booted: Any = _boot();
 
 cl {
