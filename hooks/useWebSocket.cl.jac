@@ -8,6 +8,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
     canvasRefRef = useRef(canvasRef);
     canvasHookRef = useRef(canvasHook);
     reconnectTimerRef = useRef(None);
+    pendingConfirmsRef = useRef({});
 
     # Keep refs current to avoid stale closures
     elementsHookRef.current = elementsHook;
@@ -64,41 +65,28 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             items = data.elements or [];
             hook.addMultipleElements(items);
             addedIds = [];
-            ami = 0;
-            while ami < items.length {
-                addedIds.push(items[ami].id or "");
-                ami = ami + 1;
+            for it in items {
+                addedIds.push(it.id or "");
             }
             sendResponse(ws, requestId, True, {"ids": addedIds, "count": items.length, "action": "created"});
         } elif action == "getElements" {
             elems = hook.elements;
             result = [];
-            i = 0;
-            if data.type {
-                while i < elems.length {
-                    if elems[i] and elems[i].type == data.type {
-                        result.push({"id": elems[i].id, "element": elems[i]});
-                    }
-                    i = i + 1;
-                }
-            } else {
-                while i < elems.length {
-                    result.push({"id": elems[i].id, "element": elems[i]});
-                    i = i + 1;
+            for el in elems {
+                if el and (not data.type or el.type == data.type) {
+                    result.push({"id": el.id, "element": el});
                 }
             }
             sendResponse(ws, requestId, True, {"elements": result, "total": elems.length});
         } elif action == "updateElement" {
             targetId = data.id;
             changes = data.changes or {};
-            elems = hook.elements;
+            updateElems = hook.elements;
             foundEl = None;
-            uei = 0;
-            while uei < elems.length {
-                if elems[uei] and elems[uei].id == targetId {
-                    foundEl = elems[uei];
+            for el in updateElems {
+                if el and el.id == targetId {
+                    foundEl = el;
                 }
-                uei = uei + 1;
             }
             if foundEl {
                 updated = Object.assign({}, foundEl, changes);
@@ -144,26 +132,24 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                 }
             });
         } elif action == "getCanvasSnapshot" {
-            canvas = canvasRefRef.current;
-            if canvas and canvas.current {
+            snapshotCvs = canvasRefRef.current;
+            if snapshotCvs and snapshotCvs.current {
                 # Use JPEG at 0.6 quality for smaller payload and faster transfer
-                dataUrl = canvas.current.toDataURL("image/jpeg", 0.6);
+                dataUrl = snapshotCvs.current.toDataURL("image/jpeg", 0.6);
                 sendResponse(ws, requestId, True, {"snapshot": dataUrl});
             } else {
                 sendError(ws, requestId, "Canvas not available");
             }
         } elif action == "getBoundingBox" {
-            elems = hook.elements;
-            if elems.length == 0 {
+            bbElems = hook.elements;
+            if bbElems.length == 0 {
                 sendResponse(ws, requestId, True, {"boundingBox": None, "elementCount": 0});
             } else {
                 bbMinX = 999999;
                 bbMinY = 999999;
                 bbMaxX = -999999;
                 bbMaxY = -999999;
-                bbi = 0;
-                while bbi < elems.length {
-                    bbEl = elems[bbi];
+                for bbEl in bbElems {
                     if bbEl.type == "line" or bbEl.type == "arrow" {
                         if bbEl.x1 < bbMinX { bbMinX = bbEl.x1; }
                         if bbEl.y1 < bbMinY { bbMinY = bbEl.y1; }
@@ -174,13 +160,11 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                         if bbEl.x2 < bbMinX { bbMinX = bbEl.x2; }
                         if bbEl.y2 < bbMinY { bbMinY = bbEl.y2; }
                     } elif bbEl.type == "freehand" and bbEl.points and bbEl.points.length > 0 {
-                        bbpi = 0;
-                        while bbpi < bbEl.points.length {
-                            if bbEl.points[bbpi].x < bbMinX { bbMinX = bbEl.points[bbpi].x; }
-                            if bbEl.points[bbpi].y < bbMinY { bbMinY = bbEl.points[bbpi].y; }
-                            if bbEl.points[bbpi].x > bbMaxX { bbMaxX = bbEl.points[bbpi].x; }
-                            if bbEl.points[bbpi].y > bbMaxY { bbMaxY = bbEl.points[bbpi].y; }
-                            bbpi = bbpi + 1;
+                        for bbPt in bbEl.points {
+                            if bbPt.x < bbMinX { bbMinX = bbPt.x; }
+                            if bbPt.y < bbMinY { bbMinY = bbPt.y; }
+                            if bbPt.x > bbMaxX { bbMaxX = bbPt.x; }
+                            if bbPt.y > bbMaxY { bbMaxY = bbPt.y; }
                         }
                     } elif bbEl.type == "text" {
                         textW = (bbEl.fontSize or 16) * (bbEl.text or "").length * 0.6;
@@ -198,7 +182,6 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                             if bbEl.y + (bbEl.height or 0) > bbMaxY { bbMaxY = bbEl.y + (bbEl.height or 0); }
                         }
                     }
-                    bbi = bbi + 1;
                 }
                 sendResponse(ws, requestId, True, {
                     "boundingBox": {
@@ -207,28 +190,136 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                         "width": bbMaxX - bbMinX,
                         "height": bbMaxY - bbMinY
                     },
-                    "elementCount": elems.length
+                    "elementCount": bbElems.length
                 });
             }
         } elif action == "getElementById" {
-            elems = hook.elements;
-            targetId = data.id;
-            foundEl = None;
-            gei = 0;
-            while gei < elems.length {
-                if elems[gei] and elems[gei].id == targetId {
-                    foundEl = elems[gei];
+            findElems = hook.elements;
+            findTargetId = data.id;
+            findEl = None;
+            for el in findElems {
+                if el and el.id == findTargetId {
+                    findEl = el;
                 }
-                gei = gei + 1;
             }
-            if foundEl {
-                sendResponse(ws, requestId, True, {"id": targetId, "element": foundEl});
+            if findEl {
+                sendResponse(ws, requestId, True, {"id": findTargetId, "element": findEl});
             } else {
-                sendError(ws, requestId, "Element not found: " + targetId);
+                sendError(ws, requestId, "Element not found: " + findTargetId);
             }
+        } elif action == "setElements" {
+            hook.clearElements();
+            newElements = data.elements or [];
+            hook.addMultipleElements(newElements);
+
+            # Auto-fit viewport: compute bounding box of all elements, then zoom to fit with 60px padding
+            setVp = viewportHookRef.current;
+            setCvs = canvasRefRef.current;
+            setCvWidth = 0;
+            setCvHeight = 0;
+            if setCvs and setCvs.current {
+                rect = setCvs.current.getBoundingClientRect();
+                setCvWidth = rect.width;
+                setCvHeight = rect.height;
+            }
+
+            # Calculate bounding box of all newly set elements
+            if newElements.length > 0 {
+                bbMinX = 999999;
+                bbMinY = 999999;
+                bbMaxX = -999999;
+                bbMaxY = -999999;
+                for el in newElements {
+                    if el.type == "line" or el.type == "arrow" {
+                        if el.x1 < bbMinX { bbMinX = el.x1; }
+                        if el.y1 < bbMinY { bbMinY = el.y1; }
+                        if el.x2 > bbMaxX { bbMaxX = el.x2; }
+                        if el.y2 > bbMaxY { bbMaxY = el.y2; }
+                        if el.x1 > bbMaxX { bbMaxX = el.x1; }
+                        if el.y1 > bbMaxY { bbMaxY = el.y1; }
+                        if el.x2 < bbMinX { bbMinX = el.x2; }
+                        if el.y2 < bbMinY { bbMinY = el.y2; }
+                    } elif el.type == "freehand" and el.points and el.points.length > 0 {
+                        for pt in el.points {
+                            if pt.x < bbMinX { bbMinX = pt.x; }
+                            if pt.y < bbMinY { bbMinY = pt.y; }
+                            if pt.x > bbMaxX { bbMaxX = pt.x; }
+                            if pt.y > bbMaxY { bbMaxY = pt.y; }
+                        }
+                    } elif el.type == "text" {
+                        textW = (el.fontSize or 16) * (el.text or "").length * 0.6;
+                        textH = (el.fontSize or 16) * 1.2;
+                        if el.x < bbMinX { bbMinX = el.x; }
+                        if el.y < bbMinY { bbMinY = el.y; }
+                        if el.x + textW > bbMaxX { bbMaxX = el.x + textW; }
+                        if el.y + textH > bbMaxY { bbMaxY = el.y + textH; }
+                    } else {
+                        # rectangle, circle, diamond, image
+                        if el.x != undefined {
+                            if el.x < bbMinX { bbMinX = el.x; }
+                            if el.y < bbMinY { bbMinY = el.y; }
+                            if el.x + (el.width or 0) > bbMaxX { bbMaxX = el.x + (el.width or 0); }
+                            if el.y + (el.height or 0) > bbMaxY { bbMaxY = el.y + (el.height or 0); }
+                        }
+                    }
+                }
+
+                # Compute zoom to fit with 60px padding on all sides, capped at 2x
+                padding = 60;
+                bbWidth = bbMaxX - bbMinX;
+                bbHeight = bbMaxY - bbMinY;
+                zoomX = (setCvWidth - 2 * padding) / bbWidth;
+                zoomY = (setCvHeight - 2 * padding) / bbHeight;
+                newZoom = Math.min(zoomX, zoomY, 2.0);
+                newZoom = Math.max(newZoom, 0.1);
+
+                # Center diagram with new zoom
+                centerX = (bbMinX + bbMaxX) / 2;
+                centerY = (bbMinY + bbMaxY) / 2;
+                newPanX = setCvWidth / 2 - centerX * newZoom;
+                newPanY = setCvHeight / 2 - centerY * newZoom;
+
+                # Update viewport via viewportHook
+                if setVp {
+                    setVp.setZoom(newZoom);
+                    setVp.setPanOffset({"x": newPanX, "y": newPanY});
+                }
+            }
+
+            sendResponse(ws, requestId, True, {"count": newElements.length, "action": "set"});
+        } elif action == "showConfirm" {
+            confirmId = data.confirmId;
+            message = data.message or "Replace canvas content?";
+            confirmResult = window.confirm(message);
+            if confirmResult {
+                pendingConfirmsRef.current[confirmId] = "ok";
+            } else {
+                pendingConfirmsRef.current[confirmId] = "cancel";
+            }
+            sendResponse(ws, requestId, True, {"received": True});
+        } elif action == "getConfirmResult" {
+            gcConfirmId = data.confirmId;
+            gcResult = pendingConfirmsRef.current[gcConfirmId];
+            if gcResult == undefined {
+                gcResult = "pending";
+            } else {
+                pendingConfirmsRef.current[gcConfirmId] = None;
+            }
+            sendResponse(ws, requestId, True, {"result": gcResult});
         } else {
             sendError(ws, requestId, "Unknown action: " + action);
         }
+    }
+
+    def getSessionId() -> Any {
+        # Stable per browser tab — survives page refresh, cleared when tab closes
+        key = "jasketch_session_id";
+        sid = sessionStorage.getItem(key);
+        if not sid {
+            sid = crypto.randomUUID();
+            sessionStorage.setItem(key, sid);
+        }
+        return sid;
     }
 
     def connect() -> None {
@@ -237,8 +328,8 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
 
         ws.onopen = lambda -> None {
             connectedRef.current = True;
-            # Register as canvas with the relay
-            ws.send(JSON.stringify({"role": "canvas"}));
+            # Register as canvas with a stable per-tab sessionId
+            ws.send(JSON.stringify({"role": "canvas", "sessionId": getSessionId()}));
             console.log("[JaSketch MCP] Connected to relay at " + url);
         };
 

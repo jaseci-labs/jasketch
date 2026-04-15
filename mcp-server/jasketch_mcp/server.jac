@@ -1,4 +1,8 @@
-"""JaSketch MCP Server - embeds relay + connects to canvas automatically."""
+"""JaSketch MCP Server - connects to infra relay as a controller.
+
+Tool logic lives in canvas_tool_provider.jac (CanvasToolProvider).
+This file owns relay connection, session resolution, and thin @mcp.tool() wrappers.
+"""
 
 import asyncio;
 import json;
@@ -8,147 +12,39 @@ import threading;
 import uuid;
 
 import websockets;
-import from websockets { serve }
 import from mcp.server.fastmcp { FastMCP }
 import from typing { Any }
+import from .canvas_tool_provider { CanvasToolProvider }
 
-glob RELAY_PORT: int = int(os.environ.get("JASKETCH_RELAY_PORT", "9601"));
-glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "wss://jasketch.jaseci.org/ws");
+glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "ws://localhost:9601");
 glob REQUEST_TIMEOUT: float = 40.0;
-glob _is_remote_relay: bool = "localhost" not in RELAY_URL and "127.0.0.1" not in RELAY_URL;
 
 # HTTP transport config (used when JASKETCH_MCP_TRANSPORT=streamable-http)
 glob MCP_TRANSPORT: str = os.environ.get("JASKETCH_MCP_TRANSPORT", "stdio");
 glob MCP_PORT: int = int(os.environ.get("JASKETCH_MCP_PORT", "3003"));
 glob MCP_HOST: str = os.environ.get("JASKETCH_MCP_HOST", "0.0.0.0");
 
-# Thread-safe state
-glob _lock: Any = threading.Lock();
+# Thread-safe relay state
+glob _lock = threading.Lock();
 glob _ws: Any = None;
 glob _connected: bool = False;
-glob _canvas_connected: bool = False;
+glob _canvas_sessions: Any = set();
 glob _pending: dict = {};
 glob _relay_loop: Any = None;
 glob _relay_ready: Any = threading.Event();
 
-# Relay state
-glob _relay_controller: Any = None;
-glob _relay_canvas: Any = None;
-
 glob mcp: FastMCP = FastMCP("jasketch", host=MCP_HOST, port=MCP_PORT, streamable_http_path="/mcp/");
 
 
-"""Log to stderr (stdout is reserved for MCP stdio transport)."""
 def log(msg: str) -> None {
     print(f"[jasketch-mcp] {msg}", file=sys.stderr, flush=True);
 }
 
 
-# --- Embedded WebSocket relay ---
+# ── Relay connection ──────────────────────────────────────────────────────────
 
-"""Handle a single WebSocket connection to the relay."""
-async def _relay_handler(ws: Any) -> None {
-    global _relay_controller, _relay_canvas;
-    role: str | None = None;
-
-    try {
-        async for raw in ws {
-            try {
-                msg: dict = json.loads(raw);
-
-                # Registration
-                if msg.get("role") is not None and role is None {
-                    role = msg["role"];
-
-                    if role == "controller" {
-                        _relay_controller = ws;
-                        log("Relay: controller connected");
-                        await ws.send(json.dumps({
-                            "type": "registered",
-                            "role": "controller",
-                            "canvasConnected": _relay_canvas is not None
-                        }));
-                    } elif role == "canvas" {
-                        _relay_canvas = ws;
-                        log("Relay: canvas connected");
-                        await ws.send(json.dumps({
-                            "type": "registered",
-                            "role": "canvas"
-                        }));
-                        if _relay_controller is not None {
-                            try {
-                                await _relay_controller.send(json.dumps({
-                                    "type": "canvasConnected"
-                                }));
-                            } except Exception {
-                                _ = 0;
-                            }
-                        }
-                    }
-                    continue;
-                }
-
-                # Relay messages between controller and canvas
-                if role == "controller" and _relay_canvas is not None {
-                    try {
-                        await _relay_canvas.send(raw);
-                    } except Exception {
-                        if msg.get("requestId") is not None {
-                            await ws.send(json.dumps({
-                                "requestId": msg["requestId"],
-                                "success": False,
-                                "error": "No canvas connected. Open jasketch in a browser."
-                            }));
-                        }
-                    }
-                } elif role == "canvas" and _relay_controller is not None {
-                    try {
-                        await _relay_controller.send(raw);
-                    } except Exception {
-                        _ = 0;
-                    }
-                } elif role == "controller" {
-                    if msg.get("requestId") is not None {
-                        await ws.send(json.dumps({
-                            "requestId": msg["requestId"],
-                            "success": False,
-                            "error": "No canvas connected. Open jasketch in a browser."
-                        }));
-                    }
-                }
-            } except Exception as e {
-                log(f"Relay: bad message: {e}");
-            }
-        }
-    } except websockets.ConnectionClosed {
-        _ = 0;
-    }
-
-    # Cleanup on disconnect
-    if ws == _relay_controller {
-        _relay_controller = None;
-        log("Relay: controller disconnected");
-    } elif ws == _relay_canvas {
-        _relay_canvas = None;
-        log("Relay: canvas disconnected");
-        if _relay_controller is not None {
-            try {
-                await _relay_controller.send(json.dumps({
-                    "type": "canvasDisconnected"
-                }));
-            } except Exception {
-                _ = 0;
-            }
-        }
-    }
-}
-
-
-# --- MCP controller WebSocket connection ---
-
-"""Connect to relay as controller, handle responses."""
 async def _connect_to_relay() -> None {
-    global _ws, _connected, _canvas_connected;
+    global _ws, _connected, _canvas_sessions;
 
     while True {
         try {
@@ -164,18 +60,41 @@ async def _connect_to_relay() -> None {
                         msg_type: str = msg.get("type", "");
 
                         if msg_type == "registered" {
-                            _canvas_connected = bool(msg.get("canvasConnected", False));
-                            log(f"Registered as controller, canvas: {_canvas_connected}");
+                            existing: list = msg.get("connectedSessions", []);
+                            count: int = 0;
+                            with _lock {
+                                for sid in existing { _canvas_sessions.add(sid); }
+                                count = len(_canvas_sessions);
+                            }
+                            log(f"Registered as controller, {count} canvas(es) connected");
                             continue;
                         }
                         if msg_type == "canvasConnected" {
-                            _canvas_connected = True;
-                            log("Canvas connected");
+                            session_id: Any = msg.get("sessionId");
+                            if not isinstance(session_id, str) or not session_id {
+                                log(f"Ignoring canvasConnected: invalid sessionId");
+                                continue;
+                            }
+                            count: int = 0;
+                            with _lock {
+                                _canvas_sessions.add(session_id);
+                                count = len(_canvas_sessions);
+                            }
+                            log(f"Canvas connected: {count} total");
                             continue;
                         }
                         if msg_type == "canvasDisconnected" {
-                            _canvas_connected = False;
-                            log("Canvas disconnected");
+                            session_id: Any = msg.get("sessionId");
+                            if not isinstance(session_id, str) or not session_id {
+                                log(f"Ignoring canvasDisconnected: invalid sessionId");
+                                continue;
+                            }
+                            count: int = 0;
+                            with _lock {
+                                _canvas_sessions.discard(session_id);
+                                count = len(_canvas_sessions);
+                            }
+                            log(f"Canvas disconnected: {count} remaining");
                             continue;
                         }
 
@@ -194,59 +113,52 @@ async def _connect_to_relay() -> None {
                             }
                             evt.set();
                         }
-                    } except Exception as e {
-                        log(f"Bad message: {e}");
+                    } except Exception as error {
+                        log(f"Bad message: {error}");
                     }
                 }
             }
-        } except Exception as e {
-            log(f"Relay connection error: {e}");
+        } except Exception as error {
+            log(f"Relay connection error: {error}");
         }
 
         _ws = None;
         _connected = False;
-        _canvas_connected = False;
+        with _lock {
+            _canvas_sessions.clear();
+        }
         log("Disconnected from relay, reconnecting in 3s...");
         await asyncio.sleep(3);
     }
 }
 
 
-"""Run embedded relay (if local) + controller connection in a dedicated thread."""
 def _start_relay_thread() -> None {
     global _relay_loop;
     _relay_loop = asyncio.new_event_loop();
     asyncio.set_event_loop(_relay_loop);
     _relay_ready.set();
+    _relay_loop.run_until_complete(_connect_to_relay());
+}
 
-    async def _run_local() -> None {
-        # Start embedded relay server, then connect as controller
-        async with serve(_relay_handler, "0.0.0.0", RELAY_PORT) {
-            log(f"Embedded relay running on port {RELAY_PORT}");
-            await _connect_to_relay();
-        }
-    }
 
-    if _is_remote_relay {
-        log(f"Remote relay mode — connecting directly to {RELAY_URL}");
-        _relay_loop.run_until_complete(_connect_to_relay());
-    } else {
-        _relay_loop.run_until_complete(_run_local());
+"""Resolve session ID — use explicit param, env var, or auto-select if only one canvas."""
+def _resolve_session(session_id: str = "") -> str {
+    sid: str = session_id or os.environ.get("JASKETCH_SESSION_ID", "");
+    if sid { return sid; }
+    with _lock {
+        session_count: int = len(_canvas_sessions);
+        if session_count == 1 { return next(iter(_canvas_sessions)); }
+        if session_count == 0 { raise Exception("No canvas connected. Open JaSketch in browser."); }
     }
+    raise Exception("Multiple canvases open. Set JASKETCH_SESSION_ID env var to select one.");
 }
 
 
 """Send a command to the canvas via relay (blocking, thread-safe)."""
-def _send_command(action: str, data: dict | None = None, timeout: float | None = None) -> Any {
+def _send_command(action: str, data: dict | None = None, session_id: str = "", timeout: float | None = None) -> Any {
     if (not _connected) or (_ws is None) {
-        raise Exception(
-            f"Not connected to relay. Ensure the relay is running at {RELAY_URL}"
-        );
-    }
-    if not _canvas_connected {
-        raise Exception(
-            "No canvas connected. Open jasketch in a browser."
-        );
+        raise Exception(f"Not connected to relay. Ensure the relay is running at {RELAY_URL}");
     }
     if not _relay_ready.wait(timeout=5) {
         raise Exception("Relay event loop not ready");
@@ -262,6 +174,7 @@ def _send_command(action: str, data: dict | None = None, timeout: float | None =
 
     payload: str = json.dumps({
         "requestId": request_id,
+        "sessionId": session_id,
         "action": action,
         "data": data if data is not None else {}
     });
@@ -269,11 +182,11 @@ def _send_command(action: str, data: dict | None = None, timeout: float | None =
     try {
         future: Any = asyncio.run_coroutine_threadsafe(_ws.send(payload), _relay_loop);
         future.result(timeout=5);
-    } except Exception as e {
+    } except Exception as error {
         with _lock {
             _pending.pop(request_id, None);
         }
-        raise Exception(f"Failed to send command: {e}");
+        raise Exception(f"Failed to send command: {error}");
     }
 
     effective_timeout: float = timeout if timeout is not None else REQUEST_TIMEOUT;
@@ -291,33 +204,19 @@ def _send_command(action: str, data: dict | None = None, timeout: float | None =
 }
 
 
-# --- Element defaults ---
+# ── MCP tool dispatch helper ──────────────────────────────────────────────────
 
-"""Apply default styling to an element."""
-def _apply_defaults(el: dict) -> dict {
-    defaults: dict = {
-        "color": "#000000",
-        "strokeWidth": 2,
-        "fillColor": "transparent",
-        "lineStyle": "solid",
-        "opacity": 1.0
-    };
-    if el.get("type") in ("rectangle", "circle", "diamond") {
-        el.setdefault("width", 100);
-        el.setdefault("height", 100);
-    }
-    if el.get("type") == "text" {
-        el.setdefault("fontSize", 24);
-        el.setdefault("fontFamily", "Virgil");
-    }
-    for (k, v) in defaults.items() {
-        el.setdefault(k, v);
-    }
-    return el;
+"""Create a session-bound CanvasToolProvider and execute the named tool."""
+async def _run_mcp_tool(tool_name: str, args: dict, session_id: str | None) -> str {
+    sid: str = _resolve_session(session_id or "");
+    provider: CanvasToolProvider = CanvasToolProvider(
+        send_fn=lambda action, data: _send_command(action, data, sid)
+    );
+    return await asyncio.to_thread(provider.call_tool, tool_name, args);
 }
 
 
-# --- MCP Tools ---
+# ── MCP Tools ─────────────────────────────────────────────────────────────────
 
 """Create a single element on the JaSketch canvas. Types: rectangle, circle, diamond, line, arrow, text, freehand."""
 @mcp.tool()
@@ -346,148 +245,178 @@ async def create_element(
     shapeTextFontSize: float | None = None,
     shapeTextFontFamily: str | None = None,
     groupId: str | None = None,
-    points: list[dict] | None = None
+    points: list[dict] | None = None,
+    session_id: str | None = None
 ) -> str {
-    element: dict = {"type": type, "id": str(uuid.uuid4())};
     params: dict = {
-        "x": x, "y": y, "width": width, "height": height,
-        "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-        "bendX": bendX, "bendY": bendY,
-        "color": color, "strokeWidth": strokeWidth,
-        "fillColor": fillColor, "lineStyle": lineStyle, "opacity": opacity,
-        "text": text, "fontSize": fontSize, "fontFamily": fontFamily,
-        "shapeText": shapeText, "shapeTextColor": shapeTextColor,
-        "shapeTextFontSize": shapeTextFontSize, "shapeTextFontFamily": shapeTextFontFamily,
-        "groupId": groupId, "points": points
+        "type": type, "x": x, "y": y, "width": width, "height": height,
+        "x1": x1, "y1": y1, "x2": x2, "y2": y2, "bendX": bendX, "bendY": bendY,
+        "color": color, "strokeWidth": strokeWidth, "fillColor": fillColor,
+        "lineStyle": lineStyle, "opacity": opacity, "text": text,
+        "fontSize": fontSize, "fontFamily": fontFamily, "shapeText": shapeText,
+        "shapeTextColor": shapeTextColor, "shapeTextFontSize": shapeTextFontSize,
+        "shapeTextFontFamily": shapeTextFontFamily, "groupId": groupId, "points": points
     };
-    for (k, v) in params.items() {
-        if v is not None {
-            element[k] = v;
-        }
-    }
-    element = _apply_defaults(element);
-    result: Any = await asyncio.to_thread(_send_command, "addElement", element);
-    return json.dumps(result);
+    args: dict = {k: v for (k, v) in params.items() if v is not None};
+    return await _run_mcp_tool("create_element", args, session_id);
 }
 
 
 """Batch create multiple elements on the JaSketch canvas. More efficient for diagrams."""
 @mcp.tool()
-async def create_elements(elements: list[dict]) -> str {
-    processed: list = [];
-    for el in elements {
-        item: dict = dict(el);
-        if "id" not in item {
-            item["id"] = str(uuid.uuid4());
-        }
-        processed.append(_apply_defaults(item));
-    }
-    result: Any = await asyncio.to_thread(
-        _send_command, "addMultipleElements", {"elements": processed}
-    );
-    return json.dumps(result);
+async def create_elements(elements: list[dict], session_id: str | None = None) -> str {
+    return await _run_mcp_tool("create_elements", {"elements": elements}, session_id);
 }
 
 
-"""Query elements on the JaSketch canvas. Optionally filter by type. Returns each element with its id."""
+"""Connect two canvas shapes by index with an arrow/line. Auto-selects nearest edges."""
+@mcp.tool()
+async def draw_connector(
+    from_index: int,
+    to_index: int,
+    type: str = "arrow",
+    label: str | None = None,
+    color: str = "#1e1e1e",
+    line_style: str = "solid",
+    session_id: str | None = None
+) -> str {
+    args: dict = {
+        "from_index": from_index, "to_index": to_index,
+        "type": type, "color": color, "line_style": line_style
+    };
+    if label is not None { args["label"] = label; }
+    return await _run_mcp_tool("draw_connector", args, session_id);
+}
+
+
+"""Create an auto-sized shape with a centered label. Width is calculated from label length."""
+@mcp.tool()
+async def draw_labeled_shape(
+    shape: str,
+    label: str,
+    x: float,
+    y: float,
+    color: str = "#1e1e1e",
+    fill_color: str = "transparent",
+    width: float | None = None,
+    height: float | None = None,
+    session_id: str | None = None
+) -> str {
+    args: dict = {
+        "shape": shape, "label": label, "x": x, "y": y,
+        "color": color, "fill_color": fill_color
+    };
+    if width is not None { args["width"] = width; }
+    if height is not None { args["height"] = height; }
+    return await _run_mcp_tool("draw_labeled_shape", args, session_id);
+}
+
+
+"""Add a large title text element at the specified position."""
+@mcp.tool()
+async def add_title(
+    text: str,
+    x: float = 100,
+    y: float = 40,
+    session_id: str | None = None
+) -> str {
+    return await _run_mcp_tool("add_title", {"text": text, "x": x, "y": y}, session_id);
+}
+
+
+"""Query elements currently on the JaSketch canvas. Optionally filter by type or index."""
 @mcp.tool()
 async def query_elements(
-    type: str | None = None
+    type: str | None = None,
+    index: int | None = None,
+    session_id: str | None = None
 ) -> str {
-    params: dict = {};
-    if type is not None {
-        params["type"] = type;
-    }
-    result: Any = await asyncio.to_thread(_send_command, "getElements", params);
-    return json.dumps(result);
+    args: dict = {};
+    if type is not None { args["type"] = type; }
+    if index is not None { args["index"] = index; }
+    return await _run_mcp_tool("query_elements", args, session_id);
 }
 
 
-"""Get a single element by its id."""
+"""Update properties of an existing element by index."""
 @mcp.tool()
-async def get_element(id: str) -> str {
-    result: Any = await asyncio.to_thread(_send_command, "getElementById", {"id": id});
-    return json.dumps(result);
+async def update_element(index: int, changes: dict, session_id: str | None = None) -> str {
+    return await _run_mcp_tool("update_element", {"index": index, "changes": changes}, session_id);
 }
 
 
-"""Update properties of an existing element by id."""
-@mcp.tool()
-async def update_element(id: str, changes: dict) -> str {
-    result: Any = await asyncio.to_thread(
-        _send_command, "updateElement", {"id": id, "changes": changes}
-    );
-    return json.dumps(result);
-}
-
-
-"""Delete element(s) by id or array of ids."""
+"""Delete element(s) by index or array of indices."""
 @mcp.tool()
 async def delete_element(
-    id: str | None = None,
-    ids: list[str] | None = None
+    index: int | None = None,
+    indices: list[int] | None = None,
+    session_id: str | None = None
 ) -> str {
-    result: Any = None;
-    if ids is not None and len(ids) > 0 {
-        result = await asyncio.to_thread(
-            _send_command, "removeMultipleElements", {"ids": ids}
-        );
-    } elif id is not None {
-        result = await asyncio.to_thread(
-            _send_command, "removeElement", {"id": id}
-        );
-    } else {
-        return "Error: Provide id or ids";
-    }
-    return json.dumps(result);
+    args: dict = {};
+    if indices is not None { args["indices"] = indices; }
+    if index is not None { args["index"] = index; }
+    return await _run_mcp_tool("delete_element", args, session_id);
 }
 
 
 """Clear all elements from the JaSketch canvas."""
 @mcp.tool()
-async def clear_canvas() -> str {
-    result: Any = await asyncio.to_thread(_send_command, "clearElements");
-    return json.dumps(result);
+async def clear_canvas(session_id: str | None = None) -> str {
+    return await _run_mcp_tool("clear_canvas", {}, session_id);
 }
 
 
-"""Get the current viewport state: zoom level, pan offset, canvas dimensions, and visible area in world coordinates."""
+"""Get the current viewport state: zoom level, pan offset, canvas dimensions, and visible area."""
 @mcp.tool()
-async def get_viewport() -> str {
-    result: Any = await asyncio.to_thread(_send_command, "getViewport");
-    return json.dumps(result);
+async def get_viewport(session_id: str | None = None) -> str {
+    return await _run_mcp_tool("get_viewport", {}, session_id);
 }
 
 
-"""Get a JPEG screenshot of the current canvas as a base64 data URL. Use this to visually verify what has been drawn."""
+"""Get a JPEG screenshot of the current canvas as a base64 data URL. Use to visually verify what has been drawn."""
 @mcp.tool()
-async def get_canvas_snapshot() -> str {
-    result: Any = await asyncio.to_thread(_send_command, "getCanvasSnapshot", None, 40);
-    return json.dumps(result);
+async def get_canvas_snapshot(session_id: str | None = None) -> str {
+    return await _run_mcp_tool("get_canvas_snapshot", {}, session_id);
 }
 
 
 """Get the bounding box of all elements on the canvas. Useful for layout planning and finding free space."""
 @mcp.tool()
-async def get_bounding_box() -> str {
-    result: Any = await asyncio.to_thread(_send_command, "getBoundingBox");
-    return json.dumps(result);
+async def get_bounding_box(session_id: str | None = None) -> str {
+    return await _run_mcp_tool("get_bounding_box", {}, session_id);
 }
 
 
-# --- Start server ---
+"""Fetch all canvas elements with defaults stripped for token efficiency. Non-default visual properties are preserved."""
+@mcp.tool()
+async def get_canvas_elements(session_id: str | None = None) -> str {
+    return await _run_mcp_tool("get_canvas_elements", {}, session_id);
+}
+
+
+"""Atomically replace canvas content with a complete elements array. Clears existing, applies defaults, renders, and auto-fits viewport."""
+@mcp.tool()
+async def render_elements(elements: list[dict], session_id: str | None = None) -> str {
+    return await _run_mcp_tool("render_elements", {"elements": elements}, session_id);
+}
+
+
+"""Get a JSON schema guide for element types, defaults, layout rules, colors, and rendering format."""
+@mcp.tool()
+async def get_drawing_guide(session_id: str | None = None) -> str {
+    return await _run_mcp_tool("get_drawing_guide", {}, session_id);
+}
+
+
+# ── Start server ──────────────────────────────────────────────────────────────
 
 with entry {
-    if _is_remote_relay {
-        log(f"Starting MCP server (remote relay: {RELAY_URL})");
-    } else {
-        log(f"Starting MCP server with embedded relay on port {RELAY_PORT}");
-    }
+    log(f"Starting MCP server, relay at {RELAY_URL}");
 
     relay_thread: Any = threading.Thread(target=_start_relay_thread, daemon=True);
     relay_thread.start();
 
-    # Give relay/connection a moment to start before MCP begins accepting tools
+    # Give relay connection a moment to start before MCP begins accepting tools
     _relay_ready.wait(timeout=5);
 
     if MCP_TRANSPORT == "streamable-http" {
