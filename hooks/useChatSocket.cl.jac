@@ -37,27 +37,10 @@ def:pub useChatSocket() -> dict {
     def handleWsMessage(event: any) -> None {
         data = JSON.parse(event.data);
 
-        if data.type == "token" {
-            currentAssistantRef.current = currentAssistantRef.current + data.content;
-            if messagesRef.current.length > 0 and messagesRef.current[messagesRef.current.length - 1].role == "assistant" {
-                messagesRef.current = messagesRef.current.slice(0, messagesRef.current.length - 1).concat([{
-                    "id": messagesRef.current[messagesRef.current.length - 1].id,
-                    "role": "assistant",
-                    "content": currentAssistantRef.current
-                }]);
-            } else {
-                messagesRef.current = messagesRef.current.concat([{"id": nextId(), "role": "assistant", "content": currentAssistantRef.current}]);
-            }
+        if data.type == "message" {
+            msgContent = data["content"] or "";
+            messagesRef.current = messagesRef.current.concat([{"id": nextId(), "role": "assistant", "content": msgContent}]);
             messages = messagesRef.current;
-        } elif data.type == "tool_call" {
-            messagesRef.current = messagesRef.current.concat([{"id": nextId(), "role": "tool", "content": "Using " + data.name + "...", "status": "running"}]);
-            messages = messagesRef.current;
-        } elif data.type == "tool_result" {
-            if messagesRef.current.length > 0 and messagesRef.current[messagesRef.current.length - 1].role == "tool" and messagesRef.current[messagesRef.current.length - 1].status == "running" {
-                messagesRef.current = messagesRef.current.slice(0, messagesRef.current.length - 1).concat([{"id": messagesRef.current[messagesRef.current.length - 1].id, "role": "tool", "content": data.name + " done", "status": "done"}]);
-            }
-            messages = messagesRef.current;
-            currentAssistantRef.current = "";
         } elif data.type == "done" {
             loadingRef.current = False;
             isLoading = False;
@@ -68,6 +51,31 @@ def:pub useChatSocket() -> dict {
             loadingRef.current = False;
             isLoading = False;
             currentAssistantRef.current = "";
+        } elif data.type == "agent_start" {
+            # Show which agent is active
+            agentName = data.agent or "Unknown Agent";
+            messagesRef.current = messagesRef.current.concat([{
+                "id": nextId(),
+                "role": "agent",
+                "content": agentName,
+                "status": "running"
+            }]);
+            messages = messagesRef.current;
+        } elif data.type == "agent_done" {
+            # Mark last agent message as done
+            if messagesRef.current.length > 0 {
+                lastIdx = messagesRef.current.length - 1;
+                lastMsg = messagesRef.current[lastIdx];
+                if lastMsg and lastMsg.role == "agent" and lastMsg.status == "running" {
+                    messagesRef.current = messagesRef.current.slice(0, lastIdx).concat([{
+                        "id": lastMsg.id,
+                        "role": "agent",
+                        "content": lastMsg.content,
+                        "status": "done"
+                    }]);
+                    messages = messagesRef.current;
+                }
+            }
         }
     }
 

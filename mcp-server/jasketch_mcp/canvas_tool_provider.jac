@@ -175,6 +175,27 @@ obj CanvasToolProvider {
                 "description": "Get the bounding box of all elements on the canvas. Useful for layout planning and finding free space.",
                 "inputSchema": {"type": "object", "properties": {}}
             },
+            {
+                "name": "get_canvas_elements",
+                "description": "Fetch all canvas elements with defaults stripped for token efficiency. Non-default visual properties are preserved.",
+                "inputSchema": {"type": "object", "properties": {}}
+            },
+            {
+                "name": "render_elements",
+                "description": "Atomically replace canvas content with a complete elements array. Clears existing, applies defaults, renders new diagram, and auto-fits viewport.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "elements": {"type": "array", "description": "Complete list of element objects to render", "items": {"type": "object"}}
+                    },
+                    "required": ["elements"]
+                }
+            },
+            {
+                "name": "get_drawing_guide",
+                "description": "Get a JSON schema guide for element types, required fields, defaults, layout rules, colors, and rendering format. Use before designing diagrams.",
+                "inputSchema": {"type": "object", "properties": {}}
+            },
         ];
     }
 
@@ -194,6 +215,11 @@ obj CanvasToolProvider {
             "get_viewport":      self._get_viewport,
             "get_canvas_snapshot": self._get_canvas_snapshot,
             "get_bounding_box":  self._get_bounding_box,
+            "get_canvas_elements": self._get_canvas_elements,
+            "render_elements":   self._render_elements,
+            "get_drawing_guide": self._get_drawing_guide,
+            "show_confirm":      self._show_confirm,
+            "get_confirm_result": self._get_confirm_result,
         };
         tool_fn: Any = dispatch.get(name);
         if tool_fn is None {
@@ -279,13 +305,48 @@ obj CanvasToolProvider {
         return (from_point, to_point);
     }
 
+    # ── Binding resolution ────────────────────────────────────────────────────
+
+    """Resolve startBinding/endBinding on an arrow to concrete x1,y1,x2,y2 coordinates.
+
+    id_map must be a dict of element_id -> element dict (shapes only).
+    Mutates el in-place and returns it. No-ops if bindings are missing or
+    the referenced shapes aren't in id_map (LLM may have provided coords directly).
+    """
+    def _resolve_arrow_bindings(el: dict, id_map: dict) -> dict {
+        if el.get("type") not in ("arrow", "line") { return el; }
+        start_b: Any = el.get("startBinding");
+        end_b: Any = el.get("endBinding");
+        if not (start_b and end_b) { return el; }
+        start_id: str = (start_b.get("elementId") if isinstance(start_b, dict) else "") or "";
+        end_id: str = (end_b.get("elementId") if isinstance(end_b, dict) else "") or "";
+        start_el: Any = id_map.get(start_id);
+        end_el: Any = id_map.get(end_id);
+        if not (start_el and end_el) { return el; }
+        start_edges: dict = self._compute_edges(start_el);
+        end_edges: dict = self._compute_edges(end_el);
+        start_side: str = (start_b.get("side") if isinstance(start_b, dict) else "") or "right";
+        end_side: str = (end_b.get("side") if isinstance(end_b, dict) else "") or "left";
+        # Fall back to the nearest valid side if the LLM specified a diagonal like "top-right"
+        valid_sides: list = ["top", "bottom", "left", "right"];
+        if start_side not in start_edges { start_side = "right" if "right" in start_edges else valid_sides[0]; }
+        if end_side not in end_edges { end_side = "left" if "left" in end_edges else valid_sides[0]; }
+        from_pt: dict = start_edges[start_side];
+        to_pt: dict = end_edges[end_side];
+        el["x1"] = from_pt["x"];
+        el["y1"] = from_pt["y"];
+        el["x2"] = to_pt["x"];
+        el["y2"] = to_pt["y"];
+        return el;
+    }
+
     # ── Tool implementations ──────────────────────────────────────────────────
 
     def _create_elements(args: dict) -> str {
-        elements: list = [
-            self._apply_defaults(dict(el))
-            for el in args.get("elements", [])
-        ];
+        raw: list = [self._apply_defaults(dict(el)) for el in args.get("elements", [])];
+        # Build a shape id_map from this batch so arrows can reference them
+        id_map: dict = {el["id"]: el for el in raw if el.get("id") and el.get("type") not in ("arrow", "line", "text")};
+        elements: list = [self._resolve_arrow_bindings(el, id_map) for el in raw];
         return json.dumps(self._send("addMultipleElements", {"elements": elements}));
     }
 
@@ -444,5 +505,169 @@ obj CanvasToolProvider {
 
     def _get_bounding_box(args: dict) -> str {
         return json.dumps(self._send("getBoundingBox"));
+    }
+
+    # ── New methods for multi-agent system ────────────────────────────────────
+    """Remove fields that exactly equal their default values to reduce token count."""
+    def _strip_defaults(el: dict) -> dict {
+        defaults: dict = {
+            "color": "#1e1e1e",
+            "strokeWidth": 2,
+            "fillColor": "transparent",
+            "lineStyle": "solid",
+            "opacity": 1.0,
+            "rotation": 0,
+            "boundElements": [],
+            "groupId": None
+        };
+        shape_defaults: dict = {"width": 140, "height": 60};
+        text_defaults: dict = {"fontSize": 24, "fontFamily": "Virgil"};
+
+        # Always keep: id, type, x, y, width, height (positional/identity fields)
+        result: dict = {
+            k: el[k] for k in ["id", "type", "x", "y"]
+            if k in el
+        };
+
+        # Keep width/height if present (even if == default, since they're structural)
+        if "width" in el { result["width"] = el["width"]; }
+        if "height" in el { result["height"] = el["height"]; }
+
+        # Keep non-default visual fields
+        for (key, default_val) in defaults.items() {
+            if key in el and el[key] != default_val {
+                result[key] = el[key];
+            }
+        }
+
+        # Keep shape-specific defaults if non-default
+        if el.get("type") in ("rectangle", "circle", "diamond") {
+            for (key, default_val) in shape_defaults.items() {
+                if key in el and el[key] != default_val {
+                    result[key] = el[key];
+                }
+            }
+        }
+
+        # Keep text-specific defaults if non-default
+        if el.get("type") == "text" {
+            for (key, default_val) in text_defaults.items() {
+                if key in el and el[key] != default_val {
+                    result[key] = el[key];
+                }
+            }
+        }
+
+        # Always keep shape/text content fields if present and non-null
+        for key in ["shapeText", "shapeTextColor", "shapeTextFontSize", "shapeTextFontFamily",
+                    "points", "text", "curveStyle", "startBinding", "endBinding", "x1", "y1", "x2", "y2"] {
+            if key in el and el[key] is not None {
+                result[key] = el[key];
+            }
+        }
+
+        return result;
+    }
+
+    """Fetch all canvas elements with defaults stripped for token efficiency."""
+    def _get_canvas_elements(args: dict) -> str {
+        result: Any = self._send("getElements", {});
+        if not result or not result.get("elements") {
+            return json.dumps({"elements": [], "total": 0}, separators=(',', ':'));
+        }
+        # Strip {id, element} wrapper → plain element objects
+        clean: list = [entry["element"] for entry in result["elements"]];
+        stripped: list = [self._strip_defaults(el) for el in clean];
+        return json.dumps({"elements": stripped, "total": len(stripped)}, separators=(',', ':'));
+    }
+
+    """Atomically replace canvas with a new elements[] array and auto-fit viewport."""
+    def _render_elements(args: dict) -> str {
+        raw: list = [self._apply_defaults(dict(el)) for el in args.get("elements", [])];
+        # Build a shape id_map so arrows with startBinding/endBinding get x1,y1,x2,y2 resolved
+        id_map: dict = {el["id"]: el for el in raw if el.get("id") and el.get("type") not in ("arrow", "line", "text")};
+        elements: list = [self._resolve_arrow_bindings(el, id_map) for el in raw];
+        self._send("setElements", {"elements": elements});
+        return json.dumps({"action": "rendered", "count": len(elements)});
+    }
+
+    """Return a static JSON guide with element schema, defaults, layout rules, and colors."""
+    def _get_drawing_guide(args: dict) -> str {
+        guide: dict = {
+            "element_types": ["rectangle", "circle", "diamond", "line", "arrow", "text", "freehand", "image"],
+            "coordinate_system": "top-left origin, X right, Y down, canvas ~2000x1500",
+            "required_fields": {
+                "rectangle": ["type", "x", "y", "width", "height"],
+                "circle": ["type", "x", "y", "width", "height"],
+                "diamond": ["type", "x", "y", "width", "height"],
+                "line": ["type", "startBinding", "endBinding"],
+                "arrow": ["type", "startBinding", "endBinding"],
+                "text": ["type", "x", "y", "text"],
+                "freehand": ["type", "x", "y", "points"]
+            },
+            "arrow_binding": {
+                "note": "Do NOT set x1/y1/x2/y2 or points on arrows — the server computes coordinates from bindings.",
+                "startBinding": {"elementId": "<source-shape-id>", "side": "right"},
+                "endBinding": {"elementId": "<target-shape-id>", "side": "left"},
+                "valid_sides": ["top", "bottom", "left", "right"],
+                "shape_boundElements": "List every connected arrow ID as a flat string array: [\"ar1\", \"ar2\"]"
+            },
+            "defaults": {
+                "color": "#1e1e1e",
+                "strokeWidth": 2,
+                "fillColor": "transparent",
+                "lineStyle": "solid",
+                "opacity": 1.0,
+                "rotation": 0,
+                "fontSize": 24,
+                "fontFamily": "Virgil",
+                "shape_width": 140,
+                "shape_height": 60
+            },
+            "layout_rules": {
+                "min_shape_width": 140,
+                "min_shape_height": 60,
+                "horizontal_gap": 200,
+                "vertical_gap": 150,
+                "start_position": {"x": 100, "y": 100},
+                "padding": 60
+            },
+            "colors": {
+                "primary": "#1e1e1e",
+                "success": "#2f9e44",
+                "warning": "#f59f00",
+                "danger": "#f03e3e",
+                "info": "#1971c2",
+                "neutral": "#868e96"
+            },
+            "fills": {
+                "transparent": "transparent",
+                "light": "#f1f3f5",
+                "dark": "#212529"
+            },
+            "shape_labels": {
+                "field": "shapeText",
+                "color_field": "shapeTextColor",
+                "fontSize_field": "shapeTextFontSize",
+                "fontFamily_field": "shapeTextFontFamily"
+            },
+            "render_elements_format": "Call render_elements(elements: list) to atomically clear and render a complete diagram. Includes auto-fit viewport with 60px padding, capped at 2x zoom."
+        };
+        return json.dumps(guide);
+    }
+
+    """Send a confirm dialog request to the browser."""
+    def _show_confirm(args: dict) -> str {
+        return json.dumps(self._send("showConfirm", {
+            "confirmId": args.get("confirmId"),
+            "message": args.get("message", "Replace canvas content?")
+        }));
+    }
+
+    """Poll for the result of a confirm dialog."""
+    def _get_confirm_result(args: dict) -> str {
+        return json.dumps(self._send("getConfirmResult", {
+            "confirmId": args.get("confirmId")
+        }));
     }
 }

@@ -387,6 +387,27 @@ async def get_bounding_box(session_id: str | None = None) -> str {
 }
 
 
+"""Fetch all canvas elements with defaults stripped for token efficiency. Non-default visual properties are preserved."""
+@mcp.tool()
+async def get_canvas_elements(session_id: str | None = None) -> str {
+    return await _run_mcp_tool("get_canvas_elements", {}, session_id);
+}
+
+
+"""Atomically replace canvas content with a complete elements array. Clears existing, applies defaults, renders, and auto-fits viewport."""
+@mcp.tool()
+async def render_elements(elements: list[dict], session_id: str | None = None) -> str {
+    return await _run_mcp_tool("render_elements", {"elements": elements}, session_id);
+}
+
+
+"""Get a JSON schema guide for element types, defaults, layout rules, colors, and rendering format."""
+@mcp.tool()
+async def get_drawing_guide(session_id: str | None = None) -> str {
+    return await _run_mcp_tool("get_drawing_guide", {}, session_id);
+}
+
+
 # ── Start server ──────────────────────────────────────────────────────────────
 
 with entry {

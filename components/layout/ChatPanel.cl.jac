@@ -159,6 +159,14 @@ def ChatMessage(props: dict) -> JsxElement {
             </div>
         </div>;
     }
+    if msg.role == "agent" {
+        agentStatusClass = msg.status == "running" and "bg-purple-50 text-purple-600" or "bg-purple-100 text-purple-700";
+        return <div className="flex justify-center">
+            <div className={"chat-msg-agent px-2.5 py-1 rounded-full text-[10px] font-medium " + agentStatusClass}>
+                {msg.status == "running" and "⚙ " or "✓ "}{msg.content}
+            </div>
+        </div>;
+    }
     return None;
 }
 
@@ -214,6 +222,7 @@ def:pub ChatPanel(props: dict) -> JsxElement {
     modelOptions = [
         {"id": "gpt-4o", "label": "GPT-4o"},
         {"id": "gpt-4o-mini", "label": "GPT-4o Mini"},
+        {"id": "gpt-5.4-mini", "label": "GPT-5.4 Mini"},
         {"id": "claude-sonnet-4-20250514", "label": "Claude Sonnet"},
         {"id": "claude-haiku-4-20250414", "label": "Claude Haiku"},
         {"id": "gemini/gemini-2.0-flash", "label": "Gemini Flash"},
