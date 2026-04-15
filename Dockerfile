@@ -53,7 +53,7 @@ USER appuser
 # Pre-warm Jac bytecode cache as appuser (avoids cold-start recompilation at runtime)
 RUN python -c "import jaclang" || true
 
-EXPOSE 8000 9601
+EXPOSE 8000 9601 9602
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
