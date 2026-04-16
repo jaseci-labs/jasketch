@@ -59,5 +59,5 @@ EXPOSE 8000 9601 9602
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
     CMD curl -f http://localhost:8000/ || exit 1
 
-# Run relay server in background + jac app in foreground
-CMD jasketch-relay & jac start --client pwa
+# Run jac app with embedded relay (started via JASKETCH_START_RELAY=true in main.jac)
+CMD jac start --client pwa
