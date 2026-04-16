@@ -257,6 +257,10 @@ def:pub copyCanvasAsPNG(allElements: list, canvasRef: any, onDone: any) -> None 
         item = Reflect.construct(ClipboardItem, [{"image/png": blob}]);
         navigator.clipboard.write([item]).then(lambda -> None {
             if onDone { onDone(); }
+        }).catch(lambda err: any -> None {
+            url = URL.createObjectURL(blob);
+            downloadBlob(url, "jasketch-export.png");
+            if onDone { onDone(); }
         });
     });
 }

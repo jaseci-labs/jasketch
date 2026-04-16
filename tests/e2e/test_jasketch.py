@@ -675,6 +675,80 @@ class TestCopyPaste:
         assert elements[0]["type"] == "circle", "Original should be circle"
         assert elements[1]["type"] == "circle", "Duplicate should also be circle"
 
+    def test_copy_paste_independent_ids(self, app: Page):
+        """Copied/pasted elements have independent IDs; deleting one doesn't delete both."""
+        clear_canvas(app)
+        draw_shape(app, "Rectangle", S_X1, S_Y1, S_X2, S_Y2)
+        wait_for_elements(app, 1)
+        select_tool(app, "Select")
+        click_canvas(app, S_CX, S_CY)
+        press_key(app, "Control+c")
+        press_key(app, "Control+v")
+        wait_for_elements(app, 2)
+        elements = get_elements(app)
+        # Verify two separate IDs
+        assert elements[0]["id"] != elements[1]["id"], "Pasted element must have unique ID"
+        # Select and delete the pasted (second) element
+        click_canvas(app, S_CX + 30, S_CY + 30)  # Click on the offset copy
+        press_key(app, "Delete")
+        wait_for_elements(app, 1)
+        remaining = get_elements(app)
+        assert remaining[0]["id"] == elements[0]["id"], "Original should remain after deleting copy"
+
+    def test_duplicate_independent_ids(self, app: Page):
+        """Duplicated elements have independent IDs; deleting one doesn't delete the other."""
+        clear_canvas(app)
+        draw_shape(app, "Rectangle", S_X1, S_Y1, S_X2, S_Y2)
+        wait_for_elements(app, 1)
+        select_tool(app, "Select")
+        click_canvas(app, S_CX, S_CY)
+        press_key(app, "Control+d")
+        wait_for_elements(app, 2)
+        elements = get_elements(app)
+        # Verify two separate IDs
+        assert elements[0]["id"] != elements[1]["id"], "Duplicated element must have unique ID"
+        # Select and delete the duplicate (second) element
+        click_canvas(app, S_CX + 30, S_CY + 30)
+        press_key(app, "Delete")
+        wait_for_elements(app, 1)
+        remaining = get_elements(app)
+        assert remaining[0]["id"] == elements[0]["id"], "Original should remain after deleting duplicate"
+
+    def test_cut_removes_element(self, app: Page):
+        """Ctrl+X cuts the element (removes it and copies to clipboard for pasting)."""
+        clear_canvas(app)
+        draw_shape(app, "Rectangle", S_X1, S_Y1, S_X2, S_Y2)
+        wait_for_elements(app, 1)
+        select_tool(app, "Select")
+        click_canvas(app, S_CX, S_CY)
+        press_key(app, "Control+x")
+        wait_for_elements(app, 0)
+        # Verify pasting restores the element
+        press_key(app, "Control+v")
+        wait_for_elements(app, 1)
+        elements = get_elements(app)
+        assert elements[0]["type"] == "rectangle"
+
+    def test_reset_canvas_clears_all(self, app: Page):
+        """Ctrl+Delete opens confirmation dialog; clicking Reset clears all elements."""
+        clear_canvas(app)
+        draw_shape(app, "Rectangle", S_X1, S_Y1, S_X2, S_Y2)
+        draw_shape(app, "Diamond", S_X1 + 100, S_Y1 + 100, S_X2 + 100, S_Y2 + 100)
+        wait_for_elements(app, 2)
+        # Press Ctrl+Delete to open confirmation dialog
+        press_key(app, "Control+Delete")
+        app.wait_for_timeout(300)  # Wait for dialog animation
+        # Click the "Reset" button (right button in the dialog)
+        buttons = app.query_selector_all("button")
+        reset_button = None
+        for btn in buttons:
+            if "Reset" in btn.text_content():
+                reset_button = btn
+                break
+        assert reset_button is not None, "Reset button not found"
+        reset_button.click()
+        wait_for_elements(app, 0)
+
 
 # -- Grouping tests ------------------------------------------------------------
 
@@ -1045,3 +1119,29 @@ class TestSelectAll:
         types = [e["type"] for e in elements]
         assert types.count("rectangle") == 2, f"Expected 2 rectangles, got {types}"
         assert types.count("circle") == 2, f"Expected 2 circles, got {types}"
+
+
+# -- Keyboard Shortcuts Help Popup tests ---------------------------------------
+
+
+class TestShortcutHelp:
+    """Verify keyboard shortcuts help popup functionality."""
+
+    def test_shortcut_help_opens_on_question_mark(self, app: Page):
+        """Pressing ? opens the shortcut help modal."""
+        app.keyboard.press("?")
+        app.wait_for_timeout(300)  # Wait for modal animation
+        # Check for the ShortcutHelp modal presence by looking for the help title
+        help_title = app.query_selector("text='Keyboard Shortcuts'")
+        assert help_title is not None, "Keyboard Shortcuts help modal should be visible"
+
+    def test_shortcut_help_closes_on_escape(self, app: Page):
+        """Pressing Escape closes the shortcut help modal."""
+        app.keyboard.press("?")
+        app.wait_for_timeout(300)
+        help_title = app.query_selector("text='Keyboard Shortcuts'")
+        assert help_title is not None, "Help modal should be open"
+        app.keyboard.press("Escape")
+        app.wait_for_timeout(300)
+        help_title_after = app.query_selector("text='Keyboard Shortcuts'")
+        assert help_title_after is None, "Help modal should be closed after Escape"

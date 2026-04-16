@@ -58,6 +58,7 @@ def:pub TopBar(props: dict) -> JsxElement {
     onImageLoad = props.onImageLoad;
     onSave = props.onSave;
     onLoad = props.onLoad;
+    onShowShortcuts = props.onShowShortcuts;
     fileInputRef = useRef(None);
     jasketchFileInputRef = useRef(None);
 
@@ -171,8 +172,15 @@ def:pub TopBar(props: dict) -> JsxElement {
                 ]}
             </div>
 
-            <div className="min-w-[120px] flex items-center justify-end gap-1">
+            <div className="min-w-[150px] flex items-center justify-end gap-1">
                 <span className="text-[10px] text-gray-400 hidden lg:block mr-2">Scroll to pan | Ctrl+scroll to zoom</span>
+                <button
+                    onClick={lambda -> None { if onShowShortcuts { onShowShortcuts(); } }}
+                    title="Keyboard shortcuts (?)"
+                    className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-all duration-150"
+                >
+                    <span className="text-sm font-semibold">?</span>
+                </button>
                 <button
                     onClick={handleSave}
                     title="Save to disk (Ctrl+S)"

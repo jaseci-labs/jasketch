@@ -14,8 +14,12 @@ import from "..constants.tools" { TOOL_SHORTCUTS }
 import from .canvas.CanvasRenderer { CanvasRenderer }
 import from .canvas.TextInput { TextInput }
 import from .canvas.ContextMenu { ContextMenu }
+import from .layout.ShortcutHelp { ShortcutHelp }
+import from .layout.ConfirmDialog { ConfirmDialog }
 
 def:pub Canvas(props: dict) -> JsxElement {
+    showShortcutsProp = props.showShortcuts or False;
+    onToggleShortcuts = props.onToggleShortcuts;
     currentTool = props.currentTool or "select";
     currentColor = props.currentColor or "#000000";
     currentStrokeWidth = props.currentStrokeWidth or 2;
@@ -45,6 +49,8 @@ def:pub Canvas(props: dict) -> JsxElement {
     selectedElementsRef = useRef([]);
     altDragCopiedRef = useRef(False);
     drawingStateRef = useRef(drawingState);
+    viewportHookRef = useRef(viewportHook);
+    selectionHookRef = useRef(selectionHook);
     has isDraggingBend: bool = False;
     has isRotating: bool = False;
     has rotatingElementId: any = None;
@@ -54,10 +60,13 @@ def:pub Canvas(props: dict) -> JsxElement {
     has draggingVertexHandle: str = "";
     has isDraggingElbowSegment: bool = False;
     has draggingElbowSegIndex: int = 0;
+    has showResetConfirm: bool = False;
 
     selectedElementRef.current = selectionHook.selectedElement;
     selectedElementsRef.current = selectionHook.selectedElements;
     drawingStateRef.current = drawingState;
+    viewportHookRef.current = viewportHook;
+    selectionHookRef.current = selectionHook;
 
     # Pass editing shape id to suppress its shapeText during editing
     editingShapeId = None;
@@ -225,7 +234,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 canvas = canvasRef.current;
                 if canvas {
                     rect = canvas.getBoundingClientRect();
-                    viewportHook.handleZoom(-1, rect.left + rect.width / 2, rect.top + rect.height / 2, canvas);
+                    viewportHookRef.current.handleZoom(-1, rect.left + rect.width / 2, rect.top + rect.height / 2, canvas);
                 }
             }
             if not textInputHook.textInput and e.key == "-" and (e.ctrlKey or e.metaKey) {
@@ -233,13 +242,13 @@ def:pub Canvas(props: dict) -> JsxElement {
                 canvas = canvasRef.current;
                 if canvas {
                     rect = canvas.getBoundingClientRect();
-                    viewportHook.handleZoom(1, rect.left + rect.width / 2, rect.top + rect.height / 2, canvas);
+                    viewportHookRef.current.handleZoom(1, rect.left + rect.width / 2, rect.top + rect.height / 2, canvas);
                 }
             }
             if not textInputHook.textInput and e.key == "0" and (e.ctrlKey or e.metaKey) {
                 e.preventDefault();
-                viewportHook.setZoom(1);
-                viewportHook.setPanOffset({"x": 0, "y": 0});
+                viewportHookRef.current.setZoom(1);
+                viewportHookRef.current.setPanOffset({"x": 0, "y": 0});
             }
             if not textInputHook.textInput and (e.key == "s" or e.key == "S") and (e.ctrlKey or e.metaKey) and not e.shiftKey {
                 e.preventDefault();
@@ -248,6 +257,58 @@ def:pub Canvas(props: dict) -> JsxElement {
             if not textInputHook.textInput and (e.key == "o" or e.key == "O") and (e.ctrlKey or e.metaKey) {
                 e.preventDefault();
                 triggerJaSketchLoad();
+            }
+            if not textInputHook.textInput and (e.key == "x" or e.key == "X") and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                curMultiCut = selectedElementsRef.current;
+                curSingleCut = selectedElementRef.current;
+                if curMultiCut and curMultiCut.length > 0 {
+                    copied = [];
+                    ci = 0;
+                    while ci < curMultiCut.length {
+                        copied.push(Object.assign({}, curMultiCut[ci].element));
+                        ci = ci + 1;
+                    }
+                    clipboardRef.current = copied;
+                } elif curSingleCut and curSingleCut.element {
+                    clipboardRef.current = [Object.assign({}, curSingleCut.element)];
+                }
+                deleteSelected();
+            }
+            if not textInputHook.textInput and e.key == "Delete" and (e.ctrlKey or e.metaKey) {
+                e.preventDefault();
+                showResetConfirm = True;
+            }
+            if not textInputHook.textInput and (e.key == "<" or e.key == ",") and (e.ctrlKey or e.metaKey) and e.shiftKey {
+                e.preventDefault();
+                curSel = selectedElementRef.current;
+                if curSel and curSel.element.type == "text" {
+                    element = curSel.element;
+                    newSize = element.fontSize or 16;
+                    newSize = newSize - 2;
+                    if newSize < 8 {
+                        newSize = 8;
+                    }
+                    elementsHook.updateElement(element.id, {**element, "fontSize": newSize});
+                    selectionHookRef.current.setSelectedElement({"element": {**element, "fontSize": newSize}, "id": element.id});
+                }
+            }
+            if not textInputHook.textInput and (e.key == ">" or e.key == ".") and (e.ctrlKey or e.metaKey) and e.shiftKey {
+                e.preventDefault();
+                curSel = selectedElementRef.current;
+                if curSel and curSel.element.type == "text" {
+                    element = curSel.element;
+                    newSize = element.fontSize or 16;
+                    newSize = newSize + 2;
+                    elementsHook.updateElement(element.id, {**element, "fontSize": newSize});
+                    selectionHookRef.current.setSelectedElement({"element": {**element, "fontSize": newSize}, "id": element.id});
+                }
+            }
+            if not textInputHook.textInput and e.key == "?" {
+                e.preventDefault();
+                if onToggleShortcuts {
+                    onToggleShortcuts();
+                }
             }
             if not textInputHook.textInput and not e.ctrlKey and not e.metaKey and not e.shiftKey and not e.altKey {
                 if e.key == "9" {
@@ -538,6 +599,7 @@ def:pub Canvas(props: dict) -> JsxElement {
 
     def offsetElement(original: dict, dx: float, dy: float) -> dict {
         dup = Object.assign({}, original);
+        dup.id = None;
         if original.type == "text" or original.type == "rectangle" or original.type == "circle" or original.type == "image" or original.type == "diamond" {
             dup.x = original.x + dx;
             dup.y = original.y + dy;
@@ -1322,7 +1384,9 @@ def:pub Canvas(props: dict) -> JsxElement {
                     clones = [];
                     aci = 0;
                     while aci < selectionHook.selectedElements.length {
-                        clones.push(Object.assign({}, selectionHook.selectedElements[aci].element));
+                        clone = Object.assign({}, selectionHook.selectedElements[aci].element);
+                        clone.id = None;
+                        clones.push(clone);
                         aci = aci + 1;
                     }
                     elementsHook.addMultipleElements(clones);
@@ -1339,6 +1403,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                     return;
                 } elif selectionHook.selectedElement {
                     singleClone = Object.assign({}, selectionHook.selectedElement.element);
+                    singleClone.id = None;
                     elementsHook.addElement(singleClone);
                     selectionHook.setSelectedElement({"element": singleClone, "id": singleClone.id});
                     selectionHook.setSelectedElements([]);
@@ -1864,6 +1929,22 @@ def:pub Canvas(props: dict) -> JsxElement {
             {toastMessage and <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm z-50 pointer-events-none animate-fade-in">
                 {toastMessage}
             </div> or None}
+
+            {(showShortcutsProp or False) and <ShortcutHelp onClose={lambda -> None { if onToggleShortcuts { onToggleShortcuts(); } }} /> or None}
+
+            {showResetConfirm and <ConfirmDialog
+                title="Reset Canvas"
+                message="Reset the canvas? This will clear all elements."
+                onConfirm={lambda -> None {
+                    elementsHook.clearElements();
+                    selectionHook.clearSelection();
+                    showResetConfirm = False;
+                }}
+                onCancel={lambda -> None { showResetConfirm = False; }}
+                confirmText="Reset"
+                cancelText="Cancel"
+                isDangerous={True}
+            /> or None}
         </div>
     );
 }

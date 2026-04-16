@@ -38,6 +38,9 @@ cl {
         # Chat panel state
         has chatOpen: bool = False;
 
+        # Keyboard shortcuts help state
+        has showShortcuts: bool = False;
+
         # Refs for cross-component communication
         clearCanvasRef = useRef(None);
         addElementRef = useRef(None);
@@ -62,6 +65,7 @@ cl {
                 }}
                 onSave={lambda -> None { if saveRef.current { saveRef.current(); } }}
                 onLoad={lambda file: any -> None { if loadElementsRef.current { loadElementsRef.current(file); } }}
+                onShowShortcuts={lambda -> None { showShortcuts = not showShortcuts; }}
             />
 
             <div className="flex-1 overflow-hidden relative">
@@ -107,6 +111,8 @@ cl {
                         loadElementsRef={loadElementsRef}
                         onSelectionChange={lambda sel: any -> None { selectedElement = sel; }}
                         onToolChange={lambda tool: any -> None { currentTool = tool; }}
+                        showShortcuts={showShortcuts}
+                        onToggleShortcuts={lambda -> None { showShortcuts = not showShortcuts; }}
                     />
                 </div>
 
