@@ -8,7 +8,6 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
     canvasRefRef = useRef(canvasRef);
     canvasHookRef = useRef(canvasHook);
     reconnectTimerRef = useRef(None);
-    pendingConfirmsRef = useRef({});
 
     # Keep refs current to avoid stale closures
     elementsHookRef.current = elementsHook;
@@ -210,8 +209,9 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             }
         } elif action == "setElements" {
             newElements = data.elements or [];
-            hook.clearElements();
-            hook.addMultipleElements(newElements);
+            # Directly replace elements to avoid React state sync race condition
+            # (clearElements + addMultipleElements would read stale state)
+            hook.setElementsReplaceAll(newElements);
 
             # Auto-fit viewport: compute bounding box of all elements, then zoom to fit with 60px padding
             setVp = viewportHookRef.current;
@@ -288,25 +288,6 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             }
 
             sendResponse(ws, requestId, True, {"count": newElements.length, "action": "set"});
-        } elif action == "showConfirm" {
-            confirmId = data.confirmId;
-            message = data.message or "Replace canvas content?";
-            confirmResult = window.confirm(message);
-            if confirmResult {
-                pendingConfirmsRef.current[confirmId] = "ok";
-            } else {
-                pendingConfirmsRef.current[confirmId] = "cancel";
-            }
-            sendResponse(ws, requestId, True, {"received": True});
-        } elif action == "getConfirmResult" {
-            gcConfirmId = data.confirmId;
-            gcResult = pendingConfirmsRef.current[gcConfirmId];
-            if gcResult == undefined {
-                gcResult = "pending";
-            } else {
-                pendingConfirmsRef.current[gcConfirmId] = None;
-            }
-            sendResponse(ws, requestId, True, {"result": gcResult});
         } else {
             sendError(ws, requestId, "Unknown action: " + action);
         }

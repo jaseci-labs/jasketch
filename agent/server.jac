@@ -11,7 +11,7 @@ import threading;
 
 import websockets;
 import from typing { Any }
-import from .orchestrator { _boot as _orchestrator_boot, _run_conversation }
+import from .orchestrator { _boot as _orchestrator_boot, _run_conversation, _resolve_confirm }
 
 glob CHAT_PORT: int = int(os.environ.get("JASKETCH_CHAT_PORT", "9602"));
 
@@ -33,6 +33,10 @@ async def _handler(ws: Any) -> None {
         async for raw in ws {
             try {
                 m: dict[str, Any] = json.loads(raw);
+                if m.get("type") == "confirm_response" {
+                    _resolve_confirm(m.get("confirmId", ""), m.get("result", "cancel"));
+                    continue;
+                }
                 if m.get("type") != "chat" { continue; }
                 ak: str = m.get("apiKey", "");
                 md: str = m.get("model", "gpt-4o-mini");

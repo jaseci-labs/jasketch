@@ -175,6 +175,19 @@ def:pub useElements() -> dict {
         setElementsWithHistory([]);
     }
 
+    def setElementsReplaceAll(newElements: list) -> None {
+        # Add IDs to any elements missing them
+        i = 0;
+        while i < newElements.length {
+            if not newElements[i].id {
+                newElements[i].id = crypto.randomUUID();
+            }
+            i = i + 1;
+        }
+        # Replace all elements and push to history
+        setElementsWithHistory(newElements);
+    }
+
     def undo() -> None {
         idx = historyIndexRef.current;
         if idx > 0 {
@@ -209,6 +222,7 @@ def:pub useElements() -> dict {
         "removeElement": removeElement,
         "removeMultipleElements": removeMultipleElements,
         "clearElements": clearElements,
+        "setElementsReplaceAll": setElementsReplaceAll,
         "undo": undo,
         "redo": redo
     };
