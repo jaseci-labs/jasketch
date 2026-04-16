@@ -10,9 +10,10 @@ import from .schemas { PlannerDecision, PlannerNextStep, BlueprintSpec }
 node DiagramPlanner {
     has model: str = "";
     has api_key: str = "";
+    has llm: Any = None;
 
     def reason(message: str, conversation_log: str) -> PlannerDecision
-        by llm(
+        by self.llm(
             max_react_iterations=1,
             incl_info={
                 "conversation": conversation_log

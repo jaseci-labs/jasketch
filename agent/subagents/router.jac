@@ -10,10 +10,11 @@ import from .schemas { RouteTag, RouteDecision }
 node IntentRouter {
     has model: str = "";
     has api_key: str = "";
+    has llm: Any = None;
 
     def handle(message: str, conversation_log: str,
                has_diagram_blueprint: bool, canvas_summary: str) -> RouteDecision
-        by llm(
+        by self.llm(
             incl_info={
                 "conversation": conversation_log,
                 "has_blueprint": has_diagram_blueprint,

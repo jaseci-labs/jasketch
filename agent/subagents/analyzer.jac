@@ -10,9 +10,10 @@ import from typing { Any }
 node DiagramAnalyst {
     has model: str = "";
     has api_key: str = "";
+    has llm: Any = None;
 
     def explain(message: str, conversation_log: str) -> str
-        by llm(
+        by self.llm(
             tools=[use_canvas_tool],
             max_react_iterations=2,
             incl_info={
@@ -30,11 +31,12 @@ Workflow:
   2. Analyze the elements to understand the diagram structure
   3. Explain to the user what the diagram shows, its purpose, key components, and relationships
 
-Element Types and Key Fields (.jasketch v2 format):
+Element Types and Key Fields (runtime format):
   - rectangle / circle / diamond: x, y, width, height, shapeText (label inside shape), color, fillColor, boundElements (list of connected arrow IDs)
-  - arrow / line: x, y (physical start point), points (list of [x,y] offsets — points[0] always [0,0], last point is [dx,dy] to end),
-                  startBinding ({"elementId": "<id>", "side": "<side>"} — source shape),
-                  endBinding   ({"elementId": "<id>", "side": "<side>"} — target shape)
+  - arrow / line: x1, y1 (start point), x2, y2 (end point) — coordinates computed by server from bindings
+                  startBinding ({"elementId": "<id>", "side": "<side>"} — source shape reference),
+                  endBinding   ({"elementId": "<id>", "side": "<side>"} — target shape reference),
+                  curveStyle ("sharp"/"curved"/"elbow"), lineStyle ("solid"/"dashed"/"dotted")
   - text: x, y, text, fontSize, fontFamily
   - freehand: x, y, points (free-drawn path)
 
