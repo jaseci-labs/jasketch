@@ -61,6 +61,7 @@ glob _lock = threading.Lock();
 glob _ws: Any = None;
 glob _connected: bool = False;
 glob _pending: dict[str, Any] = {};
+glob _pending_confirms: dict[str, Any] = {};
 glob _relay_loop: Any = None;
 glob _relay_ready: Any = threading.Event();
 
@@ -196,21 +197,38 @@ def _send_command(action: str, data: dict | None = None, session_id: str = "", t
     }
     return res.get("data");
 }
-
-
-# ── Confirmation flow ─────────────────────────────────────────────────────────
-"""Show confirm dialog and poll for result (max 30s)."""
-def _request_confirm(provider: CanvasToolProvider, message: str) -> bool {
-    confirm_id: str = str(uuid.uuid4());
-    provider.call_tool("show_confirm", {"confirmId": confirm_id, "message": message});
-    deadline: float = time.time() + 30.0;
-    while time.time() < deadline {
-        result: dict[str, Any] = json.loads(provider.call_tool("get_confirm_result", {"confirmId": confirm_id}));
-        if result.get("result") == "ok" { return True; }
-        if result.get("result") == "cancel" { return False; }
-        time.sleep(0.5);
+"""Resolve a pending confirmation via chat WebSocket (called from server.jac)."""
+def _resolve_confirm(confirm_id: str, result: str) -> None {
+    entry: Any = None;
+    with _lock {
+        entry = _pending_confirms.pop(confirm_id, None);
     }
-    return False;
+    if entry is not None {
+        (evt, res) = entry;
+        res["result"] = result;
+        evt.set();
+    }
+}
+
+"""Send confirmation request via chat WebSocket and wait for response (max 60s)."""
+def _chat_confirm(ws: Any, event_loop: Any, session_id: str, message: str) -> str {
+    confirm_id: str = str(uuid.uuid4());
+    evt: Any = threading.Event();
+    res: dict = {};
+    with _lock {
+        _pending_confirms[confirm_id] = (evt, res);
+    }
+    _send_ws(ws, {"type": "confirm", "sessionId": session_id, "confirmId": confirm_id, "message": message}, event_loop);
+    if not evt.wait(timeout=60.0) {
+        with _lock {
+            _pending_confirms.pop(confirm_id, None);
+        }
+        return "cancel";
+    }
+    with _lock {
+        _pending_confirms.pop(confirm_id, None);
+    }
+    return res.get("result", "cancel");
 }
 
 
@@ -390,28 +408,50 @@ walker AgentOrchestrator {
 
         canvas_mode: str = "replace";
         existing_elements_json: str = "[]";
+        existing_bounding_box: str = "{}";
 
         if not canvas_empty {
-            # Canvas non-empty: request confirmation
-            confirmed: bool = _request_confirm(
-                self._provider,
-                "Replace canvas content with new diagram?"
+            # Canvas non-empty: request confirmation via chat
+            confirm_result: str = _chat_confirm(
+                self.ws,
+                self.event_loop,
+                self.session_id,
+                "Canvas is not empty. **Approve** to clear it and render the new diagram, or **Deny** to place it beside the existing content."
             );
-            if not confirmed {
-                log("compose_diagram: user declined to replace canvas");
-                self._session_context.canvas_summary = "non-empty, user kept";
-                _send_ws(self.ws, {"type": "message", "sessionId": self.session_id, "content": "Diagram creation cancelled. Canvas kept as-is."}, self.event_loop);
-                _send_ws(self.ws, {"type": "done", "sessionId": self.session_id}, self.event_loop);
-                return;
+            if confirm_result == "ok" {
+                log("compose_diagram: user approved replace");
+                # canvas_mode stays "replace"
+            } else {
+                log("compose_diagram: user denied replace, switching to additive mode");
+                canvas_mode = "additive";
             }
-            log("compose_diagram: user confirmed replacement");
         }
 
         if canvas_mode == "additive" {
             try {
-                existing_elements_json = self._provider.call_tool("get_canvas_elements", {});
+                elements_result: str = self._provider.call_tool("get_canvas_elements", {});
+                # call_tool returns JSON string; parse and re-serialize to ensure proper format
+                parsed_els: dict = json.loads(elements_result);
+                # Extract just the elements array if it's wrapped in a dict
+                if isinstance(parsed_els, dict) and "elements" in parsed_els {
+                    existing_elements_json = json.dumps(parsed_els["elements"]);
+                } else {
+                    existing_elements_json = elements_result;
+                }
+                log(f"compose_diagram: fetched {len(parsed_els) if isinstance(parsed_els, list) else len(parsed_els.get('elements', []))} existing elements");
             } except Exception as e {
                 log(f"compose_diagram: error fetching elements: {e}");
+                existing_elements_json = "[]";
+            }
+            try {
+                bb_result: str = self._provider.call_tool("get_bounding_box", {});
+                # call_tool returns JSON string; verify it's valid JSON
+                parsed_bb: dict = json.loads(bb_result);
+                existing_bounding_box = json.dumps(parsed_bb);
+                log(f"compose_diagram: bounding box = {existing_bounding_box}");
+            } except Exception as e {
+                log(f"compose_diagram: error fetching bounding box: {e}");
+                existing_bounding_box = "{}";
             }
         }
 
@@ -426,7 +466,8 @@ walker AgentOrchestrator {
             self._session_context.conversation_log,
             self._session_context.diagram_blueprint,
             canvas_mode,
-            existing_elements_json
+            existing_elements_json,
+            existing_bounding_box
         );
         log(f"compose_diagram: response = {response[:80]}");
 

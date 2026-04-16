@@ -4,6 +4,7 @@ def:pub useChatSocket() -> dict {
     has messages: list = [];
     has isLoading: bool = False;
     has isConnected: bool = False;
+    has pendingConfirm: dict = {};
 
     wsRef = useRef(None);
     connectedRef = useRef(False);
@@ -12,9 +13,11 @@ def:pub useChatSocket() -> dict {
     messagesRef = useRef([]);
     loadingRef = useRef(False);
     currentAssistantRef = useRef("");
+    pendingConfirmRef = useRef({});
 
     messagesRef.current = messages;
     loadingRef.current = isLoading;
+    pendingConfirmRef.current = pendingConfirm;
 
     def nextId() -> int {
         messageIdRef.current = messageIdRef.current + 1;
@@ -37,7 +40,10 @@ def:pub useChatSocket() -> dict {
     def handleWsMessage(event: any) -> None {
         data = JSON.parse(event.data);
 
-        if data.type == "message" {
+        if data.type == "confirm" {
+            pendingConfirm = {"confirmId": data.confirmId or "", "message": data.message or ""};
+            pendingConfirmRef.current = pendingConfirm;
+        } elif data.type == "message" {
             msgContent = data["content"] or "";
             messagesRef.current = messagesRef.current.concat([{"id": nextId(), "role": "assistant", "content": msgContent}]);
             messages = messagesRef.current;
@@ -154,6 +160,19 @@ def:pub useChatSocket() -> dict {
         messageIdRef.current = 0;
     }
 
+    def respondConfirm(result: str) -> None {
+        cid = pendingConfirmRef.current.confirmId or "";
+        if wsRef.current and connectedRef.current and cid {
+            wsRef.current.send(JSON.stringify({
+                "type": "confirm_response",
+                "confirmId": cid,
+                "result": result
+            }));
+        }
+        pendingConfirm = {};
+        pendingConfirmRef.current = {};
+    }
+
     can with entry {
         connect();
 
@@ -172,6 +191,8 @@ def:pub useChatSocket() -> dict {
         "isLoading": isLoading,
         "isConnected": isConnected,
         "sendMessage": sendMessage,
-        "clearMessages": clearMessages
+        "clearMessages": clearMessages,
+        "pendingConfirm": pendingConfirm,
+        "respondConfirm": respondConfirm
     };
 }

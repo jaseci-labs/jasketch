@@ -170,6 +170,33 @@ def ChatMessage(props: dict) -> JsxElement {
     return None;
 }
 
+def CanvasConfirmModal(props: dict) -> JsxElement {
+    pending = props.pending;
+    onApprove = props.onApprove;
+    onDeny = props.onDeny;
+    if not pending or not pending.confirmId {
+        return <></>;
+    }
+    return <div className="flex-shrink-0 border-t border-amber-200/40 bg-amber-50 px-4 py-3">
+        <div className="flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-amber-600 mb-1">Canvas Confirmation</p>
+                <p className="text-xs text-gray-700 mb-3">{pending.message}</p>
+                <div className="flex gap-2">
+                    <button onClick={onApprove}
+                        className="bg-green-100/60 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer">
+                        Approve
+                    </button>
+                    <button onClick={onDeny}
+                        className="bg-red-100/60 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer">
+                        Deny
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>;
+}
+
 def ChatInput(props: dict) -> JsxElement {
     canSend = props.apiKey and props.inputText.trim() and not props.isLoading;
     isDisabled = not props.apiKey or props.isLoading;
@@ -332,6 +359,12 @@ def:pub ChatPanel(props: dict) -> JsxElement {
 
             <div ref={messagesEndRef}></div>
         </div>
+
+        <CanvasConfirmModal
+            pending={chat.pendingConfirm}
+            onApprove={lambda -> None { chat.respondConfirm("ok"); }}
+            onDeny={lambda -> None { chat.respondConfirm("deny"); }}
+        />
 
         <ChatInput
             apiKey={apiKey}

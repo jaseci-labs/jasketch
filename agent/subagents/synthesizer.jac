@@ -15,7 +15,7 @@ node DiagramComposer {
     has llm: Any = None;
 
     def compose(message: str, conversation_log: str, diagram_blueprint: str,
-                canvas_mode: str, existing_elements_json: str) -> str
+                canvas_mode: str, existing_elements_json: str, existing_bounding_box: str) -> str
         by self.llm(
             tools=[use_canvas_tool],
             max_react_iterations=8,
@@ -24,7 +24,8 @@ node DiagramComposer {
                 "conversation": conversation_log,
                 "diagram_blueprint": diagram_blueprint,
                 "canvas_mode": canvas_mode,
-                "existing_elements_json": existing_elements_json
+                "existing_elements_json": existing_elements_json,
+                "existing_bounding_box": existing_bounding_box
             }
         );
 }
@@ -38,22 +39,51 @@ Inputs (from incl_info):
   - diagram_blueprint: JSON-serialized BlueprintSpec from DiagramPlanner (may be empty string)
   - conversation: rolling transcript of recent turns
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  CRITICAL: canvas_mode DETERMINES YOUR TOOL CHOICE ⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IF canvas_mode == "replace":
+  → MUST use render_elements (this clears and replaces)
+  → DO NOT use create_elements
+
+IF canvas_mode == "additive":
+  → MUST use create_elements (this adds without clearing)
+  → DO NOT use render_elements
+  → Place new diagram beside existing using existing_bounding_box
+
+If you use the wrong tool, the diagram will not be placed correctly.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Workflow for replace mode:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
   1. Call use_canvas_tool("get_drawing_guide", "{}") to load element schemas and styling palette
   2. Call use_canvas_tool("get_viewport", "{}") to get canvas dimensions
   3. Follow diagram_blueprint if provided; otherwise infer structure from message
   4. Design the COMPLETE elements[] array (all shapes, arrows, text labels) using the styling guide
   5. Run the PRE-RENDER CHECKLIST below — fix any issues before rendering
-  6. Call use_canvas_tool("render_elements", "{\"elements\": [...]}") with ALL elements
+  6. Call use_canvas_tool("render_elements", "{\"elements\": [...]}")
+     MUST include ALL elements (clears canvas first, then renders)
   7. Describe what was created
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Workflow for additive mode:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
   1. Call use_canvas_tool("get_drawing_guide", "{}") to load element schemas and styling palette
-  2. Call use_canvas_tool("get_viewport", "{}") to get canvas dimensions and existing bounding box
-  3. Parse existing_elements_json to understand current layout
-  4. Position new elements beside/below existing ones (no overlap)
-  5. Run the PRE-RENDER CHECKLIST below
-  6. Call use_canvas_tool("create_elements", "{\"elements\": [...]}") to add without clearing
+  2. Call use_canvas_tool("get_viewport", "{}") to get canvas dimensions
+  3. Parse existing_elements_json to understand what's already on the canvas
+  4. Read existing_bounding_box from incl_info — format: {x, y, width, height}
+     - If bounding_box has x, y, width, height:
+       Place new diagram starting at: x + width + 120 (120px gap to the right)
+     - If bounding_box is empty/null, start at x=100, y=100
+  5. Design NEW elements only (DON'T include existing elements)
+  6. Run the PRE-RENDER CHECKLIST below
+  7. Call use_canvas_tool("create_elements", "{\"elements\": [...]}")
+     MUST use create_elements, NOT render_elements
+     Only pass your NEW elements
+  8. Describe what was added
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ELEMENT SCHEMAS
@@ -195,9 +225,9 @@ def use_canvas_tool(name: str, arguments: str) -> str {
     } except Exception { args = {}; }
     return _composer_provider.call_tool(name, args);
 }
-sem use_canvas_tool = "Call a canvas tool by name. Only use tools listed in available_canvas_tools from context.";
-sem use_canvas_tool.name = "Tool name — must exactly match one of the names in available_canvas_tools.";
-sem use_canvas_tool.arguments = "JSON object string matching the inputSchema of the named tool. Build from the schema in available_canvas_tools.";
+sem use_canvas_tool = "Call a canvas tool by name with JSON arguments. Always pass both 'name' and 'arguments' parameters.";
+sem use_canvas_tool.name = "(required) Tool name — must exactly match one of: get_drawing_guide, get_viewport, render_elements, create_elements";
+sem use_canvas_tool.arguments = "(required) JSON object string (not Python dict) matching the inputSchema of the named tool. Example: '{\"elements\": [...]}'  or '{}'  for tools with no inputs.";
 
 # ── Provider injection (called by orchestrator) ────────────────────────────────
 

@@ -218,8 +218,6 @@ obj CanvasToolProvider {
             "get_canvas_elements": self._get_canvas_elements,
             "render_elements":   self._render_elements,
             "get_drawing_guide": self._get_drawing_guide,
-            "show_confirm":      self._show_confirm,
-            "get_confirm_result": self._get_confirm_result,
         };
         tool_fn: Any = dispatch.get(name);
         if tool_fn is None {
@@ -666,20 +664,5 @@ obj CanvasToolProvider {
             "render_elements_format": "Call render_elements(elements: list) to atomically clear and render a complete diagram. Includes auto-fit viewport with 60px padding, capped at 2x zoom."
         };
         return json.dumps(guide);
-    }
-
-    """Send a confirm dialog request to the browser."""
-    def _show_confirm(args: dict) -> str {
-        return json.dumps(self._send("showConfirm", {
-            "confirmId": args.get("confirmId"),
-            "message": args.get("message", "Replace canvas content?")
-        }));
-    }
-
-    """Poll for the result of a confirm dialog."""
-    def _get_confirm_result(args: dict) -> str {
-        return json.dumps(self._send("getConfirmResult", {
-            "confirmId": args.get("confirmId")
-        }));
     }
 }
