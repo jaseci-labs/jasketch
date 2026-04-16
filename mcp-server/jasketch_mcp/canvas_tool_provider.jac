@@ -572,7 +572,7 @@ obj CanvasToolProvider {
     """Fetch all canvas elements with defaults stripped for token efficiency."""
     def _get_canvas_elements(args: dict) -> str {
         result: Any = self._send("getElements", {});
-        if not result or not result.get("elements") {
+        if not result or "elements" not in result {
             return json.dumps({"elements": [], "total": 0}, separators=(',', ':'));
         }
         # Strip {id, element} wrapper → plain element objects

@@ -5,11 +5,13 @@ def:pub useElements() -> dict {
     historyRef = useRef([]);
     historyIndexRef = useRef(-1);
     loadedRef = useRef(False);
+    elementsRef = useRef([]);
 
     STORAGE_KEY = "jasketch_elements";
 
     def setElementsInternal(newElements: list) -> None {
         elements = newElements;
+        elementsRef.current = newElements;
         # Strip non-serializable imageObj before saving to localStorage
         toStore = [
             el.type == "image" and el.imageObj and {
@@ -36,6 +38,7 @@ def:pub useElements() -> dict {
                     mi = mi + 1;
                 }
                 elements = parsed;
+                elementsRef.current = parsed;
                 pushHistory(parsed);
             }
         }
@@ -194,6 +197,7 @@ def:pub useElements() -> dict {
 
     return {
         "elements": elements,
+        "elementsRef": elementsRef,
         "setElements": setElementsWithHistory,
         "addElement": addElement,
         "addMultipleElements": addMultipleElements,

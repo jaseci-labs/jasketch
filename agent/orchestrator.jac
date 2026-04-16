@@ -47,7 +47,6 @@ import from .subagents {
     DiagramComposer,
     DiagramEditor
 }
-import from .subagents.analyzer { _set_analyst_provider }
 import from .subagents.synthesizer { _set_composer_provider }
 import from .subagents.refiner { _set_editor_provider }
 import from .llm_factory { create_llm }
@@ -167,6 +166,7 @@ def _send_command(action: str, data: dict | None = None, session_id: str = "", t
     }
 
     payload: str = json.dumps({
+        "role": "controller",
         "requestId": request_id,
         "sessionId": session_id,
         "action": action,
@@ -258,7 +258,7 @@ walker AgentOrchestrator {
     can init_context with Root entry {
         # Find or create SessionContext for this session
         self._provider = CanvasToolProvider(
-            send_fn=lambda (action: str, data: dict[str, Any]) -> Any {_send_command(action, data, self.session_id);}
+            send_fn=lambda (action: str, data: dict[str, Any]) -> Any {return _send_command(action, data, self.session_id);}
         );
 
         # Find or create session context (persists across turns)
@@ -431,6 +431,7 @@ walker AgentOrchestrator {
         log(f"compose_diagram: response = {response[:80]}");
 
         self._session_context.clear_diagram_blueprint();
+        self._session_context.canvas_summary = "non-empty";
         self._session_context.append_turn("composer", response);
         _send_ws(self.ws, {"type": "message", "sessionId": self.session_id, "content": response}, self.event_loop);
         _send_ws(self.ws, {"type": "done", "sessionId": self.session_id}, self.event_loop);
@@ -443,11 +444,20 @@ walker AgentOrchestrator {
         if _diagram_analyst is None { return; }
 
         log("explain_canvas: starting DiagramAnalyst");
-        _set_analyst_provider(self._provider);
+
+        # Pre-fetch canvas elements directly (same pattern as _check_canvas_empty)
+        canvas_elements_json: str = '{"elements":[],"total":0}';
+        try {
+            canvas_elements_json = self._provider.call_tool("get_canvas_elements", {});
+        } except Exception as e {
+            log(f"explain_canvas: error fetching elements: {e}");
+        }
+        log(f"explain_canvas: canvas_elements_json = {canvas_elements_json[:120]}");
 
         response: str = _diagram_analyst.explain(
             self.message,
-            self._session_context.conversation_log
+            self._session_context.conversation_log,
+            canvas_elements_json
         );
         log(f"explain_canvas: response = {response[:80]}");
 
