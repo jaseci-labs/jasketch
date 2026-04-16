@@ -1,6 +1,6 @@
 """DiagramAnalyst — explains/describes the diagram on the canvas.
 
-Fetches canvas elements via get_canvas_elements tool and provides analysis.
+Canvas elements are pre-fetched by the orchestrator and passed as canvas_elements_json.
 Read-only agent: no modification tools.
 """
 
@@ -12,12 +12,11 @@ node DiagramAnalyst {
     has api_key: str = "";
     has llm: Any = None;
 
-    def explain(message: str, conversation_log: str) -> str
+    def explain(message: str, conversation_log: str, canvas_elements_json: str) -> str
         by self.llm(
-            tools=[use_canvas_tool],
-            max_react_iterations=2,
+            tools=[],
             incl_info={
-                "available_canvas_tools": [t for t in _analyst_provider.list_tools() if t["name"] in ANALYST_TOOLS],
+                "canvas_elements_json": canvas_elements_json,
                 "conversation": conversation_log
             }
         );
@@ -26,10 +25,7 @@ node DiagramAnalyst {
 sem DiagramAnalyst.explain = """
 Explain the JaSketch canvas diagram to the user.
 
-Workflow:
-  1. Call use_canvas_tool("get_canvas_elements", "{}") to fetch the current diagram
-  2. Analyze the elements to understand the diagram structure
-  3. Explain to the user what the diagram shows, its purpose, key components, and relationships
+Canvas data is already provided in `canvas_elements_json` from context — parse it directly.
 
 Element Types and Key Fields (runtime format):
   - rectangle / circle / diamond: x, y, width, height, shapeText (label inside shape), color, fillColor, boundElements (list of connected arrow IDs)
@@ -41,10 +37,12 @@ Element Types and Key Fields (runtime format):
   - freehand: x, y, points (free-drawn path)
 
 Your Task:
-  1. Fetch canvas elements via use_canvas_tool("get_canvas_elements", "{}")
+  1. Parse canvas_elements_json from incl_info to extract the "elements" array
   2. Identify shapes (by type + shapeText labels) and connections (arrows via startBinding/endBinding elementIds)
   3. Understand the overall diagram structure: what it represents, its purpose, layout
   4. Explain clearly: what diagram this is, what it shows, key components, and how they relate
+
+If canvas_elements_json is empty or has no elements, explain that the canvas is currently empty.
 
 Read-only: explain only, do NOT attempt to modify the canvas.
 
@@ -52,28 +50,3 @@ User message: {{message}}
 
 Respond now.
 """;
-
-# ── Tool binding (populated by orchestrator before each call) ──────────────────
-
-glob ANALYST_TOOLS: list[str] = ["get_canvas_elements"];
-
-glob _analyst_provider: Any = None;
-
-def use_canvas_tool(name: str, arguments: str) -> str {
-    args: dict = {};
-    try {
-        if isinstance(arguments, dict) { args = arguments; }
-        elif arguments { args = json.loads(arguments); }
-    } except Exception { args = {}; }
-    return _analyst_provider.call_tool(name, args);
-}
-sem use_canvas_tool = "Call a canvas tool by name. Only use tools listed in available_canvas_tools from context.";
-sem use_canvas_tool.name = "Tool name — must exactly match one of the names in available_canvas_tools.";
-sem use_canvas_tool.arguments = "JSON object string matching the inputSchema of the named tool. Build from the schema in available_canvas_tools.";
-
-# ── Provider injection (called by orchestrator) ────────────────────────────────
-
-def _set_analyst_provider(provider: Any) -> None {
-    global _analyst_provider;
-    _analyst_provider = provider;
-}

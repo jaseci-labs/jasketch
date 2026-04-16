@@ -222,7 +222,7 @@ def:pub ChatPanel(props: dict) -> JsxElement {
     modelOptions = [
         {"id": "gpt-4o", "label": "GPT-4o"},
         {"id": "gpt-4o-mini", "label": "GPT-4o Mini"},
-        {"id": "gpt-5.4-mini", "label": "GPT-5.4 Mini"},
+        {"id": "gpt-5-mini", "label": "GPT-5 Mini"},
         {"id": "claude-sonnet-4-20250514", "label": "Claude Sonnet"},
         {"id": "claude-haiku-4-20250414", "label": "Claude Haiku"},
         {"id": "gemini/gemini-2.0-flash", "label": "Gemini Flash"},

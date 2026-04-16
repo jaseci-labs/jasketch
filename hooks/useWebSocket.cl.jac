@@ -35,7 +35,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
     }
 
     def sendResponse(ws: any, requestId: str, success: bool, data: any) -> None {
-        msg = {"requestId": requestId, "success": success, "data": data};
+        msg = {"role": "canvas", "requestId": requestId, "success": success, "data": data};
         ws.send(JSON.stringify(msg));
     }
 
@@ -70,7 +70,8 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             }
             sendResponse(ws, requestId, True, {"ids": addedIds, "count": items.length, "action": "created"});
         } elif action == "getElements" {
-            elems = hook.elements;
+            # Use elementsRef for synchronous read (avoids stale React state snapshot)
+            elems = (hook.elementsRef and hook.elementsRef.current) or hook.elements;
             result = [];
             for el in elems {
                 if el and (not data.type or el.type == data.type) {
@@ -208,8 +209,8 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                 sendError(ws, requestId, "Element not found: " + findTargetId);
             }
         } elif action == "setElements" {
-            hook.clearElements();
             newElements = data.elements or [];
+            hook.clearElements();
             hook.addMultipleElements(newElements);
 
             # Auto-fit viewport: compute bounding box of all elements, then zoom to fit with 60px padding
