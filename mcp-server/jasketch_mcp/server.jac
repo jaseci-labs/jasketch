@@ -14,9 +14,9 @@ import uuid;
 import websockets;
 import from mcp.server.fastmcp { FastMCP }
 import from typing { Any }
-import from .canvas_tool_provider { CanvasToolProvider }
+import from canvas_tool_provider { CanvasToolProvider }
 
-glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "ws://localhost:9601");
+glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "wss://jasketch.jaseci.org/ws");
 glob REQUEST_TIMEOUT: float = 40.0;
 
 # HTTP transport config (used when JASKETCH_MCP_TRANSPORT=streamable-http)
