@@ -326,6 +326,7 @@ walker AgentOrchestrator {
 
         # Call IntentRouter LLM — returns typed RouteDecision
         log("route_intent: calling IntentRouter");
+        _send_ws(self.ws, {"type": "agent_start", "sessionId": self.session_id, "agent": "Routing"}, self.event_loop);
         decision: RouteDecision = _intent_router.handle(
             self.message,
             self._session_context.conversation_log,
@@ -333,6 +334,7 @@ walker AgentOrchestrator {
             self._session_context.canvas_summary
         );
         log(f"route_intent: route = {decision.route}");
+        _send_ws(self.ws, {"type": "agent_done", "sessionId": self.session_id, "agent": "Routing"}, self.event_loop);
 
         # Append user message to context
         self._session_context.append_turn("user", self.message);
@@ -364,12 +366,14 @@ walker AgentOrchestrator {
 
         log("build_blueprint: calling DiagramPlanner");
 
+        _send_ws(self.ws, {"type": "agent_start", "sessionId": self.session_id, "agent": "Planning"}, self.event_loop);
         # Call DiagramPlanner LLM — returns typed PlannerDecision
         decision: PlannerDecision = _diagram_planner.reason(
             self.message,
             self._session_context.conversation_log
         );
         log(f"build_blueprint: next_step = {decision.next_step}");
+        _send_ws(self.ws, {"type": "agent_done", "sessionId": self.session_id, "agent": "Planning"}, self.event_loop);
 
         # Persist blueprint to session if one was produced
         if decision.blueprint is not None {
@@ -460,6 +464,7 @@ walker AgentOrchestrator {
 
         if _diagram_composer is None { return; }
 
+        _send_ws(self.ws, {"type": "agent_start", "sessionId": self.session_id, "agent": "Synthesizing"}, self.event_loop);
         # Call DiagramComposer LLM
         response: str = _diagram_composer.compose(
             self.message,
@@ -470,6 +475,7 @@ walker AgentOrchestrator {
             existing_bounding_box
         );
         log(f"compose_diagram: response = {response[:80]}");
+        _send_ws(self.ws, {"type": "agent_done", "sessionId": self.session_id, "agent": "Synthesizing"}, self.event_loop);
 
         self._session_context.clear_diagram_blueprint();
         self._session_context.canvas_summary = "non-empty";
@@ -486,6 +492,7 @@ walker AgentOrchestrator {
 
         log("explain_canvas: starting DiagramAnalyst");
 
+        _send_ws(self.ws, {"type": "agent_start", "sessionId": self.session_id, "agent": "Analyzing"}, self.event_loop);
         # Pre-fetch canvas elements directly (same pattern as _check_canvas_empty)
         canvas_elements_json: str = '{"elements":[],"total":0}';
         try {
@@ -501,6 +508,7 @@ walker AgentOrchestrator {
             canvas_elements_json
         );
         log(f"explain_canvas: response = {response[:80]}");
+        _send_ws(self.ws, {"type": "agent_done", "sessionId": self.session_id, "agent": "Analyzing"}, self.event_loop);
 
         self._session_context.append_turn("analyst", response);
         _send_ws(self.ws, {"type": "message", "sessionId": self.session_id, "content": response}, self.event_loop);
@@ -516,11 +524,13 @@ walker AgentOrchestrator {
         log("edit_canvas: starting DiagramEditor");
         _set_editor_provider(self._provider);
 
+        _send_ws(self.ws, {"type": "agent_start", "sessionId": self.session_id, "agent": "Editing"}, self.event_loop);
         response: str = _diagram_editor.revise(
             self.message,
             self._session_context.conversation_log
         );
         log(f"edit_canvas: response = {response[:80]}");
+        _send_ws(self.ws, {"type": "agent_done", "sessionId": self.session_id, "agent": "Editing"}, self.event_loop);
 
         self._session_context.append_turn("editor", response);
         _send_ws(self.ws, {"type": "message", "sessionId": self.session_id, "content": response}, self.event_loop);

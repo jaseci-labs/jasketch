@@ -1,5 +1,6 @@
 import from react { useRef }
 import from "...hooks.useChatSocket" { useChatSocket }
+import from "marked" { marked }
 
 
 # --- Icon helpers (keeps JSX readable) ---
@@ -66,7 +67,7 @@ def inputClass() -> str {
 # --- Section components ---
 
 def ChatHeader(props: dict) -> JsxElement {
-    return <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+    return <div className="flex items-center justify-between px-4 py-3 border-b border-orange-100">
         <div className="flex items-center gap-2">
             <div className={"w-2 h-2 rounded-full " + (props.isConnected and "bg-green-500" or "bg-red-400")}></div>
             <span className="text-sm font-semibold text-gray-700">AI Chat</span>
@@ -88,7 +89,7 @@ def ChatHeader(props: dict) -> JsxElement {
 def ChatSettings(props: dict) -> JsxElement {
     stopProp = lambda e: any -> None { e.stopPropagation(); };
 
-    return <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 animate-fade-in">
+    return <div className="px-4 py-3 border-b border-orange-100 bg-orange-100/40 animate-fade-in">
         <div className="mb-3">
             <span className="sidebar-label">API Key</span>
             <input
@@ -100,13 +101,13 @@ def ChatSettings(props: dict) -> JsxElement {
                 className={inputClass()}
             />
         </div>
-        <div>
+        <div className="mb-3">
             <span className="sidebar-label">Model</span>
             <select
                 value={props.selectedModel}
                 onChange={lambda e: any -> None { props.onModelChange(e.target.value); }}
                 onKeyDown={stopProp}
-                className={inputClass + " cursor-pointer"}
+                className={inputClass() + " cursor-pointer"}
             >
                 {[
                     <option key={opt.id} value={opt.id}>{opt.label}</option>
@@ -114,6 +115,12 @@ def ChatSettings(props: dict) -> JsxElement {
                 ]}
             </select>
         </div>
+        <button
+            onClick={props.onConfigure}
+            className="w-full py-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors cursor-pointer"
+        >
+            {"Configure"}
+        </button>
     </div>;
 }
 
@@ -139,9 +146,8 @@ def ChatMessage(props: dict) -> JsxElement {
     }
     if msg.role == "assistant" {
         return <div className="flex justify-start">
-            <div className="chat-msg-assistant max-w-[85%] px-3 py-2 rounded-xl rounded-bl-sm bg-gray-100 text-gray-700 text-xs leading-relaxed whitespace-pre-wrap">
-                {msg.content}
-            </div>
+            <div className="chat-msg-assistant chat-prose max-w-[85%] px-3 py-2 rounded-xl rounded-bl-sm bg-white/80 text-gray-700 text-xs leading-relaxed"
+                 dangerouslySetInnerHTML={{"__html": marked(msg.content)}} />
         </div>;
     }
     if msg.role == "tool" {
@@ -159,15 +165,15 @@ def ChatMessage(props: dict) -> JsxElement {
             </div>
         </div>;
     }
-    if msg.role == "agent" {
-        agentStatusClass = msg.status == "running" and "bg-purple-50 text-purple-600" or "bg-purple-100 text-purple-700";
-        return <div className="flex justify-center">
-            <div className={"chat-msg-agent px-2.5 py-1 rounded-full text-[10px] font-medium " + agentStatusClass}>
-                {msg.status == "running" and "⚙ " or "✓ "}{msg.content}
-            </div>
-        </div>;
-    }
-    return None;
+    return <></>;
+}
+
+def ChatToast(props: dict) -> JsxElement {
+    if not props.msg { return <></>; }
+    colorClass = props.type == "success" and "bg-green-500" or "bg-red-500";
+    return <div className={"chat-toast fixed bottom-20 right-4 z-50 px-4 py-2 rounded-xl text-white text-xs font-medium shadow-lg " + colorClass}>
+        {props.msg}
+    </div>;
 }
 
 def CanvasConfirmModal(props: dict) -> JsxElement {
@@ -201,7 +207,7 @@ def ChatInput(props: dict) -> JsxElement {
     canSend = props.apiKey and props.inputText.trim() and not props.isLoading;
     isDisabled = not props.apiKey or props.isLoading;
 
-    return <div className="px-4 py-3 border-t border-gray-100">
+    return <div className="px-4 py-3 border-t border-orange-100">
         {not props.apiKey and <p className="text-[10px] text-amber-500 mb-2 flex items-center gap-1">
             <WarnIcon />
             {"Set your API key in settings to start"}
@@ -241,6 +247,8 @@ def:pub ChatPanel(props: dict) -> JsxElement {
     has inputText: str = "";
     has showSettings: bool = False;
     has initialized: bool = False;
+    has toastMsg: str = "";
+    has toastType: str = "success";
 
     chat = useChatSocket();
     messagesEndRef = useRef(None);
@@ -285,12 +293,24 @@ def:pub ChatPanel(props: dict) -> JsxElement {
 
     def handleApiKeyChange(value: str) -> None {
         apiKey = value;
-        localStorage.setItem("jasketch_chat_apikey", value);
     }
 
     def handleModelChange(value: str) -> None {
         selectedModel = value;
-        localStorage.setItem("jasketch_chat_model", value);
+    }
+
+    def handleConfigure() -> None {
+        if not apiKey or len(apiKey) < 10 {
+            toastMsg = "API key is too short. Please enter a valid key.";
+            toastType = "error";
+            setTimeout(lambda { toastMsg = ""; }, 3000);
+            return;
+        }
+        localStorage.setItem("jasketch_chat_apikey", apiKey);
+        localStorage.setItem("jasketch_chat_model", selectedModel);
+        toastMsg = "Configuration saved! Ready to chat.";
+        toastType = "success";
+        setTimeout(lambda { toastMsg = ""; }, 3000);
     }
 
     def handleSend() -> None {
@@ -319,11 +339,9 @@ def:pub ChatPanel(props: dict) -> JsxElement {
         </button>;
     }
 
-    # Show typing indicator when loading and last message isn't already streaming
-    showTyping = chat.isLoading and chat.messages.length > 0 and chat.messages[chat.messages.length - 1].role != "assistant";
 
     # Open state: full panel
-    return <div className="chat-panel fixed right-0 top-[44px] bottom-0 w-[380px] z-40 bg-white/95 backdrop-blur-xl border-l border-gray-200/60 shadow-xl flex flex-col animate-slide-in-right">
+    return <div className="chat-panel fixed right-0 top-[44px] bottom-0 w-[380px] z-40 bg-orange-50/95 backdrop-blur-xl border-l border-orange-100/60 shadow-xl flex flex-col animate-slide-in-right">
 
         <ChatHeader
             isConnected={chat.isConnected}
@@ -339,6 +357,7 @@ def:pub ChatPanel(props: dict) -> JsxElement {
             modelOptions={modelOptions}
             onApiKeyChange={handleApiKeyChange}
             onModelChange={handleModelChange}
+            onConfigure={handleConfigure}
         /> or None}
 
         <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2.5">
@@ -351,9 +370,10 @@ def:pub ChatPanel(props: dict) -> JsxElement {
                 for msg in chat.messages
             ]}
 
-            {showTyping and <div className="flex justify-start">
-                <div className="px-3 py-2 rounded-xl rounded-bl-sm bg-gray-100 text-gray-400 text-xs">
-                    <span className="chat-typing-dots">{"..."}</span>
+            {chat.currentPhase and <div className="flex justify-start">
+                <div className="chat-spinner-row flex items-center gap-2 px-3 py-1.5 rounded-xl bg-orange-100/60 text-orange-600 text-[10px] font-medium">
+                    <span className="chat-spinner-char"></span>
+                    <span>{chat.currentPhase + "..."}</span>
                 </div>
             </div> or None}
 
@@ -375,5 +395,7 @@ def:pub ChatPanel(props: dict) -> JsxElement {
             onKeyDown={handleKeyDown}
             onSend={handleSend}
         />
+
+        <ChatToast msg={toastMsg} type={toastType} />
     </div>;
 }

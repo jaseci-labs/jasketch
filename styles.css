@@ -263,3 +263,69 @@ button, input, select, textarea {
 .chat-msg-error {
     animation: fadeIn 0.15s ease-out;
 }
+
+/* Chat prose markdown styles */
+.chat-prose h1,
+.chat-prose h2,
+.chat-prose h3 {
+    font-weight: 600;
+    margin: 0.4em 0 0.2em;
+}
+
+.chat-prose p {
+    margin: 0.25em 0;
+}
+
+.chat-prose ul,
+.chat-prose ol {
+    padding-left: 1.2em;
+    margin: 0.25em 0;
+}
+
+.chat-prose li {
+    margin: 0.1em 0;
+}
+
+.chat-prose code {
+    background: #f3f4f6;
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+.chat-prose pre {
+    background: #f3f4f6;
+    padding: 0.5em;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 0.4em 0;
+}
+
+.chat-prose strong {
+    font-weight: 600;
+}
+
+/* Toast notification animation */
+.chat-toast {
+    animation: fadeIn 0.2s ease-out;
+}
+
+/* Spinner phase indicator */
+.chat-spinner-char::before {
+    content: "⠋";
+    display: inline-block;
+    animation: brailleSpinner 0.8s steps(10, end) infinite;
+}
+
+@keyframes brailleSpinner {
+    0%  { content: "⠋"; }
+    10% { content: "⠙"; }
+    20% { content: "⠹"; }
+    30% { content: "⠸"; }
+    40% { content: "⠼"; }
+    50% { content: "⠴"; }
+    60% { content: "⠦"; }
+    70% { content: "⠧"; }
+    80% { content: "⠇"; }
+    90% { content: "⠏"; }
+}
