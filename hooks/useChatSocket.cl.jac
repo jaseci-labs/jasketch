@@ -5,6 +5,7 @@ def:pub useChatSocket() -> dict {
     has isLoading: bool = False;
     has isConnected: bool = False;
     has pendingConfirm: dict = {};
+    has currentPhase: str = "";
 
     wsRef = useRef(None);
     connectedRef = useRef(False);
@@ -51,37 +52,18 @@ def:pub useChatSocket() -> dict {
             loadingRef.current = False;
             isLoading = False;
             currentAssistantRef.current = "";
+            currentPhase = "";
         } elif data.type == "error" {
             messagesRef.current = messagesRef.current.concat([{"id": nextId(), "role": "error", "content": data.message or "Unknown error"}]);
             messages = messagesRef.current;
             loadingRef.current = False;
             isLoading = False;
             currentAssistantRef.current = "";
+            currentPhase = "";
         } elif data.type == "agent_start" {
-            # Show which agent is active
-            agentName = data.agent or "Unknown Agent";
-            messagesRef.current = messagesRef.current.concat([{
-                "id": nextId(),
-                "role": "agent",
-                "content": agentName,
-                "status": "running"
-            }]);
-            messages = messagesRef.current;
+            currentPhase = data.agent or "";
         } elif data.type == "agent_done" {
-            # Mark last agent message as done
-            if messagesRef.current.length > 0 {
-                lastIdx = messagesRef.current.length - 1;
-                lastMsg = messagesRef.current[lastIdx];
-                if lastMsg and lastMsg.role == "agent" and lastMsg.status == "running" {
-                    messagesRef.current = messagesRef.current.slice(0, lastIdx).concat([{
-                        "id": lastMsg.id,
-                        "role": "agent",
-                        "content": lastMsg.content,
-                        "status": "done"
-                    }]);
-                    messages = messagesRef.current;
-                }
-            }
+            currentPhase = "";
         }
     }
 
@@ -193,6 +175,7 @@ def:pub useChatSocket() -> dict {
         "sendMessage": sendMessage,
         "clearMessages": clearMessages,
         "pendingConfirm": pendingConfirm,
-        "respondConfirm": respondConfirm
+        "respondConfirm": respondConfirm,
+        "currentPhase": currentPhase
     };
 }
