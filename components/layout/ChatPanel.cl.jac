@@ -315,6 +315,7 @@ def:pub ChatPanel(props: dict) -> JsxElement {
         toastMsg = "Configuration saved! Ready to chat.";
         toastType = "success";
         setTimeout(lambda { toastMsg = ""; }, 3000);
+        showSettings = False;
     }
 
     def handleSend() -> None {
