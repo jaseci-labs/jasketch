@@ -258,10 +258,14 @@ def:pub ChatPanel(props: dict) -> JsxElement {
         {"id": "gpt-4o", "label": "GPT-4o"},
         {"id": "gpt-4o-mini", "label": "GPT-4o Mini"},
         {"id": "gpt-5-mini", "label": "GPT-5 Mini"},
-        {"id": "claude-sonnet-4-20250514", "label": "Claude Sonnet"},
-        {"id": "claude-haiku-4-20250414", "label": "Claude Haiku"},
-        {"id": "gemini/gemini-2.0-flash", "label": "Gemini Flash"},
-        {"id": "ollama/llama3", "label": "Ollama Llama3"}
+        {"id": "claude-opus-4-6-20260205", "label": "Claude Opus 4.6"},
+        {"id": "claude-opus-4-5-20251101", "label": "Claude Opus 4.5"},
+        {"id": "claude-sonnet-4-5-20250929", "label": "Claude Sonnet 4.5"},
+        {"id": "claude-sonnet-4-20250514", "label": "Claude Sonnet 4"},
+        {"id": "claude-3-haiku-20240307", "label": "Claude Haiku 3"},
+        {"id": "gemini/gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
+        {"id": "gemini/gemini-2.5-flash-preview-09-2025", "label": "Gemini 2.5 Flash Preview"},
+        {"id": "gemini/gemini-flash-latest", "label": "Gemini Flash Latest"},
     ];
 
     # Load saved settings on mount
@@ -311,6 +315,7 @@ def:pub ChatPanel(props: dict) -> JsxElement {
         toastMsg = "Configuration saved! Ready to chat.";
         toastType = "success";
         setTimeout(lambda { toastMsg = ""; }, 3000);
+        showSettings = False;
     }
 
     def handleSend() -> None {
