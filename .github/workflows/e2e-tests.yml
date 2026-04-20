@@ -44,6 +44,10 @@ jobs:
       - name: Install jac-scale data dependencies into jac venv
         run: .jac/venv/bin/pip install "jac-scale[data]"
 
+      - name: Debug server startup
+        run: |
+          jac start --port 8000
+          
       - name: Run E2E tests
         run: pytest tests/e2e/ -v --timeout=300
 
