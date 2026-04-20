@@ -37,6 +37,14 @@ base_route_app = "app"
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
+[plugins.scale.kubernetes]
+mongodb_enabled = false   # Don't deploy MongoDB - use MONGODB_URI instead
+redis_enabled = false     # Don't deploy Redis - use REDIS_URL instead
+
+[plugins.scale.database]
+mongodb_uri = "mongodb://localhost:27017"
+redis_url = "redis://localhost:6379"
+
 [plugins.client.app_meta_data]
 title = "JaSketch"
 icon = ".assets/icon.png"

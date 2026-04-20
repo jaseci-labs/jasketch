@@ -1,19 +1,36 @@
 import from react { useRef }
 
-def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, canvasHook: dict) -> dict {
+def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, canvasHook: dict, roomState: dict = None, onSessionEnded: any = None) -> dict {
     wsRef = useRef(None);
     connectedRef = useRef(False);
     elementsHookRef = useRef(elementsHook);
     viewportHookRef = useRef(viewportHook);
     canvasRefRef = useRef(canvasRef);
     canvasHookRef = useRef(canvasHook);
+    roomStateRef = useRef(roomState or {});
+    onSessionEndedRef = useRef(None);
+    cursorStatesRef = useRef({});
+    participantsRef = useRef({});
+    hostSessionIdRef = useRef("");
+    isApplyingRemoteRef = useRef(False);
+    sendRoomBroadcastRef = useRef(None);
+    sendRoomPreviewRef = useRef(None);
+    sendCursorBroadcastRef = useRef(None);
+    sendEndSessionRef = useRef(None);
+    sendUpdateUsernameRef = useRef(None);
+    joinRoomRef = useRef(None);
     reconnectTimerRef = useRef(None);
+    has cursorStates: dict = {};
+    has participants: dict = {};
+    has hostSessionId: str = "";
 
     # Keep refs current to avoid stale closures
     elementsHookRef.current = elementsHook;
     viewportHookRef.current = viewportHook;
     canvasRefRef.current = canvasRef;
     canvasHookRef.current = canvasHook;
+    roomStateRef.current = roomState or {};
+    onSessionEndedRef.current = onSessionEnded;
 
     def getRelayUrl() -> str {
         # Auto-detect: use wss:// for deployed, ws:// for localhost
@@ -48,6 +65,133 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
 
         # Skip relay control messages
         if msg.type == "registered" or msg.type == "canvasConnected" or msg.type == "canvasDisconnected" {
+            return;
+        }
+
+        # Handle room collaboration messages
+        msg_type = msg.type or "";
+        if msg_type == "room_joined" {
+            # Joined a collaboration room successfully
+            roomStateRef.current = {
+                "room_id": msg.roomId,
+                "room_key": msg.roomKey or ""
+            };
+            console.log("[JaSketch] Joined room: " + msg.roomId);
+            # Initialize self in participants
+            rj_sid = getSessionId();
+            rj_name = localStorage.getItem("jasketch_username") or "Anonymous";
+            rj_color = msg.cursorColor or "#999999";
+            rj_parts = Object.assign({}, participantsRef.current);
+            rj_parts[rj_sid] = {"username": rj_name, "color": rj_color};
+            # Add all existing room members sent by the server
+            if msg.members {
+                rj_member_sids = Object.keys(msg.members);
+                for rj_msid in rj_member_sids {
+                    rj_parts[rj_msid] = {
+                        "username": msg.members[rj_msid].username or "Anonymous",
+                        "color": msg.members[rj_msid].color or "#999999"
+                    };
+                }
+            }
+            participantsRef.current = rj_parts;
+            participants = Object.assign({}, rj_parts);
+            # Store host session ID from server
+            if msg.hostSessionId {
+                hostSessionIdRef.current = msg.hostSessionId;
+                hostSessionId = msg.hostSessionId;
+            }
+            return;
+        }
+
+        if msg_type == "room_sync" {
+            # Late joiner: receive current scene from room host
+            # TODO: Decrypt scene and apply it
+            return;
+        }
+
+        if msg_type == "room_update" {
+            upd_payload = msg.payload or "";
+            if upd_payload {
+                upd_hook = elementsHookRef.current;
+                upd_elements = JSON.parse(upd_payload);
+                isApplyingRemoteRef.current = True;
+                upd_hook.setElementsReplaceAll(upd_elements);
+            }
+            return;
+        }
+
+        if msg_type == "cursor_update" {
+            # Another member's cursor position
+            cu_sid = msg.sessionId or "";
+            # Ignore own cursor echoes (relay broadcasts to all during update_username)
+            if cu_sid == getSessionId() { return; }
+            cu_updated = Object.assign({}, cursorStatesRef.current);
+            cu_updated[cu_sid] = {
+                "username": msg.username or "Anonymous",
+                "color": msg.cursorColor or "#999999",
+                "x": msg.x or 0.0,
+                "y": msg.y or 0.0
+            };
+            cursorStatesRef.current = cu_updated;
+            cursorStates = Object.assign({}, cu_updated);
+            # Always upsert participant info (handles users not yet seen via room_joined)
+            if cu_sid {
+                cu_parts = Object.assign({}, participantsRef.current);
+                cu_existing = cu_parts[cu_sid] or {};
+                cu_parts[cu_sid] = Object.assign({}, cu_existing, {
+                    "username": msg.username or "Anonymous",
+                    "color": msg.cursorColor or "#999999"
+                });
+                participantsRef.current = cu_parts;
+                participants = Object.assign({}, cu_parts);
+            }
+            return;
+        }
+
+        if msg_type == "room_member_joined" {
+            console.log("[JaSketch] Member joined: " + msg.username);
+            # Add new member to participants
+            rmj_sid = msg.sessionId or "";
+            if rmj_sid {
+                rmj_parts = Object.assign({}, participantsRef.current);
+                rmj_parts[rmj_sid] = {"username": msg.username or "Anonymous", "color": msg.cursorColor or "#999999"};
+                participantsRef.current = rmj_parts;
+                participants = Object.assign({}, rmj_parts);
+            }
+            sync_hook = elementsHookRef.current;
+            sync_elems = (sync_hook.elementsRef and sync_hook.elementsRef.current) or sync_hook.elements;
+            # Only broadcast if we have elements (avoid wiping a joiner's canvas with empty array)
+            if sync_elems and sync_elems.length > 0 and sendRoomBroadcastRef.current {
+                sendRoomBroadcastRef.current(sync_elems);
+            }
+            return;
+        }
+
+        if msg_type == "room_member_left" {
+            left_sid = msg.sessionId or "";
+            if left_sid {
+                cl_updated = Object.assign({}, cursorStatesRef.current);
+                cl_filtered = Object.fromEntries(Object.entries(cl_updated).filter(lambda kv: any -> bool { return kv[0] != left_sid; }));
+                cursorStatesRef.current = cl_filtered;
+                cursorStates = Object.assign({}, cl_filtered);
+                # Remove from participants
+                rml_parts = Object.assign({}, participantsRef.current);
+                rml_filtered = Object.fromEntries(Object.entries(rml_parts).filter(lambda kv: any -> bool { return kv[0] != left_sid; }));
+                participantsRef.current = rml_filtered;
+                participants = Object.assign({}, rml_filtered);
+            }
+            console.log("[JaSketch] Member left");
+            return;
+        }
+
+        if msg_type == "session_ended" {
+            console.log("[JaSketch] Collaboration session ended");
+            roomStateRef.current = {"room_id": None, "room_key": None};
+            cursorStatesRef.current = {};
+            cursorStates = {};
+            participantsRef.current = {};
+            participants = {};
+            if onSessionEndedRef.current { onSessionEndedRef.current(); }
             return;
         }
 
@@ -304,15 +448,152 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         return sid;
     }
 
+    def sendRoomBroadcast(bcast_elements: list) -> None {
+        bcast_room_state = roomStateRef.current;
+        if not (bcast_room_state and bcast_room_state.room_id) {
+            return;
+        }
+        bcast_ws = wsRef.current;
+        if not (bcast_ws and connectedRef.current) {
+            return;
+        }
+        # Filter out draft elements (id="__draft__") received from remote previews
+        bcast_filtered = [];
+        bcast_fi = 0;
+        while bcast_fi < bcast_elements.length {
+            if bcast_elements[bcast_fi] and bcast_elements[bcast_fi].id != "__draft__" {
+                bcast_filtered.push(bcast_elements[bcast_fi]);
+            }
+            bcast_fi = bcast_fi + 1;
+        }
+        bcast_msg = {
+            "type": "room_broadcast",
+            "roomId": bcast_room_state.room_id,
+            "sessionId": getSessionId(),
+            "payload": JSON.stringify(bcast_filtered)
+        };
+        bcast_ws.send(JSON.stringify(bcast_msg));
+    }
+    sendRoomBroadcastRef.current = sendRoomBroadcast;
+
+    def sendRoomPreview(prev_elements: list) -> None {
+        # Like sendRoomBroadcast but includes draft elements (for live drawing preview)
+        prev_room_state = roomStateRef.current;
+        if not (prev_room_state and prev_room_state.room_id) {
+            return;
+        }
+        prev_ws = wsRef.current;
+        if not (prev_ws and connectedRef.current) {
+            return;
+        }
+        prev_msg = {
+            "type": "room_broadcast",
+            "roomId": prev_room_state.room_id,
+            "sessionId": getSessionId(),
+            "payload": JSON.stringify(prev_elements)
+        };
+        prev_ws.send(JSON.stringify(prev_msg));
+    }
+    sendRoomPreviewRef.current = sendRoomPreview;
+
+    def sendCursorBroadcast(cur_x: float, cur_y: float, cur_username: str) -> None {
+        cur_room_state = roomStateRef.current;
+        if not (cur_room_state and cur_room_state.room_id) {
+            return;
+        }
+        cur_ws = wsRef.current;
+        if not (cur_ws and connectedRef.current) {
+            return;
+        }
+        cur_msg = {
+            "type": "cursor_move",
+            "roomId": cur_room_state.room_id,
+            "sessionId": getSessionId(),
+            "x": cur_x,
+            "y": cur_y,
+            "username": cur_username
+        };
+        cur_ws.send(JSON.stringify(cur_msg));
+    }
+    sendCursorBroadcastRef.current = sendCursorBroadcast;
+
+    def joinRoom(jr_room_id: str, jr_username: str) -> None {
+        jr_ws = wsRef.current;
+        if not (jr_ws and connectedRef.current) {
+            return;
+        }
+        jr_msg = {
+            "type": "join_room",
+            "roomId": jr_room_id,
+            "sessionId": getSessionId(),
+            "username": jr_username
+        };
+        jr_ws.send(JSON.stringify(jr_msg));
+    }
+    joinRoomRef.current = joinRoom;
+
+    def sendEndSession(es_room_id: str) -> None {
+        es_ws = wsRef.current;
+        if not (es_ws and connectedRef.current) { return; }
+        es_ws.send(JSON.stringify({
+            "type": "end_session",
+            "roomId": es_room_id,
+            "sessionId": getSessionId()
+        }));
+    }
+    sendEndSessionRef.current = sendEndSession;
+
+    def sendUpdateUsername(uu_room_id: str, uu_username: str) -> None {
+        uu_ws = wsRef.current;
+        if not (uu_ws and connectedRef.current) { return; }
+        uu_ws.send(JSON.stringify({
+            "type": "update_username",
+            "roomId": uu_room_id,
+            "sessionId": getSessionId(),
+            "username": uu_username
+        }));
+        # Optimistic self-update
+        uu_sid = getSessionId();
+        if participantsRef.current[uu_sid] {
+            uu_parts = Object.assign({}, participantsRef.current);
+            uu_parts[uu_sid] = Object.assign({}, uu_parts[uu_sid], {"username": uu_username});
+            participantsRef.current = uu_parts;
+            participants = Object.assign({}, uu_parts);
+        }
+    }
+    sendUpdateUsernameRef.current = sendUpdateUsername;
+
     def connect() -> None {
         url = getRelayUrl();
         ws = Reflect.construct(WebSocket, [url]);
 
         ws.onopen = lambda -> None {
             connectedRef.current = True;
-            # Register as canvas with a stable per-tab sessionId
-            ws.send(JSON.stringify({"role": "canvas", "sessionId": getSessionId()}));
+            reg_msg: any = {
+                "role": "canvas",
+                "sessionId": getSessionId()
+            };
+
+            ws.send(JSON.stringify(reg_msg));
             console.log("[JaSketch MCP] Connected to relay at " + url);
+
+            # Auto-rejoin: check roomStateRef first (normal reconnect), then sessionStorage
+            # (handles host refresh where React state reset before onopen fires)
+            lr_room_state = roomStateRef.current;
+            lr_rid = "";
+            if lr_room_state and lr_room_state.room_id {
+                lr_rid = lr_room_state.room_id;
+            } else {
+                lr_rid = sessionStorage.getItem("jasketch_room_id") or "";
+            }
+            if lr_rid {
+                lr_name = localStorage.getItem("jasketch_username") or "Anonymous";
+                setTimeout(lambda -> None {
+                    if joinRoomRef.current {
+                        joinRoomRef.current(lr_rid, lr_name);
+                    }
+                }, 100);
+            }
         };
 
         ws.onmessage = lambda event: any -> None {
@@ -349,5 +630,25 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         };
     }
 
-    return {"connected": connectedRef.current};
+    can with [roomState.room_id] entry {
+        # When room_id becomes set after initial connect (host starts session), send join_room
+        if roomState and roomState.room_id and wsRef.current and connectedRef.current {
+            jr_stored_name = localStorage.getItem("jasketch_username") or "Anonymous";
+            joinRoomRef.current(roomState.room_id, jr_stored_name);
+        }
+        return lambda -> None { };
+    }
+
+    return {
+        "connected": connectedRef.current,
+        "isApplyingRemoteRef": isApplyingRemoteRef,
+        "sendRoomBroadcastRef": sendRoomBroadcastRef,
+        "sendRoomPreviewRef": sendRoomPreviewRef,
+        "sendCursorBroadcastRef": sendCursorBroadcastRef,
+        "sendEndSessionRef": sendEndSessionRef,
+        "sendUpdateUsernameRef": sendUpdateUsernameRef,
+        "cursorStates": cursorStates,
+        "participants": participants,
+        "hostSessionId": hostSessionId
+    };
 }
