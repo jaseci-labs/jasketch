@@ -7,7 +7,7 @@ entry-point = "main.jac"
 [dependencies]
 websockets = ">=12.0"
 jasketch-mcp-server = ">=1.0.8"
-jac-scale[data] = ">=0.2.14"
+"jac-scale[data]" = ">=0.2.14"
 
 [dependencies.npm]
 tailwindcss = "latest"
