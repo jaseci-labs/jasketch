@@ -41,6 +41,9 @@ jobs:
       - name: Install local MCP server into jac venv
         run: .jac/venv/bin/pip install ./mcp-server --force-reinstall --no-deps
 
+      - name: Install jac-scale data dependencies into jac venv
+        run: .jac/venv/bin/pip install "jac-scale[data]"
+
       - name: Debug server startup
         run: |
           jac start --port 8000
