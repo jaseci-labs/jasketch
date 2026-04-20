@@ -53,8 +53,8 @@ def _setup_db_indexes() -> bool {
         col.create_index("created_at", expireAfterSeconds=SHARE_TTL_SECONDS);
         _log.info(f"Share DB indexes created: {SHARE_DB_NAME}.{SHARE_COLLECTION}");
         return True;
-    } except Exception {
-        _log.error("Failed to setup share DB indexes");
+    } except Exception as e {
+        _log.error(f"Failed to setup share DB indexes: {e}");
         return False;
     }
 }
@@ -67,7 +67,8 @@ def _make_share_routes() -> dict {
     async def post_share(request: Request) -> Any {
         try {
             body = await request.json();
-        } except Exception {
+        } except Exception as e {
+            _log.warning(f"Invalid JSON in share request: {e}");
             return JSONResponse({"error": "Invalid JSON"}, status_code=400);
         }
 
@@ -90,8 +91,8 @@ def _make_share_routes() -> dict {
                 "created_at": datetime.now(timezone.utc)
             });
             return JSONResponse({"share_id": share_id}, status_code=201);
-        } except Exception {
-            _log.error("Failed to store share");
+        } except Exception as e {
+            _log.error(f"Failed to store share: {e}");
             return JSONResponse({"error": "Database error"}, status_code=500);
         }
     }
@@ -112,8 +113,8 @@ def _make_share_routes() -> dict {
             }
 
             return JSONResponse({"ciphertext": doc["ciphertext"]}, status_code=200);
-        } except Exception {
-            _log.error("Failed to retrieve share");
+        } except Exception as e {
+            _log.error(f"Failed to retrieve share: {e}");
             return JSONResponse({"error": "Database error"}, status_code=500);
         }
     }
@@ -143,8 +144,8 @@ def _register_share_routes() -> bool {
 
         JFastApiServer.run_server = patched_run_server;
         return True;
-    } except Exception {
-        _log.error("Failed to register share routes");
+    } except Exception as e {
+        _log.error(f"Failed to register share routes: {e}");
         return False;
     }
 }
@@ -161,8 +162,8 @@ def initialize_share_server() -> bool {
         }
         _log.info("Share server initialized successfully");
         return True;
-    } except Exception {
-        _log.error("Share server init failed");
+    } except Exception as e {
+        _log.error(f"Share server init failed: {e}");
         return False;
     }
 }
