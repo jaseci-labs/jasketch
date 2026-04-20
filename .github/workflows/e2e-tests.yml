@@ -30,7 +30,7 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Install Jac and dependencies
-        run: pip install jaclang jac-client jac-scale pytest pytest-playwright pytest-timeout byllm jac-scale
+        run: pip install jaclang jac-client jac-scale pytest pytest-playwright pytest-timeout byllm
 
       - name: Install Playwright browsers
         run: python -m playwright install --with-deps chromium
