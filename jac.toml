@@ -7,6 +7,7 @@ entry-point = "main.jac"
 [dependencies]
 websockets = ">=12.0"
 jasketch-mcp-server = ">=1.0.8"
+"jac-scale[all]" = ">=0.2.14"
 
 [dependencies.npm]
 tailwindcss = "latest"
@@ -36,6 +37,14 @@ base_route_app = "app"
 [plugins.client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[plugins.scale.kubernetes]
+mongodb_enabled = true   # Don't deploy MongoDB - use MONGODB_URI instead
+redis_enabled = true     # Don't deploy Redis - use REDIS_URL instead
+
+# [plugins.scale.database]
+# mongodb_uri = "mongodb://localhost:27017"
+# redis_url = "redis://localhost:6379"
 
 [plugins.client.app_meta_data]
 title = "JaSketch"

@@ -14,6 +14,7 @@ import from "..constants.tools" { TOOL_SHORTCUTS }
 import from .canvas.CanvasRenderer { CanvasRenderer }
 import from .canvas.TextInput { TextInput }
 import from .canvas.ContextMenu { ContextMenu }
+import from .canvas.collaborator_cursors { CollaboratorCursors }
 import from .layout.ShortcutHelp { ShortcutHelp }
 import from .layout.ConfirmDialog { ConfirmDialog }
 
@@ -29,6 +30,11 @@ def:pub Canvas(props: dict) -> JsxElement {
     currentLineStyle = props.currentLineStyle or "solid";
     currentCurveStyle = props.currentCurveStyle or "curved";
     currentFillColor = props.currentFillColor or "transparent";
+    roomState = props.roomState or {};
+    onSessionEnded = props.onSessionEnded;
+    endSessionRef = props.endSessionRef;
+    updateUsernameRef = props.updateUsernameRef;
+    onParticipantsChange = props.onParticipantsChange;
 
     canvasHook = useCanvas();
     drawingState = useDrawingState();
@@ -36,7 +42,19 @@ def:pub Canvas(props: dict) -> JsxElement {
     selectionHook = useSelection();
     viewportHook = useViewport();
     textInputHook = useTextInput();
-    useWebSocket(elementsHook, viewportHook, canvasHook.canvasRef, canvasHook);
+    wsHook = useWebSocket(elementsHook, viewportHook, canvasHook.canvasRef, canvasHook, roomState, onSessionEnded);
+    wsHookRef = useRef(wsHook);
+    wsHookRef.current = wsHook;
+    # Expose sendEndSession to parent via ref
+    if endSessionRef and wsHook.sendEndSessionRef {
+        endSessionRef.current = wsHook.sendEndSessionRef.current;
+    }
+    if updateUsernameRef and wsHook.sendUpdateUsernameRef {
+        updateUsernameRef.current = wsHook.sendUpdateUsernameRef.current;
+    }
+    hasBroadcastMountedRef = useRef(False);
+    lastCursorBroadcastRef = useRef(0);
+    lastDrawBroadcastRef = useRef(0);
 
     canvasRef = canvasHook.canvasRef;
     containerRef = canvasHook.containerRef;
@@ -72,6 +90,28 @@ def:pub Canvas(props: dict) -> JsxElement {
     editingShapeId = None;
     if textInputHook.textInput {
         editingShapeId = textInputHook.textInput.editingShapeId;
+    }
+
+    can with [elementsHook.elements] entry {
+        if not hasBroadcastMountedRef.current {
+            hasBroadcastMountedRef.current = True;
+        } elif wsHookRef.current and wsHookRef.current.isApplyingRemoteRef and wsHookRef.current.isApplyingRemoteRef.current {
+            wsHookRef.current.isApplyingRemoteRef.current = False;
+        } elif wsHookRef.current and wsHookRef.current.sendRoomBroadcastRef and wsHookRef.current.sendRoomBroadcastRef.current {
+            wsHookRef.current.sendRoomBroadcastRef.current(elementsHook.elements);
+        }
+    }
+
+    can with [wsHook.participants, wsHook.hostSessionId] entry {
+        if onParticipantsChange {
+            # Merge hostSessionId as __hostSid meta key so parent can read it
+            merged = Object.assign({}, wsHook.participants);
+            if wsHook.hostSessionId {
+                merged["__hostSid"] = wsHook.hostSessionId;
+            }
+            onParticipantsChange(merged);
+        }
+        return lambda -> None {};
     }
 
     can with [elementsHook.elements, canvasHook.canvasSize, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, drawingState.isDrawing, textInputHook.textInput] entry {
@@ -407,6 +447,15 @@ def:pub Canvas(props: dict) -> JsxElement {
                 }, lambda errMsg: any -> None {
                     showToast(errMsg);
                 });
+            };
+        }
+        if props.elementsForShareRef {
+            props.elementsForShareRef.current = elementsHook.elements;
+        }
+        if props.setElementsRef {
+            props.setElementsRef.current = lambda elements: any -> None {
+                elementsHook.setElements(elements);
+                selectionHook.clearSelection();
             };
         }
     }
@@ -1159,6 +1208,17 @@ def:pub Canvas(props: dict) -> JsxElement {
     def handleMouseMove(e: dict) -> None {
         pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
 
+        # Throttled cursor broadcast (50ms) — only when in a room
+        cur_now = Date.now();
+        if cur_now - lastCursorBroadcastRef.current > 50 {
+            lastCursorBroadcastRef.current = cur_now;
+            cur_ws_hook = wsHookRef.current;
+            if cur_ws_hook and cur_ws_hook.sendCursorBroadcastRef and cur_ws_hook.sendCursorBroadcastRef.current {
+                cur_stored_name = localStorage.getItem("jasketch_username") or "Anonymous";
+                cur_ws_hook.sendCursorBroadcastRef.current(pos.x, pos.y, cur_stored_name);
+            }
+        }
+
         if viewportHook.isPanning {
             viewportHook.handlePan(e.movementX, e.movementY);
             return;
@@ -1642,6 +1702,38 @@ def:pub Canvas(props: dict) -> JsxElement {
             drawPreview(previewCtx, currentTool, drawingState.startPoint, previewEnd, currentColor, currentStrokeWidth);
             previewCtx.restore();
         }
+
+        # Throttled live drawing broadcast (80ms) — sends in-progress element as __draft__
+        if drawingState.isDrawing {
+            draw_now = Date.now();
+            if draw_now - lastDrawBroadcastRef.current > 80 {
+                lastDrawBroadcastRef.current = draw_now;
+                preview_ws_hook = wsHookRef.current;
+                if preview_ws_hook and preview_ws_hook.sendRoomPreviewRef and preview_ws_hook.sendRoomPreviewRef.current {
+                    live_draft_el = None;
+                    if currentTool == "freehand" and drawingState.currentPath and drawingState.currentPath.length > 0 {
+                        live_draft_el = {"type": "freehand", "id": "__draft__", "points": drawingState.currentPath, "color": currentColor, "strokeWidth": currentStrokeWidth, "lineStyle": "solid", "opacity": currentOpacity};
+                    } elif currentTool == "rectangle" and drawingState.startPoint {
+                        ldraft_rw = pos.x - drawingState.startPoint.x;
+                        ldraft_rh = pos.y - drawingState.startPoint.y;
+                        live_draft_el = {"type": "rectangle", "id": "__draft__", "x": drawingState.startPoint.x, "y": drawingState.startPoint.y, "width": ldraft_rw, "height": ldraft_rh, "color": currentColor, "strokeWidth": currentStrokeWidth, "fillColor": currentFillColor, "lineStyle": currentLineStyle, "opacity": currentOpacity};
+                    } elif currentTool == "circle" and drawingState.startPoint {
+                        ldraft_cw = pos.x - drawingState.startPoint.x;
+                        ldraft_ch = pos.y - drawingState.startPoint.y;
+                        live_draft_el = {"type": "circle", "id": "__draft__", "x": drawingState.startPoint.x, "y": drawingState.startPoint.y, "width": ldraft_cw, "height": ldraft_ch, "color": currentColor, "strokeWidth": currentStrokeWidth, "fillColor": currentFillColor, "lineStyle": currentLineStyle, "opacity": currentOpacity};
+                    } elif currentTool == "diamond" and drawingState.startPoint {
+                        ldraft_dw = pos.x - drawingState.startPoint.x;
+                        ldraft_dh = pos.y - drawingState.startPoint.y;
+                        live_draft_el = {"type": "diamond", "id": "__draft__", "x": drawingState.startPoint.x, "y": drawingState.startPoint.y, "width": ldraft_dw, "height": ldraft_dh, "color": currentColor, "strokeWidth": currentStrokeWidth, "fillColor": currentFillColor, "lineStyle": currentLineStyle, "opacity": currentOpacity};
+                    } elif (currentTool == "line" or currentTool == "arrow") and drawingState.startPoint {
+                        live_draft_el = {"type": currentTool, "id": "__draft__", "x1": drawingState.startPoint.x, "y1": drawingState.startPoint.y, "x2": pos.x, "y2": pos.y, "color": currentColor, "strokeWidth": currentStrokeWidth, "lineStyle": currentLineStyle, "curveStyle": currentCurveStyle, "opacity": currentOpacity};
+                    }
+                    if live_draft_el {
+                        preview_ws_hook.sendRoomPreviewRef.current(elementsHook.elements.concat([live_draft_el]));
+                    }
+                }
+            }
+        }
     }
 
     def handleMouseUp(e: dict) -> None {
@@ -1855,6 +1947,13 @@ def:pub Canvas(props: dict) -> JsxElement {
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseLeave}
+            />
+
+            <CollaboratorCursors
+                cursor_states={wsHook.cursorStates or {}}
+                zoom={viewportHook.zoom}
+                pan_x={viewportHook.panOffset.x}
+                pan_y={viewportHook.panOffset.y}
             />
 
             <TextInput
