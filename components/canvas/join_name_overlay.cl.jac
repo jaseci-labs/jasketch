@@ -1,7 +1,7 @@
 """JoinNameOverlay — name prompt shown when opening a collaboration link."""
 
 def:pub JoinNameOverlay(on_join: any) -> any {
-    has name_value: str = localStorage.getItem("jasketch_username") or "";
+    has name_value: str = "";
 
     def handle_join() -> None {
         name = name_value.strip() or "Anonymous";

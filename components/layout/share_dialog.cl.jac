@@ -13,7 +13,7 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
     has collab_link: str = "";
     has copied: bool = False;
     has crypto_available: bool = True;
-    has username_input: str = localStorage.getItem("jasketch_username") or "Anonymous";
+    has username_input: str = "";
     has username_set: bool = False;
     has confirm_end_session: bool = False;
     has _generating: bool = False;
@@ -240,7 +240,7 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
                     value={username_input}
                     onChange={lambda e: any -> None { handle_username_change(e.target.value); }}
                     className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter your name (optional)"
+                    placeholder="Enter your name"
                 />
             </div>
             <button
