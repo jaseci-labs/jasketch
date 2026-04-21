@@ -20,7 +20,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Jac packages from PyPI
-RUN pip install --no-cache-dir jaclang jac-client jac-scale[all] byllm
+# [data] pulls pymongo + redis for jac-scale's MongoDB/Redis backends
+# (live collaboration + shareable links).
+RUN pip install --no-cache-dir jaclang jac-client 'jac-scale[data]' byllm
 
 # Install Bun (required for jac client-side dependencies)
 RUN curl -fsSL https://bun.sh/install | bash && \
