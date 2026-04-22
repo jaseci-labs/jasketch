@@ -1896,8 +1896,10 @@ def:pub Canvas(props: dict) -> JsxElement {
 
         if newElement {
             elementsHook.addElement(newElement);
-            selectionHook.setSelectedElement({"element": newElement, "id": newElement.id});
-            if props.onToolChange {
+            if currentTool != "freehand" {
+                selectionHook.setSelectedElement({"element": newElement, "id": newElement.id});
+            }
+            if props.onToolChange and currentTool != "freehand" {
                 props.onToolChange("select");
             }
         }
