@@ -83,6 +83,15 @@ author = "Jaseci"
 # Set them only to attach to a database that lives somewhere else, and then set
 # them to real values, never to an empty default.
 
+# Declares the capabilities that put the CLIENT LIBRARIES in the pod. Without
+# this the deploy still provisions MongoDB and Redis and still injects their
+# URLs, so the runtime SELECTS them -- and then dies on a library that was never
+# installed: "RedisBackplane selected but `redis` is not installed", and every
+# websocket closes with 4503 subscribe_unavailable.
+[scale.database]
+backend = "mongo"   # data.mongo capability -> pymongo
+type = "redis"      # data.redis capability -> redis
+
 [scale.kubernetes]
 # `jasketch.jaseci.org` runs in the `jasketch` namespace of the SHARED
 # jaseci-cluster, so the default here is deliberately not that, and deliberately
