@@ -145,6 +145,12 @@ jobs:
       # permissions are irrelevant when the cluster does not map the principal.
       # GitHubActionsJaseciDeployRole is mapped, as `github-actions-deployer` in
       # system:masters.
+      # Required before anything drives the deploy: the Kubernetes realizer
+      # imports python-dotenv at module load, so without this the very first
+      # `jac start --scale` dies with ModuleNotFoundError: dotenv.
+      - name: Install dependencies
+        run: jac install
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4.2.0
         with:
