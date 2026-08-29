@@ -63,8 +63,8 @@ def:pub useElements() -> dict {
     }
 
     def addElement(element: dict) -> None {
-        if not element.id {
-            element.id = crypto.randomUUID();
+        if not element["id"] {
+            element["id"] = crypto.randomUUID();
         }
         newElements = elements.concat([element]);
         setElementsWithHistory(newElements);

@@ -1,4 +1,4 @@
-import from react { useRef }
+import from react { useRef, useEffect }
 
 def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, canvasHook: dict, roomState: dict = None, onSessionEnded: any = None) -> dict {
     wsRef = useRef(None);
@@ -171,12 +171,12 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             left_sid = msg.sessionId or "";
             if left_sid {
                 cl_updated = Object.assign({}, cursorStatesRef.current);
-                cl_filtered = Object.fromEntries(Object.entries(cl_updated).filter(lambda kv: any -> bool { return kv[0] != left_sid; }));
+                cl_filtered = Object.fromEntries(Object.entries(cl_updated).filter(lambda (kv: any) -> bool { return kv[0] != left_sid; }));
                 cursorStatesRef.current = cl_filtered;
                 cursorStates = Object.assign({}, cl_filtered);
                 # Remove from participants
                 rml_parts = Object.assign({}, participantsRef.current);
-                rml_filtered = Object.fromEntries(Object.entries(rml_parts).filter(lambda kv: any -> bool { return kv[0] != left_sid; }));
+                rml_filtered = Object.fromEntries(Object.entries(rml_parts).filter(lambda (kv: any) -> bool { return kv[0] != left_sid; }));
                 participantsRef.current = rml_filtered;
                 participants = Object.assign({}, rml_filtered);
             }
@@ -567,7 +567,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         url = getRelayUrl();
         ws = Reflect.construct(WebSocket, [url]);
 
-        ws.onopen = lambda -> None {
+        ws.onopen = lambda {
             connectedRef.current = True;
             reg_msg: any = {
                 "role": "canvas",
@@ -588,7 +588,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             }
             if lr_rid {
                 lr_name = localStorage.getItem("jasketch_username") or "Anonymous";
-                setTimeout(lambda -> None {
+                setTimeout(lambda {
                     if joinRoomRef.current {
                         joinRoomRef.current(lr_rid, lr_name);
                     }
@@ -596,20 +596,20 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             }
         };
 
-        ws.onmessage = lambda event: any -> None {
+        ws.onmessage = lambda (event: any) {
             handleMessage(ws, event);
         };
 
-        ws.onclose = lambda -> None {
+        ws.onclose = lambda {
             connectedRef.current = False;
             wsRef.current = None;
             # Reconnect after 3 seconds
-            reconnectTimerRef.current = setTimeout(lambda -> None {
+            reconnectTimerRef.current = setTimeout(lambda {
                 connect();
             }, 3000);
         };
 
-        ws.onerror = lambda -> None {
+        ws.onerror = lambda {
             # Suppress errors, onclose will handle reconnect
             x = 0;
         };
@@ -617,10 +617,12 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         wsRef.current = ws;
     }
 
-    can with entry {
+    # Acquire-and-release in ONE effect: `can with entry`/`can with exit` compile
+    # to separate useEffect closures, so a handle created in entry is invisible to
+    # exit and the removeEventListener would silently no-op.
+    useEffect(lambda () -> any {
         connect();
-
-        return lambda -> None {
+        return lambda {
             if reconnectTimerRef.current {
                 clearTimeout(reconnectTimerRef.current);
             }
@@ -628,15 +630,16 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                 wsRef.current.close();
             }
         };
-    }
+    }, []);
 
-    can with [roomState.room_id] entry {
+
+    can with [roomState["room_id"]] entry {
         # When room_id becomes set after initial connect (host starts session), send join_room
-        if roomState and roomState.room_id and wsRef.current and connectedRef.current {
+        if roomState and roomState["room_id"] and wsRef.current and connectedRef.current {
             jr_stored_name = localStorage.getItem("jasketch_username") or "Anonymous";
-            joinRoomRef.current(roomState.room_id, jr_stored_name);
+            joinRoomRef.current(roomState["room_id"], jr_stored_name);
         }
-        return lambda -> None { };
+        return lambda { };
     }
 
     return {

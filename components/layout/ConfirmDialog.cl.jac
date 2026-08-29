@@ -1,31 +1,36 @@
-def:pub ConfirmDialog(props: dict) -> JsxElement {
-    def _noop() -> None {}
-    title = props.title or "Confirm";
-    message = props.message or "Are you sure?";
-    onConfirm = props.onConfirm or _noop;
-    onCancel = props.onCancel or _noop;
-    confirmText = props.confirmText or "Confirm";
-    cancelText = props.cancelText or "Cancel";
-    isDangerous = props.isDangerous or False;
+import from react { useEffect }
 
-    def handleBackdropClick(e: dict) -> None {
+def:pub ConfirmDialog(
+    onConfirm: Callable[[], None],
+    onCancel: Callable[[], None],
+    title: str = "Confirm",
+    message: str = "Are you sure?",
+    confirmText: str = "Confirm",
+    cancelText: str = "Cancel",
+    isDangerous: bool = False
+) -> JsxElement {
+    def handleBackdropClick(e: MouseEvent) -> None {
         if e.target == e.currentTarget {
             onCancel();
         }
     }
 
-    def handleEscape(e: dict) -> None {
+    def handleEscape(e: KeyboardEvent) -> None {
         if e.key == "Escape" {
             onCancel();
         }
     }
 
-    can with entry {
+    # Acquire-and-release in ONE effect: `can with entry`/`can with exit` compile
+    # to separate useEffect closures, so a handle created in entry is invisible to
+    # exit and the removeEventListener would silently no-op.
+    useEffect(lambda () -> any {
         window.addEventListener("keydown", handleEscape);
-        return lambda -> None {
+        return lambda {
             window.removeEventListener("keydown", handleEscape);
         };
-    }
+    }, []);
+
 
     return <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"
@@ -49,7 +54,7 @@ def:pub ConfirmDialog(props: dict) -> JsxElement {
                 </button>
                 <button
                     onClick={onConfirm}
-                    className={"px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors " + (isDangerous and "bg-red-600 hover:bg-red-700" or "bg-blue-600 hover:bg-blue-700")}
+                    className={"px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors " + ("bg-red-600 hover:bg-red-700" if isDangerous else "bg-blue-600 hover:bg-blue-700")}
                 >
                     {confirmText}
                 </button>

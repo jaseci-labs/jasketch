@@ -1,9 +1,9 @@
 import from react { useRef }
 
 def ToolIcon(props: dict) -> JsxElement {
-    toolId = props.toolId;
-    color = props.color or "currentColor";
-    size = props.size or 18;
+    toolId = props["toolId"];
+    color = props["color"] or "currentColor";
+    size = props["size"] or 18;
 
     if toolId == "select" {
         return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -53,19 +53,19 @@ def ToolIcon(props: dict) -> JsxElement {
 }
 
 def:pub TopBar(props: dict) -> JsxElement {
-    currentTool = props.currentTool or "select";
-    onToolChange = props.onToolChange;
-    onImageLoad = props.onImageLoad;
-    onSave = props.onSave;
-    onLoad = props.onLoad;
-    onShowShortcuts = props.onShowShortcuts;
-    onShare = props.onShare;
-    onCollab = props.onCollab;
-    roomState = props.roomState or {};
-    participants = props.participants or {};
-    isHost = props.isHost or False;
-    participantListOpen = props.participantListOpen or False;
-    onParticipantListToggle = props.onParticipantListToggle;
+    currentTool = props["currentTool"] or "select";
+    onToolChange = props["onToolChange"];
+    onImageLoad = props["onImageLoad"];
+    onSave = props["onSave"];
+    onLoad = props["onLoad"];
+    onShowShortcuts = props["onShowShortcuts"];
+    onShare = props["onShare"];
+    onCollab = props["onCollab"];
+    roomState = props["roomState"] or {};
+    participants = props["participants"] or {};
+    isHost = props["isHost"] or False;
+    participantListOpen = props["participantListOpen"] or False;
+    onParticipantListToggle = props["onParticipantListToggle"];
     fileInputRef = useRef(None);
     jasketchFileInputRef = useRef(None);
 
@@ -128,7 +128,7 @@ def:pub TopBar(props: dict) -> JsxElement {
         }
     }
 
-    def handleJaSketchFileChange(e: dict) -> None {
+    def handleJaSketchFileChange(e: ChangeEvent) -> None {
         files = e.target.files;
         if files.length > 0 {
             if onLoad { onLoad(files[0]); }
@@ -136,14 +136,14 @@ def:pub TopBar(props: dict) -> JsxElement {
         }
     }
 
-    def handleFileChange(e: dict) -> None {
+    def handleFileChange(e: ChangeEvent) -> None {
         files = e.target.files;
         if files.length > 0 {
             file = files[0];
             reader = Reflect.construct(FileReader, []);
-            reader.onload = lambda event: any -> None {
+            reader.onload = lambda (event: any) {
                 img = Reflect.construct(Image, []);
-                img.onload = lambda -> None {
+                img.onload = lambda {
                     onImageLoad({
                         "type": "image",
                         "x": 100,
@@ -194,7 +194,7 @@ def:pub TopBar(props: dict) -> JsxElement {
                 {[
                     <button
                         key={toolId}
-                        onClick={lambda -> None { handleToolClick(toolId); }}
+                        onClick={lambda { handleToolClick(toolId); }}
                         title={toolLabels[toolId] + (toolShortcuts[toolId] and (" (" + toolShortcuts[toolId] + ")") or "")}
                         className={"relative w-9 h-9 rounded-md flex flex-col items-center justify-center gap-0 transition-all duration-150 " + (currentTool == toolId and toolId != "image" and "bg-white text-orange-600 shadow-sm" or "text-gray-400 hover:bg-white/60 hover:text-gray-600")}
                     >

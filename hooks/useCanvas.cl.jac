@@ -1,4 +1,4 @@
-import from react { useRef }
+import from react { useRef, useEffect }
 import from "..services.canvas" { drawElement, applyViewportTransform, drawSelectionBox, drawGroupSelectionBox, drawBoxSelectionRect }
 import from "..constants.canvas" { CANVAS_DEFAULTS }
 
@@ -25,15 +25,15 @@ def:pub useCanvas() -> dict {
 
         # HiDPI fix: scale canvas for sharp rendering
         dpr = window.devicePixelRatio or 1;
-        canvas.width = Math.round(canvasSize.width * dpr);
-        canvas.height = Math.round(canvasSize.height * dpr);
+        canvas.width = Math.round(canvasSize["width"] * dpr);
+        canvas.height = Math.round(canvasSize["height"] * dpr);
         ctx.scale(dpr, dpr);
 
         ctx.save();
         applyViewportTransform(ctx, zoom, panOffset);
 
         # Callback to redraw canvas when an image finishes loading
-        imgLoadRedraw = lambda -> None {
+        imgLoadRedraw = lambda {
             redrawCanvas(elements, zoom, panOffset, selectedElement, selectedElements, isBoxSelecting, boxStart, boxEnd, editingShapeId);
         };
 
@@ -113,17 +113,20 @@ def:pub useCanvas() -> dict {
         }
     }
 
-    can with entry {
-        def handleResize() -> None {
-            initializeCanvas();
-        }
+    def handleResize() -> None {
+        initializeCanvas();
+    }
 
+    # Acquire-and-release in ONE effect: `can with entry`/`can with exit` compile
+    # to separate useEffect closures, so the listener added on mount would never
+    # be the one removed on unmount.
+    useEffect(lambda () -> any {
         handleResize();
         window.addEventListener("resize", handleResize);
-        return lambda -> None {
+        return lambda {
             window.removeEventListener("resize", handleResize);
         };
-    }
+    }, []);
 
     return {
         "canvasRef": canvasRef,

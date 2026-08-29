@@ -1,14 +1,14 @@
 def:pub CanvasRenderer(props: dict) -> JsxElement {
-    canvasRef = props.canvasRef;
-    canvasSize = props.canvasSize;
-    cursorClass = props.cursorClass or "cursor-crosshair";
+    canvasRef = props["canvasRef"];
+    canvasSize = props["canvasSize"];
+    cursorClass = props["cursorClass"] or "cursor-crosshair";
 
-    onClick = props.onClick;
-    onDoubleClick = props.onDoubleClick;
-    onMouseDown = props.onMouseDown;
-    onMouseMove = props.onMouseMove;
-    onMouseUp = props.onMouseUp;
-    onMouseLeave = props.onMouseLeave;
+    onClick = props["onClick"];
+    onDoubleClick = props["onDoubleClick"];
+    onMouseDown = props["onMouseDown"];
+    onMouseMove = props["onMouseMove"];
+    onMouseUp = props["onMouseUp"];
+    onMouseLeave = props["onMouseLeave"];
 
     return <canvas
         ref={canvasRef}
@@ -25,7 +25,7 @@ def:pub CanvasRenderer(props: dict) -> JsxElement {
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseLeave}
-        onContextMenu={lambda e: any -> None {
+        onContextMenu={lambda (e: any) {
             e.preventDefault();
         }}
     />;

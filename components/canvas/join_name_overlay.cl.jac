@@ -1,6 +1,6 @@
 """JoinNameOverlay — name prompt shown when opening a collaboration link."""
 
-def:pub JoinNameOverlay(on_join: any) -> any {
+def:pub JoinNameOverlay(on_join: Callable[[str], None]) -> JsxElement {
     has name_value: str = "";
 
     def handle_join() -> None {
@@ -25,8 +25,8 @@ def:pub JoinNameOverlay(on_join: any) -> any {
                     <input
                         type="text"
                         value={name_value}
-                        onChange={lambda e: any -> None { name_value = e.target.value; }}
-                        onKeyDown={lambda e: any -> None {
+                        onChange={lambda (e: any) { name_value = e.target.value; }}
+                        onKeyDown={lambda (e: any) {
                             if e.key == "Enter" { handle_join(); }
                         }}
                         className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -35,7 +35,7 @@ def:pub JoinNameOverlay(on_join: any) -> any {
                     />
                 </div>
                 <button
-                    onClick={lambda -> None { handle_join(); }}
+                    onClick={lambda { handle_join(); }}
                     className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 rounded-md transition"
                 >
                     {"Join"}

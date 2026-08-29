@@ -3,26 +3,26 @@ import from "...constants.fonts" { FONTS, FONT_SIZES }
 import from "...constants.tools" { LINE_STYLES, CURVE_STYLES }
 
 def:pub Sidebar(props: dict) -> JsxElement {
-    currentTool = props.currentTool or "select";
-    currentColor = props.currentColor or "#000000";
-    currentStrokeWidth = props.currentStrokeWidth or 2;
-    currentOpacity = props.currentOpacity or 1.0;
-    currentFontSize = props.currentFontSize or 24;
-    currentFontFamily = props.currentFontFamily or "Virgil";
-    currentLineStyle = props.currentLineStyle or "solid";
-    currentCurveStyle = props.currentCurveStyle or "curved";
-    currentFillColor = props.currentFillColor or "transparent";
+    currentTool = props["currentTool"] or "select";
+    currentColor = props["currentColor"] or "#000000";
+    currentStrokeWidth = props["currentStrokeWidth"] or 2;
+    currentOpacity = props["currentOpacity"] or 1.0;
+    currentFontSize = props["currentFontSize"] or 24;
+    currentFontFamily = props["currentFontFamily"] or "Virgil";
+    currentLineStyle = props["currentLineStyle"] or "solid";
+    currentCurveStyle = props["currentCurveStyle"] or "curved";
+    currentFillColor = props["currentFillColor"] or "transparent";
 
-    selectedElement = props.selectedElement;
-    onColorChange = props.onColorChange;
-    onStrokeWidthChange = props.onStrokeWidthChange;
-    onOpacityChange = props.onOpacityChange;
-    onFontSizeChange = props.onFontSizeChange;
-    onFontFamilyChange = props.onFontFamilyChange;
-    onLineStyleChange = props.onLineStyleChange;
-    onCurveStyleChange = props.onCurveStyleChange;
-    onFillColorChange = props.onFillColorChange;
-    onUpdateElement = props.onUpdateElement;
+    selectedElement = props["selectedElement"];
+    onColorChange = props["onColorChange"];
+    onStrokeWidthChange = props["onStrokeWidthChange"];
+    onOpacityChange = props["onOpacityChange"];
+    onFontSizeChange = props["onFontSizeChange"];
+    onFontFamilyChange = props["onFontFamilyChange"];
+    onLineStyleChange = props["onLineStyleChange"];
+    onCurveStyleChange = props["onCurveStyleChange"];
+    onFillColorChange = props["onFillColorChange"];
+    onUpdateElement = props["onUpdateElement"];
 
     presetColors = PRESET_COLORS();
     fontSizes = FONT_SIZES();
@@ -222,7 +222,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                 {[
                     <button
                         key={color}
-                        onClick={lambda -> None { handleColorChange(color); }}
+                        onClick={lambda { handleColorChange(color); }}
                         title={color}
                         className={"w-7 h-7 rounded-full transition-all duration-150 border border-gray-200/60 " + (activeColor == color and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
                         style={{"backgroundColor": color}}
@@ -233,7 +233,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
             <input
                 type="color"
                 value={activeColor}
-                onChange={lambda e: any -> None { handleColorChange(e.target.value); }}
+                onChange={lambda (e: any) { handleColorChange(e.target.value); }}
                 title="Custom color"
                 className="color-input w-full h-7 rounded-md cursor-pointer border border-gray-200 p-0 mt-1.5"
             />
@@ -245,7 +245,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
             <span className="sidebar-label">Fill</span>
             <div className="flex items-center gap-1.5 mt-1.5">
                 <button
-                    onClick={lambda -> None { handleFillColorChange("transparent"); }}
+                    onClick={lambda { handleFillColorChange("transparent"); }}
                     title="No fill"
                     className={"w-7 h-7 rounded-full border transition-all duration-150 flex items-center justify-center " + (activeFillColor == "transparent" and "ring-2 ring-orange-500 ring-offset-1 border-gray-300" or "border-gray-200 hover:scale-110")}
                     style={{"background": "repeating-conic-gradient(#e5e7eb 0% 25%, white 0% 50%) 50% / 8px 8px"}}
@@ -255,7 +255,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                     </svg>
                 </button>
                 <button
-                    onClick={lambda -> None { handleFillColorChange(activeColor); }}
+                    onClick={lambda { handleFillColorChange(activeColor); }}
                     title="Fill with stroke color"
                     className={"w-7 h-7 rounded-full border transition-all duration-150 " + (activeFillColor != "transparent" and activeFillColor == activeColor and "ring-2 ring-orange-500 ring-offset-1 border-gray-300" or "border-gray-200 hover:scale-110")}
                     style={{"backgroundColor": activeColor, "opacity": 0.3}}
@@ -264,7 +264,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                     <input
                         type="color"
                         value={activeFillColor != "transparent" and activeFillColor or "#ffffff"}
-                        onChange={lambda e: any -> None { handleFillColorChange(e.target.value); }}
+                        onChange={lambda (e: any) { handleFillColorChange(e.target.value); }}
                         title="Custom fill color"
                         className="color-input w-7 h-7 rounded-full cursor-pointer border border-gray-200 p-0"
                     />
@@ -280,7 +280,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                 {[
                     <button
                         key={stcColor}
-                        onClick={lambda -> None { handleShapeTextColorChange(stcColor); }}
+                        onClick={lambda { handleShapeTextColorChange(stcColor); }}
                         title={stcColor}
                         className={"w-7 h-7 rounded-full transition-all duration-150 border border-gray-200/60 " + (activeShapeTextColor == stcColor and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
                         style={{"backgroundColor": stcColor}}
@@ -291,7 +291,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
             <input
                 type="color"
                 value={activeShapeTextColor}
-                onChange={lambda e: any -> None { handleShapeTextColorChange(e.target.value); }}
+                onChange={lambda (e: any) { handleShapeTextColorChange(e.target.value); }}
                 title="Custom text color"
                 className="color-input w-full h-7 rounded-md cursor-pointer border border-gray-200 p-0 mt-1.5"
             />
@@ -310,7 +310,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                 max="20"
                 step="1"
                 value={activeStrokeWidth}
-                onChange={lambda e: any -> None { handleStrokeWidthChange(parseInt(e.target.value)); }}
+                onChange={lambda (e: any) { handleStrokeWidthChange(parseInt(e.target.value)); }}
                 className="range-slider w-full mt-1.5"
             />
         </div> or None}
@@ -321,7 +321,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                 {[
                     <button
                         key={style.id}
-                        onClick={lambda -> None { handleLineStyleChange(style.id); }}
+                        onClick={lambda { handleLineStyleChange(style.id); }}
                         title={style.label}
                         className={"flex-1 h-8 rounded-lg flex items-center justify-center transition-all duration-150 " + (activeLineStyle == style.id and "bg-orange-50 ring-1 ring-orange-200" or "bg-gray-50 hover:bg-gray-100")}
                     >
@@ -346,7 +346,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                 {[
                     <button
                         key={cs.id}
-                        onClick={lambda -> None { handleCurveStyleChange(cs.id); }}
+                        onClick={lambda { handleCurveStyleChange(cs.id); }}
                         title={cs.label}
                         className={"flex-1 h-9 rounded-lg flex flex-col items-center justify-center gap-0.5 transition-all duration-150 " + (activeCurveStyle == cs.id and "bg-orange-50 ring-1 ring-orange-200" or "bg-gray-50 hover:bg-gray-100")}
                     >
@@ -373,7 +373,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                 max="100"
                 step="1"
                 value={Math.round(activeOpacity * 100)}
-                onChange={lambda e: any -> None { handleOpacityChange(parseInt(e.target.value) / 100); }}
+                onChange={lambda (e: any) { handleOpacityChange(parseInt(e.target.value) / 100); }}
                 className="range-slider w-full mt-1.5"
             />
         </div> or None}
@@ -385,7 +385,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                 {[
                     <button
                         key={font.id}
-                        onClick={lambda -> None { handleFontFamilyChange(font.id); }}
+                        onClick={lambda { handleFontFamilyChange(font.id); }}
                         title={font.id}
                         className={"px-2 h-7 rounded-md flex items-center text-xs font-medium transition-all duration-150 whitespace-nowrap " + (activeFontFamily == font.id and "bg-orange-50 text-orange-700 ring-1 ring-orange-200" or "text-gray-500 hover:bg-gray-50")}
                         style={{"fontFamily": font.id}}
@@ -403,7 +403,7 @@ def:pub Sidebar(props: dict) -> JsxElement {
                 {[
                     <button
                         key={size}
-                        onClick={lambda -> None { handleFontSizeChange(size); }}
+                        onClick={lambda { handleFontSizeChange(size); }}
                         className={"h-7 rounded-md flex items-center justify-center text-xs font-medium transition-all duration-150 " + (activeFontSize == size and "bg-orange-50 text-orange-700 ring-1 ring-orange-200" or "text-gray-500 hover:bg-gray-50")}
                     >
                         {size}

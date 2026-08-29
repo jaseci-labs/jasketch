@@ -14,7 +14,7 @@ import uuid;
 import websockets;
 import from mcp.server.fastmcp { FastMCP }
 import from typing { Any }
-import from canvas_tool_provider { CanvasToolProvider }
+import from ..agent.canvas_tools { CanvasToolProvider }
 
 glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "wss://jasketch.jaseci.org/ws");
 glob REQUEST_TIMEOUT: float = 40.0;
@@ -44,7 +44,6 @@ def log(msg: str) -> None {
 # ── Relay connection ──────────────────────────────────────────────────────────
 
 async def _connect_to_relay() -> None {
-    global _ws, _connected, _canvas_sessions;
 
     while True {
         try {
@@ -134,7 +133,6 @@ async def _connect_to_relay() -> None {
 
 
 def _start_relay_thread() -> None {
-    global _relay_loop;
     _relay_loop = asyncio.new_event_loop();
     asyncio.set_event_loop(_relay_loop);
     _relay_ready.set();
@@ -210,7 +208,7 @@ def _send_command(action: str, data: dict | None = None, session_id: str = "", t
 async def _run_mcp_tool(tool_name: str, args: dict, session_id: str | None) -> str {
     sid: str = _resolve_session(session_id or "");
     provider: CanvasToolProvider = CanvasToolProvider(
-        send_fn=lambda action, data: _send_command(action, data, sid)
+        send_fn=lambda (action: str, data: dict | None) -> any { _send_command(action, data, sid); }
     );
     return await asyncio.to_thread(provider.call_tool, tool_name, args);
 }

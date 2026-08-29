@@ -1,6 +1,6 @@
 """CollaboratorCursors — Render other collaborators' cursors and usernames on the canvas."""
 
-def:pub CollaboratorCursors(cursor_states: dict, zoom: float, pan_x: float, pan_y: float) -> any {
+def:pub CollaboratorCursors(cursor_states: dict, zoom: float, pan_x: float, pan_y: float) -> JsxElement {
     if not cursor_states {
         return None;
     }

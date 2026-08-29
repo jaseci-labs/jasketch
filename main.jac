@@ -146,7 +146,7 @@ cl {
 
         # Parse URL hash on mount for share links
         useEffect(
-            lambda -> any {
+            lambda () -> any {
                 load_share_from_url();
                 return None;
             },
@@ -158,29 +158,29 @@ cl {
         if shareLoadError {
             share_error_banner = <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg text-sm z-50 flex items-center gap-3">
                 <span>{shareLoadError}</span>
-                <button onClick={lambda -> None { handleDismissShareError(); }} className="text-white/80 hover:text-white font-bold text-lg leading-none">{"×"}</button>
+                <button onClick={lambda { handleDismissShareError(); }} className="text-white/80 hover:text-white font-bold text-lg leading-none">{"×"}</button>
             </div>;
         }
 
         return <div className="h-screen flex flex-col overflow-hidden bg-white">
             <TopBar
                 currentTool={currentTool}
-                onToolChange={lambda tool: any -> None { currentTool = tool; }}
-                onImageLoad={lambda element: any -> None {
+                onToolChange={lambda (tool: any) { currentTool = tool; }}
+                onImageLoad={lambda (element: any) {
                     if addElementRef.current {
                         addElementRef.current(element);
                     }
                 }}
-                onSave={lambda -> None { if saveRef.current { saveRef.current(); } }}
-                onLoad={lambda file: any -> None { if loadElementsRef.current { loadElementsRef.current(file); } }}
-                onShowShortcuts={lambda -> None { showShortcuts = not showShortcuts; }}
-                onShare={lambda -> None { shareDialogTab = "static"; shareDialogOpen = True; }}
-                onCollab={lambda -> None { shareDialogTab = "collab"; shareDialogOpen = True; }}
+                onSave={lambda { if saveRef.current { saveRef.current(); } }}
+                onLoad={lambda (file: any) { if loadElementsRef.current { loadElementsRef.current(file); } }}
+                onShowShortcuts={lambda { showShortcuts = not showShortcuts; }}
+                onShare={lambda { shareDialogTab = "static"; shareDialogOpen = True; }}
+                onCollab={lambda { shareDialogTab = "collab"; shareDialogOpen = True; }}
                 roomState={roomState}
                 participants={participants}
                 isHost={isHost}
                 participantListOpen={participantListOpen}
-                onParticipantListToggle={lambda -> None { participantListOpen = not participantListOpen; }}
+                onParticipantListToggle={lambda { participantListOpen = not participantListOpen; }}
             />
 
             <div className="flex-1 overflow-hidden relative">
@@ -196,14 +196,14 @@ cl {
                         currentCurveStyle={currentCurveStyle}
                         currentFillColor={currentFillColor}
                         selectedElement={selectedElement}
-                        onColorChange={lambda color: any -> None { currentColor = color; }}
-                        onStrokeWidthChange={lambda width: any -> None { currentStrokeWidth = width; }}
-                        onOpacityChange={lambda opacity: any -> None { currentOpacity = opacity; }}
-                        onFontSizeChange={lambda size: any -> None { currentFontSize = size; }}
-                        onFontFamilyChange={lambda font: any -> None { currentFontFamily = font; }}
-                        onLineStyleChange={lambda style: any -> None { currentLineStyle = style; }}
-                        onCurveStyleChange={lambda style: any -> None { currentCurveStyle = style; }}
-                        onFillColorChange={lambda color: any -> None { currentFillColor = color; }}
+                        onColorChange={lambda (color: any) { currentColor = color; }}
+                        onStrokeWidthChange={lambda (width: any) { currentStrokeWidth = width; }}
+                        onOpacityChange={lambda (opacity: any) { currentOpacity = opacity; }}
+                        onFontSizeChange={lambda (size: any) { currentFontSize = size; }}
+                        onFontFamilyChange={lambda (font: any) { currentFontFamily = font; }}
+                        onLineStyleChange={lambda (style: any) { currentLineStyle = style; }}
+                        onCurveStyleChange={lambda (style: any) { currentCurveStyle = style; }}
+                        onFillColorChange={lambda (color: any) { currentFillColor = color; }}
                         onUpdateElement={handleUpdateElement}
                     />
                 </div>
@@ -229,8 +229,8 @@ cl {
                         setElementsRef={setElementsRef}
                         endSessionRef={endSessionRef}
                         updateUsernameRef={updateUsernameRef}
-                        onParticipantsChange={lambda p: any { participants = p; }}
-                        onSessionEnded={lambda -> None {
+                        onParticipantsChange={lambda (p: any) { participants = p; }}
+                        onSessionEnded={lambda {
                             sessionStorage.removeItem("jasketch_room_id");
                             sessionStorage.removeItem("jasketch_room_key");
                             sessionStorage.removeItem("jasketch_is_host");
@@ -239,16 +239,16 @@ cl {
                             shareDialogOpen = False;
                             participantListOpen = False;
                         }}
-                        onSelectionChange={lambda sel: any -> None { selectedElement = sel; }}
-                        onToolChange={lambda tool: any -> None { currentTool = tool; }}
+                        onSelectionChange={lambda (sel: any) { selectedElement = sel; }}
+                        onToolChange={lambda (tool: any) { currentTool = tool; }}
                         showShortcuts={showShortcuts}
-                        onToggleShortcuts={lambda -> None { showShortcuts = not showShortcuts; }}
+                        onToggleShortcuts={lambda { showShortcuts = not showShortcuts; }}
                     />
                 </div>
 
                 <ChatPanel
                     isOpen={chatOpen}
-                    onToggle={lambda -> None { chatOpen = not chatOpen; }}
+                    onToggle={lambda { chatOpen = not chatOpen; }}
                 />
 
                 <ShareDialog
@@ -257,7 +257,7 @@ cl {
                     elements_ref={elementsForShareRef}
                     room_state={roomState}
                     default_tab={shareDialogTab}
-                    on_join_room={lambda room_id, room_key {
+                    on_join_room={lambda (room_id: str, room_key: str) {
                         sessionStorage.setItem("jasketch_room_id", room_id);
                         sessionStorage.setItem("jasketch_room_key", room_key);
                         sessionStorage.setItem("jasketch_is_host", "true");
@@ -265,10 +265,10 @@ cl {
                         isHost = True;
                     }}
                     on_end_session={lambda {
-                        es_rid = roomState.room_id or "";
+                        es_rid = roomState["room_id"] or "";
                         if endSessionRef.current and es_rid { endSessionRef.current(es_rid); }
                     }}
-                    on_username_set={lambda room_id, name {
+                    on_username_set={lambda (room_id: str, name: str) {
                         if updateUsernameRef.current { updateUsernameRef.current(room_id, name); }
                     }}
                 />
@@ -279,16 +279,16 @@ cl {
                     </span>
                 </div>
 
-                {participantListOpen and roomState and roomState.room_id and <div className="absolute top-11 right-1 z-50">
+                {participantListOpen and roomState and roomState["room_id"] and <div className="absolute top-11 right-1 z-50">
                     <ParticipantList
                         participants={participants}
                         isHost={isHost}
                         mySessionId={sessionStorage.getItem("jasketch_session_id") or ""}
-                        onClose={lambda -> None { participantListOpen = False; }}
-                        onRenameMe={lambda name: any {
+                        onClose={lambda { participantListOpen = False; }}
+                        onRenameMe={lambda (name: any) {
                             localStorage.setItem("jasketch_username", name);
-                            if updateUsernameRef.current and roomState.room_id {
-                                updateUsernameRef.current(roomState.room_id, name);
+                            if updateUsernameRef.current and roomState["room_id"] {
+                                updateUsernameRef.current(roomState["room_id"], name);
                             }
                         }}
                     />
@@ -297,14 +297,14 @@ cl {
 
             {shareLoadError and <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg text-sm z-50 flex items-center gap-3">
                 <span>{shareLoadError}</span>
-                <button onClick={lambda -> None { handleDismissShareError(); }} className="text-white/80 hover:text-white font-bold text-lg leading-none">{"×"}</button>
+                <button onClick={lambda { handleDismissShareError(); }} className="text-white/80 hover:text-white font-bold text-lg leading-none">{"×"}</button>
             </div> or None}
 
             {joinOverlayVisible and <JoinNameOverlay
-                on_join={lambda name: any -> None {
+                on_join={lambda (name: any) {
                     localStorage.setItem("jasketch_username", name);
-                    sessionStorage.setItem("jasketch_room_id", pendingRoom.room_id);
-                    sessionStorage.setItem("jasketch_room_key", pendingRoom.room_key);
+                    sessionStorage.setItem("jasketch_room_id", pendingRoom["room_id"]);
+                    sessionStorage.setItem("jasketch_room_key", pendingRoom["room_key"]);
                     roomState = pendingRoom;
                     joinOverlayVisible = False;
                 }}

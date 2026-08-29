@@ -3,11 +3,11 @@
 import from react { useRef }
 
 def:pub ParticipantList(props: dict) -> JsxElement {
-    participants = props.participants or {};
-    isHost = props.isHost or False;
-    mySessionId = props.mySessionId or "";
-    onClose = props.onClose;
-    onRenameMe = props.onRenameMe;
+    participants = props["participants"] or {};
+    isHost = props["isHost"] or False;
+    mySessionId = props["mySessionId"] or "";
+    onClose = props["onClose"];
+    onRenameMe = props["onRenameMe"];
 
     # __hostSid is a meta key injected by Canvas alongside participants
     hostSessionId = participants["__hostSid"] or "";
@@ -22,7 +22,7 @@ def:pub ParticipantList(props: dict) -> JsxElement {
     def handleStartEdit() -> None {
         nameInput = (participants[mySessionId] and participants[mySessionId].username) or localStorage.getItem("jasketch_username") or "Anonymous";
         editingName = True;
-        setTimeout(lambda -> None {
+        setTimeout(lambda {
             if nameInputRef.current { nameInputRef.current.focus(); nameInputRef.current.select(); }
         }, 10);
     }
@@ -33,10 +33,10 @@ def:pub ParticipantList(props: dict) -> JsxElement {
         editingName = False;
         if onRenameMe { onRenameMe(name); }
         nameSaved = True;
-        setTimeout(lambda -> None { nameSaved = False; }, 2000);
+        setTimeout(lambda { nameSaved = False; }, 2000);
     }
 
-    def handleNameKeyDown(e: dict) -> None {
+    def handleNameKeyDown(e: KeyboardEvent) -> None {
         if e.key == "Enter" { handleSaveName(); }
         if e.key == "Escape" { editingName = False; }
     }
@@ -52,7 +52,7 @@ def:pub ParticipantList(props: dict) -> JsxElement {
                 {"Participants (" + String(all_sids.length) + ")"}
             </span>
             <button
-                onClick={lambda -> None { if onClose { onClose(); } }}
+                onClick={lambda { if onClose { onClose(); } }}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
             >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -68,9 +68,9 @@ def:pub ParticipantList(props: dict) -> JsxElement {
                         ref={nameInputRef}
                         type="text"
                         value={nameInput}
-                        onChange={lambda e: any -> None { nameInput = e.target.value; }}
+                        onChange={lambda (e: any) { nameInput = e.target.value; }}
                         onKeyDown={handleNameKeyDown}
-                        onBlur={lambda -> None { handleSaveName(); }}
+                        onBlur={lambda { handleSaveName(); }}
                         className="w-full text-sm border border-orange-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
                     /> or <span className="text-sm text-gray-800 truncate block">{current_my_data.username or "Anonymous"}</span>}
                 </div>
@@ -78,7 +78,7 @@ def:pub ParticipantList(props: dict) -> JsxElement {
                     <span className="text-xs text-gray-400">{"(me)"}</span>
                     {isHost and <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-medium">{"Host"}</span> or None}
                     {not editingName and <button
-                        onClick={lambda -> None { handleStartEdit(); }}
+                        onClick={lambda { handleStartEdit(); }}
                         title="Rename"
                         className="text-gray-400 hover:text-orange-600 transition-colors"
                     >
@@ -87,7 +87,7 @@ def:pub ParticipantList(props: dict) -> JsxElement {
                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                         </svg>
                     </button> or <button
-                        onClick={lambda -> None { handleSaveName(); }}
+                        onClick={lambda { handleSaveName(); }}
                         className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded hover:bg-orange-600 transition-colors"
                     >{"Save"}</button>}
                 </div>

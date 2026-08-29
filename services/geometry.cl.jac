@@ -1,17 +1,17 @@
-def:pub getMousePosition(e: dict, canvas: any, panOffset: dict, zoom: float) -> dict {
+def:pub getMousePosition(e: MouseEvent, canvas: any, panOffset: dict, zoom: float) -> dict {
     rect = canvas.getBoundingClientRect();
     screenX = e.clientX - rect.left;
     screenY = e.clientY - rect.top;
     return {
-        "x": (screenX - panOffset.x) / zoom,
-        "y": (screenY - panOffset.y) / zoom
+        "x": (screenX - panOffset["x"]) / zoom,
+        "y": (screenY - panOffset["y"]) / zoom
     };
 }
 
 def:pub calculateDistance(point1: dict, point2: dict) -> float {
     return Math.sqrt(
-        Math.pow(point2.x - point1.x, 2) +
-        Math.pow(point2.y - point1.y, 2)
+        Math.pow(point2["x"] - point1["x"], 2) +
+        Math.pow(point2["y"] - point1["y"], 2)
     );
 }
 
@@ -54,26 +54,26 @@ def:pub _rotate_points(points: list, cx: float, cy: float, angle_deg: float) -> 
 }
 
 def:pub getConnectionPoints(element: dict) -> list {
-    if element.type == "rectangle" {
-        rCx = element.x + element.width / 2;
-        rCy = element.y + element.height / 2;
-        rX2 = element.x + element.width;
-        rY2 = element.y + element.height;
+    if element["type"] == "rectangle" {
+        rCx = element["x"] + element["width"] / 2;
+        rCy = element["y"] + element["height"] / 2;
+        rX2 = element["x"] + element["width"];
+        rY2 = element["y"] + element["height"];
         return [
-            {"x": rCx, "y": element.y, "side": "top"},
-            {"x": rX2, "y": element.y, "side": "top-right"},
+            {"x": rCx, "y": element["y"], "side": "top"},
+            {"x": rX2, "y": element["y"], "side": "top-right"},
             {"x": rX2, "y": rCy, "side": "right"},
             {"x": rX2, "y": rY2, "side": "bottom-right"},
             {"x": rCx, "y": rY2, "side": "bottom"},
-            {"x": element.x, "y": rY2, "side": "bottom-left"},
-            {"x": element.x, "y": rCy, "side": "left"},
-            {"x": element.x, "y": element.y, "side": "top-left"}
+            {"x": element["x"], "y": rY2, "side": "bottom-left"},
+            {"x": element["x"], "y": rCy, "side": "left"},
+            {"x": element["x"], "y": element["y"], "side": "top-left"}
         ];
-    } elif element.type == "circle" {
-        eCx = element.x + element.width / 2;
-        eCy = element.y + element.height / 2;
-        eRx = Math.abs(element.width) / 2;
-        eRy = Math.abs(element.height) / 2;
+    } elif element["type"] == "circle" {
+        eCx = element["x"] + element["width"] / 2;
+        eCy = element["y"] + element["height"] / 2;
+        eRx = Math.abs(element["width"]) / 2;
+        eRy = Math.abs(element["height"]) / 2;
         eDiag = 0.7071;
         return [
             {"x": eCx, "y": eCy - eRy, "side": "top"},
@@ -85,36 +85,36 @@ def:pub getConnectionPoints(element: dict) -> list {
             {"x": eCx - eRx, "y": eCy, "side": "left"},
             {"x": eCx - eRx * eDiag, "y": eCy - eRy * eDiag, "side": "top-left"}
         ];
-    } elif element.type == "diamond" {
-        dCx = element.x + element.width / 2;
-        dCy = element.y + element.height / 2;
-        dX2 = element.x + element.width;
-        dY2 = element.y + element.height;
+    } elif element["type"] == "diamond" {
+        dCx = element["x"] + element["width"] / 2;
+        dCy = element["y"] + element["height"] / 2;
+        dX2 = element["x"] + element["width"];
+        dY2 = element["y"] + element["height"];
         return [
-            {"x": dCx, "y": element.y, "side": "top"},
-            {"x": (dCx + dX2) / 2, "y": (element.y + dCy) / 2, "side": "top-right"},
+            {"x": dCx, "y": element["y"], "side": "top"},
+            {"x": (dCx + dX2) / 2, "y": (element["y"] + dCy) / 2, "side": "top-right"},
             {"x": dX2, "y": dCy, "side": "right"},
             {"x": (dCx + dX2) / 2, "y": (dCy + dY2) / 2, "side": "bottom-right"},
             {"x": dCx, "y": dY2, "side": "bottom"},
-            {"x": (element.x + dCx) / 2, "y": (dCy + dY2) / 2, "side": "bottom-left"},
-            {"x": element.x, "y": dCy, "side": "left"},
-            {"x": (element.x + dCx) / 2, "y": (element.y + dCy) / 2, "side": "top-left"}
+            {"x": (element["x"] + dCx) / 2, "y": (dCy + dY2) / 2, "side": "bottom-left"},
+            {"x": element["x"], "y": dCy, "side": "left"},
+            {"x": (element["x"] + dCx) / 2, "y": (element["y"] + dCy) / 2, "side": "top-left"}
         ];
-    } elif element.type == "text" {
-        dims = getTextDimensions(element.text, element.fontSize);
-        tCx = element.x + dims.width / 2;
-        tCy = element.y + dims.height / 2;
-        tX2 = element.x + dims.width;
-        tY2 = element.y + dims.height;
+    } elif element["type"] == "text" {
+        dims = getTextDimensions(element["text"], element["fontSize"]);
+        tCx = element["x"] + dims["width"] / 2;
+        tCy = element["y"] + dims["height"] / 2;
+        tX2 = element["x"] + dims["width"];
+        tY2 = element["y"] + dims["height"];
         return [
-            {"x": tCx, "y": element.y, "side": "top"},
-            {"x": tX2, "y": element.y, "side": "top-right"},
+            {"x": tCx, "y": element["y"], "side": "top"},
+            {"x": tX2, "y": element["y"], "side": "top-right"},
             {"x": tX2, "y": tCy, "side": "right"},
             {"x": tX2, "y": tY2, "side": "bottom-right"},
             {"x": tCx, "y": tY2, "side": "bottom"},
-            {"x": element.x, "y": tY2, "side": "bottom-left"},
-            {"x": element.x, "y": tCy, "side": "left"},
-            {"x": element.x, "y": element.y, "side": "top-left"}
+            {"x": element["x"], "y": tY2, "side": "bottom-left"},
+            {"x": element["x"], "y": tCy, "side": "left"},
+            {"x": element["x"], "y": element["y"], "side": "top-left"}
         ];
     }
     return [];
@@ -124,22 +124,22 @@ def:pub get_elbow_full_points(element: dict) -> list {
     # Returns all waypoints [{x,y}] for an elbow arrow, including start and end.
     # If element.elbowBends is set, uses those intermediate points.
     # Otherwise routes based on binding sides (L-shape or Z-shape).
-    if element.elbowBends and element.elbowBends.length > 0 {
-        pts = [{"x": element.x1, "y": element.y1}];
+    if element["elbowBends"] and element["elbowBends"].length > 0 {
+        pts = [{"x": element["x1"], "y": element["y1"]}];
         bi = 0;
-        while bi < element.elbowBends.length {
-            pts.push({"x": element.elbowBends[bi].x, "y": element.elbowBends[bi].y});
+        while bi < element["elbowBends"].length {
+            pts.push({"x": element["elbowBends"][bi].x, "y": element["elbowBends"][bi].y});
             bi = bi + 1;
         }
-        pts.push({"x": element.x2, "y": element.y2});
+        pts.push({"x": element["x2"], "y": element["y2"]});
         return pts;
     }
 
     # Determine routing based on binding sides
     # Vertical sides exit/enter perpendicular to top/bottom edges
     # Horizontal sides exit/enter perpendicular to left/right edges
-    startSide = (element.startBinding and element.startBinding.side) or "";
-    endSide = (element.endBinding and element.endBinding.side) or "";
+    startSide = (element["startBinding"] and element["startBinding"].side) or "";
+    endSide = (element["endBinding"] and element["endBinding"].side) or "";
 
     startIsVert = (startSide == "top" or startSide == "bottom" or
                    startSide == "top-left" or startSide == "top-right" or
@@ -154,9 +154,9 @@ def:pub get_elbow_full_points(element: dict) -> list {
     # Route: (x1, y1) -> (x1, y2) -> (x2, y2)
     if startIsVert and endIsHoriz {
         return [
-            {"x": element.x1, "y": element.y1},
-            {"x": element.x1, "y": element.y2},
-            {"x": element.x2, "y": element.y2}
+            {"x": element["x1"], "y": element["y1"]},
+            {"x": element["x1"], "y": element["y2"]},
+            {"x": element["x2"], "y": element["y2"]}
         ];
     }
 
@@ -164,22 +164,22 @@ def:pub get_elbow_full_points(element: dict) -> list {
     # Route: (x1, y1) -> (x2, y1) -> (x2, y2)
     if startIsHoriz and endIsVert {
         return [
-            {"x": element.x1, "y": element.y1},
-            {"x": element.x2, "y": element.y1},
-            {"x": element.x2, "y": element.y2}
+            {"x": element["x1"], "y": element["y1"]},
+            {"x": element["x2"], "y": element["y1"]},
+            {"x": element["x2"], "y": element["y2"]}
         ];
     }
 
     # Legacy bendX support, or default Z-shape (same-axis connections or no binding)
-    midX = (element.x1 + element.x2) / 2;
-    if element.bendX != None and element.bendX != undefined {
-        midX = element.bendX;
+    midX = (element["x1"] + element["x2"]) / 2;
+    if element["bendX"] != None and element["bendX"] != undefined {
+        midX = element["bendX"];
     }
     return [
-        {"x": element.x1, "y": element.y1},
-        {"x": midX, "y": element.y1},
-        {"x": midX, "y": element.y2},
-        {"x": element.x2, "y": element.y2}
+        {"x": element["x1"], "y": element["y1"]},
+        {"x": midX, "y": element["y1"]},
+        {"x": midX, "y": element["y2"]},
+        {"x": element["x2"], "y": element["y2"]}
     ];
 }
 
@@ -206,7 +206,7 @@ def:pub move_elbow_segment(fullPoints: list, segIdx: int, pos: dict) -> list {
     }
 
     if isHoriz {
-        newY = pos.y;
+        newY = pos["y"];
         # First segment: endpoint[0] is fixed — insert a vertical stub before pts[1]
         if segIdx == 1 {
             pts[1].y = newY;
@@ -235,7 +235,7 @@ def:pub move_elbow_segment(fullPoints: list, segIdx: int, pos: dict) -> list {
         pts[segIdx - 1].y = newY;
         pts[segIdx].y = newY;
     } else {
-        newX = pos.x;
+        newX = pos["x"];
         # First segment: insert a horizontal stub before pts[1]
         if segIdx == 1 {
             pts[1].x = newX;
@@ -276,25 +276,25 @@ def:pub find_bound_line_updates_for_shape(updated_shape: dict, elements: list) -
     }
 
     # Apply rotation to connection points if element is rotated
-    if updated_shape.rotation and (updated_shape.rotation != 0) {
-        rot_cx = updated_shape.x + updated_shape.width / 2;
-        rot_cy = updated_shape.y + updated_shape.height / 2;
-        if updated_shape.type == "text" {
-            rot_dims = getTextDimensions(updated_shape.text, updated_shape.fontSize);
-            rot_cx = updated_shape.x + rot_dims.width / 2;
-            rot_cy = updated_shape.y + rot_dims.height / 2;
+    if updated_shape["rotation"] and (updated_shape["rotation"] != 0) {
+        rot_cx = updated_shape["x"] + updated_shape["width"] / 2;
+        rot_cy = updated_shape["y"] + updated_shape["height"] / 2;
+        if updated_shape["type"] == "text" {
+            rot_dims = getTextDimensions(updated_shape["text"], updated_shape["fontSize"]);
+            rot_cx = updated_shape["x"] + rot_dims["width"] / 2;
+            rot_cy = updated_shape["y"] + rot_dims["height"] / 2;
         }
-        cpts = _rotate_points(cpts, rot_cx, rot_cy, updated_shape.rotation);
+        cpts = _rotate_points(cpts, rot_cx, rot_cy, updated_shape["rotation"]);
     }
 
     i = 0;
     while i < elements.length {
         el = elements[i];
-        if el.id != updated_shape.id {
+        if el.id != updated_shape["id"] {
             if el.type == "line" or el.type == "arrow" {
                 updated = False;
                 updatedEl = Object.assign({}, el);
-                if el.startBinding and el.startBinding.elementId == updated_shape.id {
+                if el.startBinding and el.startBinding.elementId == updated_shape["id"] {
                     j = 0;
                     while j < cpts.length {
                         if cpts[j].side == el.startBinding.side {
@@ -305,7 +305,7 @@ def:pub find_bound_line_updates_for_shape(updated_shape: dict, elements: list) -
                         j = j + 1;
                     }
                 }
-                if el.endBinding and el.endBinding.elementId == updated_shape.id {
+                if el.endBinding and el.endBinding.elementId == updated_shape["id"] {
                     j = 0;
                     while j < cpts.length {
                         if cpts[j].side == el.endBinding.side {
@@ -331,16 +331,16 @@ def:pub find_bound_line_updates_for_shape(updated_shape: dict, elements: list) -
 }
 
 def:pub get_freehand_center(element: dict) -> dict {
-    if not element.points or element.points.length == 0 {
+    if not element["points"] or element["points"].length == 0 {
         return {"x": 0, "y": 0};
     }
-    minX = element.points[0].x;
-    minY = element.points[0].y;
-    maxX = element.points[0].x;
-    maxY = element.points[0].y;
+    minX = element["points"][0].x;
+    minY = element["points"][0].y;
+    maxX = element["points"][0].x;
+    maxY = element["points"][0].y;
     i = 1;
-    while i < element.points.length {
-        p = element.points[i];
+    while i < element["points"].length {
+        p = element["points"][i];
         if p.x < minX { minX = p.x; }
         if p.y < minY { minY = p.y; }
         if p.x > maxX { maxX = p.x; }
@@ -365,8 +365,8 @@ def:pub findNearestConnectionPoint(mousePos: dict, elements: list, threshold: fl
             el_cy = element.y + element.height / 2;
             if element.type == "text" {
                 el_dims = getTextDimensions(element.text, element.fontSize);
-                el_cx = element.x + el_dims.width / 2;
-                el_cy = element.y + el_dims.height / 2;
+                el_cx = element.x + el_dims["width"] / 2;
+                el_cy = element.y + el_dims["height"] / 2;
             }
             connPoints = _rotate_points(connPoints, el_cx, el_cy, element.rotation);
         }

@@ -32,7 +32,7 @@ import threading;
 import time;
 import uuid;
 
-import from jasketch_mcp.canvas_tool_provider { CanvasToolProvider }
+import from .canvas_tools { CanvasToolProvider }
 import from typing { Any }
 import from .session { SessionContext }
 import from .subagents {
@@ -88,7 +88,7 @@ def _find_or_create_session(session_id: str) -> SessionContext {
     if session_id not in _sessions {
         ctx: SessionContext = SessionContext();
         ctx.session_id = session_id;
-        root() ++> ctx;
+        root ++> ctx;
         _sessions[session_id] = ctx;
     }
     return _sessions[session_id];
@@ -98,7 +98,6 @@ def _find_or_create_session(session_id: str) -> SessionContext {
 # ── Relay connection (reuse MCP pattern) ──────────────────────────────────────
 
 async def _connect_to_relay() -> None {
-    global _ws, _connected;
     import websockets;
 
     while True {
@@ -143,7 +142,6 @@ async def _connect_to_relay() -> None {
 }
 
 def _start_relay_thread() -> None {
-    global _relay_loop;
     _relay_loop = asyncio.new_event_loop();
     asyncio.set_event_loop(_relay_loop);
     _relay_ready.set();
@@ -544,9 +542,8 @@ walker AgentOrchestrator {
 
 """Create agent singleton nodes (idempotent)."""
 def _ensure_agent_singletons(api_key: str, model_name: str) -> None {
-    global _intent_router, _diagram_planner, _diagram_analyst, _diagram_composer, _diagram_editor;
 
-    root_node: Any = root();
+    root_node: Any = root;
     llm_model: Any = create_llm(model_name, api_key);
 
     if _intent_router is None {
@@ -593,7 +590,7 @@ def _run_conversation(session_id: str, message: str, api_key: str, model: str, w
 
     try {
         # Spawn walker on root — triggers init_context ability and graph traversal
-        root() spawn AgentOrchestrator(
+        root spawn AgentOrchestrator(
             session_id=session_id,
             message=message,
             api_key=api_key,

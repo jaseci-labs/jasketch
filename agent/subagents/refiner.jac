@@ -77,6 +77,5 @@ sem use_canvas_tool.arguments = "JSON object string matching the inputSchema of 
 # ── Provider injection (called by orchestrator) ────────────────────────────────
 
 def _set_editor_provider(provider: Any) -> None {
-    global _editor_provider;
     _editor_provider = provider;
 }

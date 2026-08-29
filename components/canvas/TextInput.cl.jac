@@ -1,14 +1,14 @@
 def:pub TextInput(props: dict) -> JsxElement {
-    textInput = props.textInput;
-    textInputRef = props.textInputRef;
-    currentColor = props.currentColor or "#000000";
-    currentFontSize = props.currentFontSize or 24;
-    currentFontFamily = props.currentFontFamily or "Virgil";
-    zoom = props.zoom or 1;
-    panOffset = props.panOffset or {"x": 0, "y": 0};
-    onTextChange = props.onTextChange;
-    onKeyDown = props.onKeyDown;
-    onBlur = props.onBlur;
+    textInput = props["textInput"];
+    textInputRef = props["textInputRef"];
+    currentColor = props["currentColor"] or "#000000";
+    currentFontSize = props["currentFontSize"] or 24;
+    currentFontFamily = props["currentFontFamily"] or "Virgil";
+    zoom = props["zoom"] or 1;
+    panOffset = props["panOffset"] or {"x": 0, "y": 0};
+    onTextChange = props["onTextChange"];
+    onKeyDown = props["onKeyDown"];
+    onBlur = props["onBlur"];
 
     if not textInput {
         return None;

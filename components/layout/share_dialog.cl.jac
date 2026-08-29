@@ -4,7 +4,16 @@ import from react { useState, useRef, useEffect }
 import from ..layout.ConfirmDialog { ConfirmDialog }
 import from ...services.scene_sharing { check_crypto_available, export_to_share_backend, generate_room_credentials }
 
-def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state: dict, on_join_room: any, on_end_session: any, on_username_set: any = None, default_tab: str = "static") -> any {
+def:pub ShareDialog(
+    is_open: bool,
+    on_close: Callable[[], None],
+    elements_ref: any,
+    room_state: dict,
+    on_join_room: Callable[[str, str], None],
+    on_end_session: Callable[[], None],
+    on_username_set: Callable[[str, str], None] | None = None,
+    default_tab: str = "static"
+) -> JsxElement {
     has active_tab: str = default_tab;
     has static_status: str = "idle";     # idle, loading, done, error
     has static_link: str = "";
@@ -19,15 +28,15 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
     has _generating: bool = False;
 
     useEffect(
-        lambda -> any {
+        lambda () -> any {
             crypto_available = check_crypto_available();
-            return lambda -> None { };
+            return lambda { };
         },
         []
     );
 
     useEffect(
-        lambda -> any {
+        lambda () -> any {
             if is_open {
                 active_tab = default_tab;
                 static_status = "idle";
@@ -36,18 +45,18 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
                 copied = False;
                 _generating = False;
             }
-            return lambda -> None { };
+            return lambda { };
         },
         [is_open]
     );
 
-    can with [room_state.room_id, is_open] entry {
-        if is_open and room_state and room_state.room_id and not collab_link {
+    can with [room_state["room_id"], is_open] entry {
+        if is_open and room_state and room_state["room_id"] and not collab_link {
             origin = window.location.origin;
             pathname = window.location.pathname;
-            collab_link = f"{origin}{pathname}#room={room_state.room_id},{room_state.room_key}";
+            collab_link = f"{origin}{pathname}#room={room_state["room_id"]},{room_state["room_key"]}";
         }
-        return lambda -> None { };
+        return lambda { };
     }
 
     def handle_generate_static_link() -> None {
@@ -110,9 +119,9 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
     def handle_copy_link(link: str) -> None {
         if link {
             navigator.clipboard.writeText(link).then(
-                lambda -> None {
+                lambda {
                     copied = True;
-                    setTimeout(lambda -> None {
+                    setTimeout(lambda {
                         copied = False;
                     }, 2000);
                 }
@@ -133,11 +142,11 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
     def handle_set_username() -> None {
         name = username_input or "Anonymous";
         localStorage.setItem("jasketch_username", name);
-        if on_username_set and room_state and room_state.room_id {
-            on_username_set(room_state.room_id, name);
+        if on_username_set and room_state and room_state["room_id"] {
+            on_username_set(room_state["room_id"], name);
         }
         username_set = True;
-        setTimeout(lambda -> None { username_set = False; }, 2000);
+        setTimeout(lambda { username_set = False; }, 2000);
     }
 
     def handle_end_session() -> None {
@@ -153,7 +162,7 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
     static_status_content = None;
     if static_status == "idle" {
         static_status_content = <button
-            onClick={lambda -> None { handle_generate_static_link(); }}
+            onClick={lambda { handle_generate_static_link(); }}
             className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 rounded-md transition"
         >
             {"Generate Link"}
@@ -174,7 +183,7 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
                 className="w-full px-3 py-2 border rounded-md bg-gray-50 font-mono text-sm"
             />
             <button
-                onClick={lambda -> None { handle_copy_link(static_link); }}
+                onClick={lambda { handle_copy_link(static_link); }}
                 className={"w-full font-medium py-2 rounded-md transition " + (copied and "bg-green-500 hover:bg-green-600 text-white" or "bg-gray-200 hover:bg-gray-300 text-gray-800")}
             >
                 {copied and "Copied!" or "Copy Link"}
@@ -191,7 +200,7 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
                 </p>
             </div>
             <button
-                onClick={lambda -> None { handle_try_again(); }}
+                onClick={lambda { handle_try_again(); }}
                 className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 rounded-md transition"
             >
                 {"Try Again"}
@@ -201,7 +210,7 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
 
     # Pre-compute collab tab content
     collab_content = None;
-    if room_state and room_state.room_id {
+    if room_state and room_state["room_id"] {
         collab_content = <div className="space-y-4">
             <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -214,13 +223,13 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
                 className="w-full px-3 py-2 border rounded-md bg-gray-50 font-mono text-sm"
             />
             <button
-                onClick={lambda -> None { handle_copy_link(collab_link); }}
+                onClick={lambda { handle_copy_link(collab_link); }}
                 className={"w-full font-medium py-2 rounded-md transition " + (copied and "bg-green-500 hover:bg-green-600 text-white" or "bg-gray-200 hover:bg-gray-300 text-gray-800")}
             >
                 {copied and "Copied!" or "Copy Link"}
             </button>
             <button
-                onClick={lambda -> None { confirm_end_session = True; }}
+                onClick={lambda { confirm_end_session = True; }}
                 className="w-full bg-red-500 hover:bg-red-600 text-white font-medium py-2 rounded-md transition"
             >
                 {"End Session"}
@@ -238,13 +247,13 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
                 <input
                     type="text"
                     value={username_input}
-                    onChange={lambda e: any -> None { handle_username_change(e.target.value); }}
+                    onChange={lambda (e: any) { handle_username_change(e.target.value); }}
                     className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Enter your name"
                 />
             </div>
             <button
-                onClick={lambda -> None { handle_start_collab_session(); }}
+                onClick={lambda { handle_start_collab_session(); }}
                 className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 rounded-md transition"
             >
                 {"Start Session"}
@@ -270,7 +279,7 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
             <div className="border-b px-6 py-4 flex justify-between items-center">
                 <h2 className="text-lg font-semibold">{"Share Canvas"}</h2>
                 <button
-                    onClick={lambda -> None { on_close(); }}
+                    onClick={lambda { on_close(); }}
                     className="text-gray-500 hover:text-gray-700 text-xl"
                 >
                     {"×"}
@@ -285,13 +294,13 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
 
             <div className="flex border-b px-6 mt-4">
                 <button
-                    onClick={lambda -> None { active_tab = "static"; }}
+                    onClick={lambda { active_tab = "static"; }}
                     className={"pb-3 px-4 border-b-2 transition " + (active_tab == "static" and "border-blue-500 text-blue-600 font-medium" or "border-transparent text-gray-600 hover:text-gray-900")}
                 >
                     {"Read-only Share"}
                 </button>
                 <button
-                    onClick={lambda -> None { active_tab = "collab"; }}
+                    onClick={lambda { active_tab = "collab"; }}
                     className={"pb-3 px-4 border-b-2 transition " + (active_tab == "collab" and "border-blue-500 text-blue-600 font-medium" or "border-transparent text-gray-600 hover:text-gray-900")}
                 >
                     {"Live Collaboration"}
@@ -307,8 +316,8 @@ def:pub ShareDialog(is_open: bool, on_close: any, elements_ref: any, room_state:
             title="End Collaboration Session?"
             message="This will disconnect all collaborators. Are you sure?"
             confirmText="End Session"
-            onConfirm={lambda -> None { handle_end_session(); }}
-            onCancel={lambda -> None { confirm_end_session = False; }}
+            onConfirm={lambda { handle_end_session(); }}
+            onCancel={lambda { confirm_end_session = False; }}
         /> or None}
     </div>;
 }

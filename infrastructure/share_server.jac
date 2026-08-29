@@ -16,7 +16,7 @@ import re;
 import secrets;
 import from typing { Any }
 import from datetime { datetime, timezone }
-import from jac_scale.db { get_mongo_client }
+import from jaclang.scale.persistence.db { get_mongo_client }
 
 glob SHARE_DB_NAME: str = "jasketch_db";
 glob SHARE_COLLECTION: str = "shared_scenes";
@@ -125,7 +125,7 @@ def _make_share_routes() -> dict {
 
 def _register_share_routes() -> bool {
     try {
-        import from jac_scale.jserver.jfast_api { JFastApiServer }
+        import from jaclang.scale.jserver.jfast_api { JFastApiServer }
 
         routes = _make_share_routes();
         orig_run_server = JFastApiServer.run_server;

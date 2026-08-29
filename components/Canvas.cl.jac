@@ -19,22 +19,22 @@ import from .layout.ShortcutHelp { ShortcutHelp }
 import from .layout.ConfirmDialog { ConfirmDialog }
 
 def:pub Canvas(props: dict) -> JsxElement {
-    showShortcutsProp = props.showShortcuts or False;
-    onToggleShortcuts = props.onToggleShortcuts;
-    currentTool = props.currentTool or "select";
-    currentColor = props.currentColor or "#000000";
-    currentStrokeWidth = props.currentStrokeWidth or 2;
-    currentFontSize = props.currentFontSize or 24;
-    currentFontFamily = props.currentFontFamily or "Virgil";
-    currentOpacity = props.currentOpacity or 1.0;
-    currentLineStyle = props.currentLineStyle or "solid";
-    currentCurveStyle = props.currentCurveStyle or "curved";
-    currentFillColor = props.currentFillColor or "transparent";
-    roomState = props.roomState or {};
-    onSessionEnded = props.onSessionEnded;
-    endSessionRef = props.endSessionRef;
-    updateUsernameRef = props.updateUsernameRef;
-    onParticipantsChange = props.onParticipantsChange;
+    showShortcutsProp = props["showShortcuts"] or False;
+    onToggleShortcuts = props["onToggleShortcuts"];
+    currentTool = props["currentTool"] or "select";
+    currentColor = props["currentColor"] or "#000000";
+    currentStrokeWidth = props["currentStrokeWidth"] or 2;
+    currentFontSize = props["currentFontSize"] or 24;
+    currentFontFamily = props["currentFontFamily"] or "Virgil";
+    currentOpacity = props["currentOpacity"] or 1.0;
+    currentLineStyle = props["currentLineStyle"] or "solid";
+    currentCurveStyle = props["currentCurveStyle"] or "curved";
+    currentFillColor = props["currentFillColor"] or "transparent";
+    roomState = props["roomState"] or {};
+    onSessionEnded = props["onSessionEnded"];
+    endSessionRef = props["endSessionRef"];
+    updateUsernameRef = props["updateUsernameRef"];
+    onParticipantsChange = props["onParticipantsChange"];
 
     canvasHook = useCanvas();
     drawingState = useDrawingState();
@@ -111,7 +111,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             }
             onParticipantsChange(merged);
         }
-        return lambda -> None {};
+        return lambda {};
     }
 
     can with [elementsHook.elements, canvasHook.canvasSize, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, drawingState.isDrawing, textInputHook.textInput] entry {
@@ -119,8 +119,8 @@ def:pub Canvas(props: dict) -> JsxElement {
         if canvas {
             canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, editingShapeId);
         }
-        if props.onSelectionChange {
-            props.onSelectionChange(selectionHook.selectedElement);
+        if props["onSelectionChange"] {
+            props["onSelectionChange"](selectionHook.selectedElement);
         }
     }
 
@@ -128,13 +128,13 @@ def:pub Canvas(props: dict) -> JsxElement {
         imgInput = document.createElement("input");
         imgInput.type = "file";
         imgInput.accept = "image/*";
-        imgInput.onchange = lambda evt: any -> None {
+        imgInput.onchange = lambda (evt: any) {
             imgFile = evt.target.files[0];
             if imgFile {
                 imgReader = Reflect.construct(FileReader, []);
-                imgReader.onload = lambda loadEvt: any -> None {
+                imgReader.onload = lambda (loadEvt: any) {
                     imgObj = Reflect.construct(Image, []);
-                    imgObj.onload = lambda -> None {
+                    imgObj.onload = lambda {
                         canvas = canvasRef.current;
                         centerX = 0;
                         centerY = 0;
@@ -153,8 +153,8 @@ def:pub Canvas(props: dict) -> JsxElement {
                         };
                         elementsHook.addElement(imgElement);
                         selectionHook.setSelectedElement({"element": imgElement, "id": imgElement.id});
-                        if props.onToolChange {
-                            props.onToolChange("select");
+                        if props["onToolChange"] {
+                            props["onToolChange"]("select");
                         }
                     };
                     imgObj.src = loadEvt.target.result;
@@ -169,14 +169,14 @@ def:pub Canvas(props: dict) -> JsxElement {
         loadInput = document.createElement("input");
         loadInput.type = "file";
         loadInput.accept = ".jasketch";
-        loadInput.onchange = lambda evt: any -> None {
+        loadInput.onchange = lambda (evt: any) {
             loadFile = evt.target.files[0];
             if loadFile {
-                loadFromJaSketch(loadFile, lambda loaded: any -> None {
+                loadFromJaSketch(loadFile, lambda (loaded: any) {
                     elementsHook.setElements(loaded);
                     selectionHook.clearSelection();
                     showToast("Diagram loaded");
-                }, lambda errMsg: any -> None {
+                }, lambda (errMsg: any) {
                     showToast(errMsg);
                 });
             }
@@ -185,7 +185,7 @@ def:pub Canvas(props: dict) -> JsxElement {
     }
 
     can with (textInputHook.textInput, elementsHook.elements) entry {
-        def handleKeyDown(e: dict) -> None {
+        def handleKeyDown(e: KeyboardEvent) -> None {
             if e.key == " " and not textInputHook.textInput {
                 e.preventDefault();
                 spacePressed = True;
@@ -234,7 +234,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             }
             if not textInputHook.textInput and (e.key == "c" or e.key == "C") and e.shiftKey and e.altKey {
                 e.preventDefault();
-                copyCanvasAsPNG(elementsHook.elements, canvasRef, lambda -> None {
+                copyCanvasAsPNG(elementsHook.elements, canvasRef, lambda {
                     showToast("Copied as PNG");
                 });
             } elif not textInputHook.textInput and (e.key == "c" or e.key == "C") and (e.ctrlKey or e.metaKey) {
@@ -356,14 +356,14 @@ def:pub Canvas(props: dict) -> JsxElement {
                 } else {
                     shortcuts = TOOL_SHORTCUTS();
                     toolForKey = shortcuts[e.key];
-                    if toolForKey and props.onToolChange {
-                        props.onToolChange(toolForKey);
+                    if toolForKey and props["onToolChange"] {
+                        props["onToolChange"](toolForKey);
                     }
                 }
             }
         }
 
-        def handleKeyUp(e: dict) -> None {
+        def handleKeyUp(e: KeyboardEvent) -> None {
             if e.key == " " {
                 spacePressed = False;
             }
@@ -371,7 +371,7 @@ def:pub Canvas(props: dict) -> JsxElement {
 
         window.addEventListener("keydown", handleKeyDown);
         window.addEventListener("keyup", handleKeyUp);
-        return lambda -> None {
+        return lambda {
             window.removeEventListener("keydown", handleKeyDown);
             window.removeEventListener("keyup", handleKeyUp);
         };
@@ -383,7 +383,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             return None;
         }
 
-        def handleWheel(e: dict) -> None {
+        def handleWheel(e: WheelEvent) -> None {
             e.preventDefault();
             if e.ctrlKey or e.metaKey {
                 viewportHook.handleZoom(e.deltaY, e.clientX, e.clientY, canvas);
@@ -399,25 +399,25 @@ def:pub Canvas(props: dict) -> JsxElement {
         }
 
         canvas.addEventListener("wheel", handleWheel, {"passive": False});
-        return lambda -> None {
+        return lambda {
             canvas.removeEventListener("wheel", handleWheel);
         };
     }
 
     can with elementsHook.elements entry {
-        if props.clearCanvasRef {
-            props.clearCanvasRef.current = lambda -> None {
+        if props["clearCanvasRef"] {
+            props["clearCanvasRef"].current = lambda {
                 elementsHook.clearElements();
                 selectionHook.clearSelection();
             };
         }
-        if props.addElementRef {
-            props.addElementRef.current = lambda element: any -> None {
+        if props["addElementRef"] {
+            props["addElementRef"].current = lambda (element: any) {
                 elementsHook.addElement(element);
             };
         }
-        if props.updateElementRef {
-            props.updateElementRef.current = lambda id: any, changes: any -> None {
+        if props["updateElementRef"] {
+            props["updateElementRef"].current = lambda (id: any, changes: any) {
                 fi = 0;
                 foundEl = None;
                 while fi < elementsHook.elements.length {
@@ -433,39 +433,39 @@ def:pub Canvas(props: dict) -> JsxElement {
                 }
             };
         }
-        if props.saveRef {
-            props.saveRef.current = lambda -> None {
+        if props["saveRef"] {
+            props["saveRef"].current = lambda {
                 saveAsJaSketch(elementsHook.elements, "drawing.jasketch");
             };
         }
-        if props.loadElementsRef {
-            props.loadElementsRef.current = lambda file: any -> None {
-                loadFromJaSketch(file, lambda loaded: any -> None {
+        if props["loadElementsRef"] {
+            props["loadElementsRef"].current = lambda (file: any) {
+                loadFromJaSketch(file, lambda (loaded: any) {
                     elementsHook.setElements(loaded);
                     selectionHook.clearSelection();
                     showToast("Diagram loaded");
-                }, lambda errMsg: any -> None {
+                }, lambda (errMsg: any) {
                     showToast(errMsg);
                 });
             };
         }
-        if props.elementsForShareRef {
-            props.elementsForShareRef.current = elementsHook.elements;
+        if props["elementsForShareRef"] {
+            props["elementsForShareRef"].current = elementsHook.elements;
         }
-        if props.setElementsRef {
-            props.setElementsRef.current = lambda elements: any -> None {
+        if props["setElementsRef"] {
+            props["setElementsRef"].current = lambda (elements: any) {
                 elementsHook.setElements(elements);
                 selectionHook.clearSelection();
             };
         }
     }
 
-    def handleCanvasClick(e: dict) -> None {
+    def handleCanvasClick(e: MouseEvent) -> None {
         if currentTool == "text" {
             if textInputHook.textInput {
                 handleTextSubmit();
-                if props.onToolChange {
-                    props.onToolChange("select");
+                if props["onToolChange"] {
+                    props["onToolChange"]("select");
                 }
                 return;
             }
@@ -477,7 +477,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 textInputHook.startTextInput(element.x, element.y, element.text, None, None);
                 elementsHook.removeElement(elementInfo.id);
                 selectionHook.clearSelection();
-                setTimeout(lambda -> None {
+                setTimeout(lambda {
                     if textInputRef.current {
                         textInputRef.current.focus();
                         textInputRef.current.select();
@@ -485,7 +485,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 }, 10);
             } else {
                 textInputHook.startTextInput(pos.x, pos.y, "", None, None);
-                setTimeout(lambda -> None {
+                setTimeout(lambda {
                     if textInputRef.current {
                         textInputRef.current.focus();
                     }
@@ -494,7 +494,7 @@ def:pub Canvas(props: dict) -> JsxElement {
         }
     }
 
-    def handleCanvasDoubleClick(e: dict) -> None {
+    def handleCanvasDoubleClick(e: MouseEvent) -> None {
         pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
         elementInfo = selectionHook.findElementAtPoint(pos, elementsHook.elements);
 
@@ -504,7 +504,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             elementsHook.removeElement(elementInfo.id);
             selectionHook.clearSelection();
 
-            setTimeout(lambda -> None {
+            setTimeout(lambda {
                 if textInputRef.current {
                     textInputRef.current.focus();
                     textInputRef.current.select();
@@ -518,7 +518,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             existingShapeText = shapeEl.shapeText or "";
             textInputHook.startTextInput(shapeCenterX, shapeCenterY, existingShapeText, elementInfo.id, shapeEl);
             selectionHook.clearSelection();
-            setTimeout(lambda -> None {
+            setTimeout(lambda {
                 if textInputRef.current {
                     textInputRef.current.focus();
                     if existingShapeText != "" {
@@ -530,7 +530,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             # Double-click on empty canvas -> start text input
             selectionHook.clearSelection();
             textInputHook.startTextInput(pos.x, pos.y, "", None, None);
-            setTimeout(lambda -> None {
+            setTimeout(lambda {
                 if textInputRef.current {
                     textInputRef.current.focus();
                 }
@@ -578,12 +578,12 @@ def:pub Canvas(props: dict) -> JsxElement {
             selectionHook.setSelectedElement({"element": textEl, "id": textEl.id});
         }
         textInputHook.cancelTextInput();
-        if props.onToolChange {
-            props.onToolChange("select");
+        if props["onToolChange"] {
+            props["onToolChange"]("select");
         }
     }
 
-    def handleTextKeyDown(e: dict) -> None {
+    def handleTextKeyDown(e: KeyboardEvent) -> None {
         if e.key == "Escape" {
             handleTextSubmit();
         }
@@ -609,7 +609,7 @@ def:pub Canvas(props: dict) -> JsxElement {
         }
     }
 
-    def handleContextMenu(e: dict) -> None {
+    def handleContextMenu(e: MouseEvent) -> None {
         e.preventDefault();
         hasSel = selectionHook.selectedElement or selectionHook.selectedElements.length > 0;
         # Determine if we can group (2+ elements selected)
@@ -649,21 +649,21 @@ def:pub Canvas(props: dict) -> JsxElement {
     def offsetElement(original: dict, dx: float, dy: float) -> dict {
         dup = Object.assign({}, original);
         dup.id = None;
-        if original.type == "text" or original.type == "rectangle" or original.type == "circle" or original.type == "image" or original.type == "diamond" {
-            dup.x = original.x + dx;
-            dup.y = original.y + dy;
-        } elif original.type == "line" or original.type == "arrow" {
-            dup.x1 = original.x1 + dx;
-            dup.y1 = original.y1 + dy;
-            dup.x2 = original.x2 + dx;
-            dup.y2 = original.y2 + dy;
-            if original.bendX != None and original.bendX != undefined {
-                dup.bendX = original.bendX + dx;
-                dup.bendY = original.bendY + dy;
+        if original["type"] == "text" or original["type"] == "rectangle" or original["type"] == "circle" or original["type"] == "image" or original["type"] == "diamond" {
+            dup.x = original["x"] + dx;
+            dup.y = original["y"] + dy;
+        } elif original["type"] == "line" or original["type"] == "arrow" {
+            dup.x1 = original["x1"] + dx;
+            dup.y1 = original["y1"] + dy;
+            dup.x2 = original["x2"] + dx;
+            dup.y2 = original["y2"] + dy;
+            if original["bendX"] != None and original["bendX"] != undefined {
+                dup.bendX = original["bendX"] + dx;
+                dup.bendY = original["bendY"] + dy;
             }
-        } elif original.type == "freehand" {
+        } elif original["type"] == "freehand" {
             newPoints: list = [];
-            for p in original.points {
+            for p in original["points"] {
                 newPoints.push({"x": p.x + dx, "y": p.y + dy});
             }
             dup.points = newPoints;
@@ -860,7 +860,7 @@ def:pub Canvas(props: dict) -> JsxElement {
     }
 
     def handleCopySelectionPNG() -> None {
-        copySelectionAsPNG(getExportElements(), canvasRef, lambda -> None {
+        copySelectionAsPNG(getExportElements(), canvasRef, lambda {
             showToast("Copied as PNG");
         });
         contextMenu = None;
@@ -896,7 +896,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             return;
         }
         navigator.clipboard.read()
-            .then(lambda clipItems: any -> None {
+            .then(lambda (clipItems: any) {
                 foundImage = False;
                 foundText = False;
                 ci = 0;
@@ -907,11 +907,11 @@ def:pub Canvas(props: dict) -> JsxElement {
                     while ti < clipTypes.length {
                         if clipTypes[ti] == "image/png" or clipTypes[ti] == "image/jpeg" {
                             foundImage = True;
-                            clipItem.getType(clipTypes[ti]).then(lambda blob: any -> None {
+                            clipItem.getType(clipTypes[ti]).then(lambda (blob: any) {
                                 reader = Reflect.construct(FileReader, []);
-                                reader.onload = lambda event: any -> None {
+                                reader.onload = lambda (event: any) {
                                     img = Reflect.construct(Image, []);
-                                    img.onload = lambda -> None {
+                                    img.onload = lambda {
                                         pasteImgElement = {
                                             "type": "image",
                                             "x": 100,
@@ -941,8 +941,8 @@ def:pub Canvas(props: dict) -> JsxElement {
                         while ti < clipTypes.length {
                             if clipTypes[ti] == "text/plain" {
                                 foundText = True;
-                                clipItem.getType("text/plain").then(lambda blob: any -> None {
-                                    blob.text().then(lambda txt: str -> None {
+                                clipItem.getType("text/plain").then(lambda (blob: any) {
+                                    blob.text().then(lambda (txt: str) {
                                         if txt.length > 0 {
                                             pasteTxtElement = {
                                                 "type": "text",
@@ -966,7 +966,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                     }
                 }
             })
-            .catch(lambda err: any -> None {
+            .catch(lambda (err: any) {
                 console.log("System clipboard not available");
             });
     }
@@ -978,18 +978,18 @@ def:pub Canvas(props: dict) -> JsxElement {
 
     def showToast(msg: str) -> None {
         toastMessage = msg;
-        setTimeout(lambda -> None { toastMessage = None; }, 2000);
+        setTimeout(lambda { toastMessage = None; }, 2000);
     }
 
     def handleCopyCanvasAsPNG() -> None {
-        copyCanvasAsPNG(elementsHook.elements, canvasRef, lambda -> None {
+        copyCanvasAsPNG(elementsHook.elements, canvasRef, lambda {
             showToast("Copied as PNG");
         });
         contextMenu = None;
     }
 
     def handleCopyCanvasAsSVG() -> None {
-        copyCanvasAsSVG(elementsHook.elements, canvasRef, lambda -> None {
+        copyCanvasAsSVG(elementsHook.elements, canvasRef, lambda {
             showToast("Copied as SVG");
         });
         contextMenu = None;
@@ -1006,7 +1006,7 @@ def:pub Canvas(props: dict) -> JsxElement {
         contextMenu = None;
     }
 
-    def handleMouseDown(e: dict) -> None {
+    def handleMouseDown(e: MouseEvent) -> None {
         contextMenu = None;
         pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
 
@@ -1180,8 +1180,8 @@ def:pub Canvas(props: dict) -> JsxElement {
                 drawingState.setIsDrawing(False);
                 drawingState.setStartPoint(None);
                 selectionHook.setSelectedElement({"element": lineElement, "id": lineElement.id});
-                if props.onToolChange {
-                    props.onToolChange("select");
+                if props["onToolChange"] {
+                    props["onToolChange"]("select");
                 }
             } else {
                 startSnap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
@@ -1205,7 +1205,7 @@ def:pub Canvas(props: dict) -> JsxElement {
         }
     }
 
-    def handleMouseMove(e: dict) -> None {
+    def handleMouseMove(e: MouseEvent) -> None {
         pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
 
         # Throttled cursor broadcast (50ms) — only when in a room
@@ -1283,8 +1283,8 @@ def:pub Canvas(props: dict) -> JsxElement {
         }
 
         if isRotating and rotatingElementId and rotatingCenter {
-            dx = pos.x - rotatingCenter.x;
-            dy = pos.y - rotatingCenter.y;
+            dx = pos.x - rotatingCenter["x"];
+            dy = pos.y - rotatingCenter["y"];
             angle_rad = Math.atan2(dy, dx);
             # +90° offset so 0° = upright (handle points up), +360 to keep positive
             new_rotation = (angle_rad * 180 / 3.14159265359 + 90 + 360) % 360;
@@ -1736,7 +1736,7 @@ def:pub Canvas(props: dict) -> JsxElement {
         }
     }
 
-    def handleMouseUp(e: dict) -> None {
+    def handleMouseUp(e: MouseEvent) -> None {
         if isRotating {
             elementsHook.commitToHistory();
             isRotating = False;
@@ -1822,8 +1822,8 @@ def:pub Canvas(props: dict) -> JsxElement {
                     drawingState.setIsDrawing(False);
                     drawingState.setStartPoint(None);
                     selectionHook.setSelectedElement({"element": dragLineEl, "id": dragLineEl.id});
-                    if props.onToolChange {
-                        props.onToolChange("select");
+                    if props["onToolChange"] {
+                        props["onToolChange"]("select");
                     }
                 }
             }
@@ -1899,8 +1899,8 @@ def:pub Canvas(props: dict) -> JsxElement {
             if currentTool != "freehand" {
                 selectionHook.setSelectedElement({"element": newElement, "id": newElement.id});
             }
-            if props.onToolChange and currentTool != "freehand" {
-                props.onToolChange("select");
+            if props["onToolChange"] and currentTool != "freehand" {
+                props["onToolChange"]("select");
             }
         }
     }
@@ -1966,7 +1966,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 currentFontFamily={currentFontFamily}
                 zoom={viewportHook.zoom}
                 panOffset={viewportHook.panOffset}
-                onTextChange={lambda e: any -> None {
+                onTextChange={lambda (e: any) {
                     textInputHook.updateTextContent(e.target.value);
                 }}
                 onKeyDown={handleTextKeyDown}
@@ -1980,7 +1980,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 hasSelection={contextMenu and contextMenu.hasSelection or False}
                 canGroup={contextMenu and contextMenu.canGroup or False}
                 canUngroup={contextMenu and contextMenu.canUngroup or False}
-                onClose={lambda -> None { contextMenu = None; }}
+                onClose={lambda { contextMenu = None; }}
                 onDelete={handleDeleteFromMenu}
                 onDuplicate={handleDuplicate}
                 onBringToFront={handleBringToFront}
@@ -2000,7 +2000,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             <div className="absolute bottom-4 left-4 flex items-center bg-white/90 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-lg z-40 select-none">
                 <button
                     className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-l-xl text-base font-medium transition-colors"
-                    onClick={lambda -> None {
+                    onClick={lambda {
                         zoomCanvas = canvasRef.current;
                         if zoomCanvas {
                             zoomRect = zoomCanvas.getBoundingClientRect();
@@ -2010,14 +2010,14 @@ def:pub Canvas(props: dict) -> JsxElement {
                 >-</button>
                 <button
                     className="px-3 py-2 text-gray-600 hover:bg-gray-100 text-sm font-medium min-w-[56px] text-center transition-colors"
-                    onClick={lambda -> None {
+                    onClick={lambda {
                         viewportHook.setZoom(1);
                         viewportHook.setPanOffset({"x": 0, "y": 0});
                     }}
                 >{String(Math.round(viewportHook.zoom * 100)) + "%"}</button>
                 <button
                     className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-r-xl text-base font-medium transition-colors"
-                    onClick={lambda -> None {
+                    onClick={lambda {
                         ziCanvas = canvasRef.current;
                         if ziCanvas {
                             ziRect = ziCanvas.getBoundingClientRect();
@@ -2031,17 +2031,17 @@ def:pub Canvas(props: dict) -> JsxElement {
                 {toastMessage}
             </div> or None}
 
-            {(showShortcutsProp or False) and <ShortcutHelp onClose={lambda -> None { if onToggleShortcuts { onToggleShortcuts(); } }} /> or None}
+            {(showShortcutsProp or False) and <ShortcutHelp onClose={lambda { if onToggleShortcuts { onToggleShortcuts(); } }} /> or None}
 
             {showResetConfirm and <ConfirmDialog
                 title="Reset Canvas"
                 message="Reset the canvas? This will clear all elements."
-                onConfirm={lambda -> None {
+                onConfirm={lambda {
                     elementsHook.clearElements();
                     selectionHook.clearSelection();
                     showResetConfirm = False;
                 }}
-                onCancel={lambda -> None { showResetConfirm = False; }}
+                onCancel={lambda { showResetConfirm = False; }}
                 confirmText="Reset"
                 cancelText="Cancel"
                 isDangerous={True}

@@ -16,18 +16,18 @@ def getSelectedElementsBounds(ctx: any, elements: list) -> dict {
     }
 
     first = getElementBounds(ctx, elements[0]);
-    minX = first.x;
-    minY = first.y;
-    maxX = first.x + first.width;
-    maxY = first.y + first.height;
+    minX = first["x"];
+    minY = first["y"];
+    maxX = first["x"] + first["width"];
+    maxY = first["y"] + first["height"];
 
     i = 1;
     while i < elements.length {
         bounds = getElementBounds(ctx, elements[i]);
-        if bounds.x < minX { minX = bounds.x; }
-        if bounds.y < minY { minY = bounds.y; }
-        if bounds.x + bounds.width > maxX { maxX = bounds.x + bounds.width; }
-        if bounds.y + bounds.height > maxY { maxY = bounds.y + bounds.height; }
+        if bounds["x"] < minX { minX = bounds["x"]; }
+        if bounds["y"] < minY { minY = bounds["y"]; }
+        if bounds["x"] + bounds["width"] > maxX { maxX = bounds["x"] + bounds["width"]; }
+        if bounds["y"] + bounds["height"] > maxY { maxY = bounds["y"] + bounds["height"]; }
         i = i + 1;
     }
 
@@ -41,8 +41,8 @@ def getSelectedElementsBounds(ctx: any, elements: list) -> dict {
 
 def renderToOffscreenCanvas(elements: list, bounds: dict, dpr: float) -> any {
     padding = 20;
-    w = bounds.width + padding * 2;
-    h = bounds.height + padding * 2;
+    w = bounds["width"] + padding * 2;
+    h = bounds["height"] + padding * 2;
 
     offscreen = document.createElement("canvas");
     offscreen.width = w * dpr;
@@ -54,7 +54,7 @@ def renderToOffscreenCanvas(elements: list, bounds: dict, dpr: float) -> any {
     ctx.fillRect(0, 0, w, h);
 
     ctx.save();
-    ctx.translate(padding - bounds.x, padding - bounds.y);
+    ctx.translate(padding - bounds["x"], padding - bounds["y"]);
     i = 0;
     while i < elements.length {
         drawElement(ctx, elements[i], None);
@@ -78,10 +78,10 @@ def downloadBlob(url: str, filename: str) -> None {
 def buildSvgString(elements: list, bounds: dict) -> str {
     newline = String.fromCharCode(10);
     padding = 20;
-    svgW = bounds.width + padding * 2;
-    svgH = bounds.height + padding * 2;
-    svgOffX = padding - bounds.x;
-    svgOffY = padding - bounds.y;
+    svgW = bounds["width"] + padding * 2;
+    svgH = bounds["height"] + padding * 2;
+    svgOffX = padding - bounds["x"];
+    svgOffY = padding - bounds["y"];
     headLen = 14;
 
     parts = [];
@@ -235,9 +235,9 @@ def:pub copySelectionAsPNG(selectedElements: list, canvasRef: any, onDone: any) 
     dpr = window.devicePixelRatio or 1;
     offscreen = renderToOffscreenCanvas(elements, bounds, dpr);
 
-    offscreen.toBlob(lambda blob: any -> None {
+    offscreen.toBlob(lambda (blob: any) {
         item = Reflect.construct(ClipboardItem, [{"image/png": blob}]);
-        navigator.clipboard.write([item]).then(lambda -> None {
+        navigator.clipboard.write([item]).then(lambda {
             if onDone { onDone(); }
         });
     });
@@ -253,11 +253,11 @@ def:pub copyCanvasAsPNG(allElements: list, canvasRef: any, onDone: any) -> None 
     dpr = window.devicePixelRatio or 1;
     offscreen = renderToOffscreenCanvas(allElements, bounds, dpr);
 
-    offscreen.toBlob(lambda blob: any -> None {
+    offscreen.toBlob(lambda (blob: any) {
         item = Reflect.construct(ClipboardItem, [{"image/png": blob}]);
-        navigator.clipboard.write([item]).then(lambda -> None {
+        navigator.clipboard.write([item]).then(lambda {
             if onDone { onDone(); }
-        }).catch(lambda err: any -> None {
+        }).catch(lambda (err: any) {
             url = URL.createObjectURL(blob);
             downloadBlob(url, "jasketch-export.png");
             if onDone { onDone(); }
@@ -275,7 +275,7 @@ def:pub copyCanvasAsSVG(allElements: list, canvasRef: any, onDone: any) -> None 
     svgText = buildSvgString(allElements, bounds);
 
     svgBlob = Reflect.construct(Blob, [[svgText], {"type": "text/plain"}]);
-    navigator.clipboard.write([Reflect.construct(ClipboardItem, [{"text/plain": svgBlob}])]).then(lambda -> None {
+    navigator.clipboard.write([Reflect.construct(ClipboardItem, [{"text/plain": svgBlob}])]).then(lambda {
         if onDone { onDone(); }
     });
 }
@@ -291,7 +291,7 @@ def:pub exportSelectionAsPNG(selectedElements: list, canvasRef: any) -> None {
     dpr = window.devicePixelRatio or 1;
     offscreen = renderToOffscreenCanvas(elements, bounds, dpr);
 
-    offscreen.toBlob(lambda blob: any -> None {
+    offscreen.toBlob(lambda (blob: any) {
         url = URL.createObjectURL(blob);
         downloadBlob(url, "jasketch-export.png");
     });
@@ -528,7 +528,7 @@ def:pub saveAsJaSketch(elements: list, filename: str) -> None {
 
 def:pub loadFromJaSketch(file: any, onLoad: any, onError: any) -> None {
     reader = Reflect.construct(FileReader, []);
-    reader.onload = lambda e: any -> None {
+    reader.onload = lambda (e: any) {
         parsed = JSON.parse(e.target.result);
         if not parsed or parsed.type != "jasketch" or not parsed.elements {
             if onError { onError("Invalid .jasketch file"); }
@@ -634,7 +634,7 @@ def:pub loadFromJaSketch(file: any, onLoad: any, onError: any) -> None {
         }
         onLoad(restoredElements);
     };
-    reader.onerror = lambda -> None {
+    reader.onerror = lambda {
         if onError { onError("Failed to read file"); }
     };
     reader.readAsText(file);

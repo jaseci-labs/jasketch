@@ -1,6 +1,6 @@
-def:pub ShortcutHelp(props: dict) -> JsxElement {
-    def _noop() -> None {}
-    onClose = props.onClose or _noop;
+import from react { useEffect }
+
+def:pub ShortcutHelp(onClose: Callable[[], None]) -> JsxElement {
 
     toolShortcuts = [
         {"action": "Hand (pan)", "key": "Space"},
@@ -41,24 +41,28 @@ def:pub ShortcutHelp(props: dict) -> JsxElement {
         {"action": "Keyboard shortcuts", "key": "?"},
     ];
 
-    def handleBackdropClick(e: dict) -> None {
+    def handleBackdropClick(e: MouseEvent) -> None {
         if e.target == e.currentTarget {
             onClose();
         }
     }
 
-    def handleEscape(e: dict) -> None {
+    def handleEscape(e: KeyboardEvent) -> None {
         if e.key == "Escape" {
             onClose();
         }
     }
 
-    can with entry {
+    # Acquire-and-release in ONE effect: `can with entry`/`can with exit` compile
+    # to separate useEffect closures, so a handle created in entry is invisible to
+    # exit and the removeEventListener would silently no-op.
+    useEffect(lambda () -> any {
         window.addEventListener("keydown", handleEscape);
-        return lambda -> None {
+        return lambda {
             window.removeEventListener("keydown", handleEscape);
         };
-    }
+    }, []);
+
 
     return <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"

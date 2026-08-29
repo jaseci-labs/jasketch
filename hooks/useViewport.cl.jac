@@ -32,8 +32,8 @@ def:pub useViewport() -> dict {
             canvasX = mouseX - rect.left;
             canvasY = mouseY - rect.top;
 
-            worldX = (canvasX - panOffset.x) / zoom;
-            worldY = (canvasY - panOffset.y) / zoom;
+            worldX = (canvasX - panOffset["x"]) / zoom;
+            worldY = (canvasY - panOffset["y"]) / zoom;
 
             newPanX = canvasX - worldX * newZoom;
             newPanY = canvasY - worldY * newZoom;
@@ -45,8 +45,8 @@ def:pub useViewport() -> dict {
 
     def handlePan(deltaX: float, deltaY: float) -> None {
         panOffset = {
-            "x": panOffset.x + deltaX,
-            "y": panOffset.y + deltaY
+            "x": panOffset["x"] + deltaX,
+            "y": panOffset["y"] + deltaY
         };
     }
 

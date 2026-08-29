@@ -232,6 +232,5 @@ sem use_canvas_tool.arguments = "(required) JSON object string (not Python dict)
 # ── Provider injection (called by orchestrator) ────────────────────────────────
 
 def _set_composer_provider(provider: Any) -> None {
-    global _composer_provider;
     _composer_provider = provider;
 }

@@ -1,25 +1,25 @@
 def:pub ContextMenu(props: dict) -> JsxElement {
-    visible = props.visible or False;
-    x = props.x or 0;
-    y = props.y or 0;
-    onClose = props.onClose;
-    onDelete = props.onDelete;
-    onDuplicate = props.onDuplicate;
-    onBringToFront = props.onBringToFront;
-    onSendToBack = props.onSendToBack;
-    onClearCanvas = props.onClearCanvas;
-    onExportPNG = props.onExportPNG;
-    onExportSVG = props.onExportSVG;
-    onCopySelectionPNG = props.onCopySelectionPNG;
-    onPaste = props.onPaste;
-    onCopyCanvasPNG = props.onCopyCanvasPNG;
-    onCopyCanvasSVG = props.onCopyCanvasSVG;
-    onSelectAll = props.onSelectAll;
-    onGroup = props.onGroup;
-    onUngroup = props.onUngroup;
-    hasSelection = props.hasSelection or False;
-    canGroup = props.canGroup or False;
-    canUngroup = props.canUngroup or False;
+    visible = props["visible"] or False;
+    x = props["x"] or 0;
+    y = props["y"] or 0;
+    onClose = props["onClose"];
+    onDelete = props["onDelete"];
+    onDuplicate = props["onDuplicate"];
+    onBringToFront = props["onBringToFront"];
+    onSendToBack = props["onSendToBack"];
+    onClearCanvas = props["onClearCanvas"];
+    onExportPNG = props["onExportPNG"];
+    onExportSVG = props["onExportSVG"];
+    onCopySelectionPNG = props["onCopySelectionPNG"];
+    onPaste = props["onPaste"];
+    onCopyCanvasPNG = props["onCopyCanvasPNG"];
+    onCopyCanvasSVG = props["onCopyCanvasSVG"];
+    onSelectAll = props["onSelectAll"];
+    onGroup = props["onGroup"];
+    onUngroup = props["onUngroup"];
+    hasSelection = props["hasSelection"] or False;
+    canGroup = props["canGroup"] or False;
+    canUngroup = props["canUngroup"] or False;
 
     if not visible {
         return None;

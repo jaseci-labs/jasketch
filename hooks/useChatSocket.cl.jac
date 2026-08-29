@@ -1,4 +1,4 @@
-import from react { useRef }
+import from react { useRef, useEffect }
 
 def:pub useChatSocket() -> dict {
     has messages: list = [];
@@ -71,25 +71,25 @@ def:pub useChatSocket() -> dict {
         url = getChatUrl();
         ws = Reflect.construct(WebSocket, [url]);
 
-        ws.onopen = lambda -> None {
+        ws.onopen = lambda {
             connectedRef.current = True;
             isConnected = True;
         };
 
-        ws.onmessage = lambda event: any -> None {
+        ws.onmessage = lambda (event: any) {
             handleWsMessage(event);
         };
 
-        ws.onclose = lambda -> None {
+        ws.onclose = lambda {
             connectedRef.current = False;
             isConnected = False;
             wsRef.current = None;
-            reconnectTimerRef.current = setTimeout(lambda -> None {
+            reconnectTimerRef.current = setTimeout(lambda {
                 connect();
             }, 3000);
         };
 
-        ws.onerror = lambda -> None {
+        ws.onerror = lambda {
             x = 0;
         };
 
@@ -155,10 +155,12 @@ def:pub useChatSocket() -> dict {
         pendingConfirmRef.current = {};
     }
 
-    can with entry {
+    # Acquire-and-release in ONE effect: `can with entry`/`can with exit` compile
+    # to separate useEffect closures, so a handle created in entry is invisible to
+    # exit and the removeEventListener would silently no-op.
+    useEffect(lambda () -> any {
         connect();
-
-        return lambda -> None {
+        return lambda {
             if reconnectTimerRef.current {
                 clearTimeout(reconnectTimerRef.current);
             }
@@ -166,7 +168,8 @@ def:pub useChatSocket() -> dict {
                 wsRef.current.close();
             }
         };
-    }
+    }, []);
+
 
     return {
         "messages": messages,

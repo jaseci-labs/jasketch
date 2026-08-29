@@ -58,7 +58,7 @@ def:pub useSelection() -> dict {
         isDragging = True;
         dragStartPos = mousePos;
 
-        element = elementInfo.element;
+        element = elementInfo["element"];
 
         elementX = 0;
         elementY = 0;
@@ -74,8 +74,8 @@ def:pub useSelection() -> dict {
             elementY = element.y;
         }
 
-        offsetX = mousePos.x - elementX;
-        offsetY = mousePos.y - elementY;
+        offsetX = mousePos["x"] - elementX;
+        offsetY = mousePos["y"] - elementY;
 
         dragOffset = {"x": offsetX, "y": offsetY};
     }
@@ -149,29 +149,29 @@ def:pub useSelection() -> dict {
 
     def isElementInBox(element: dict, boxMinX: float, boxMinY: float, boxMaxX: float, boxMaxY: float) -> bool {
         # Check if element's bounding box overlaps with selection box
-        if element.type == "text" or element.type == "rectangle" or element.type == "circle" or element.type == "diamond" or element.type == "image" {
-            shL = Math.min(element.x, element.x + (element.width or 0));
-            shR = Math.max(element.x, element.x + (element.width or 0));
-            shT = Math.min(element.y, element.y + (element.height or 0));
-            shB = Math.max(element.y, element.y + (element.height or 0));
+        if element["type"] == "text" or element["type"] == "rectangle" or element["type"] == "circle" or element["type"] == "diamond" or element["type"] == "image" {
+            shL = Math.min(element["x"], element["x"] + (element["width"] or 0));
+            shR = Math.max(element["x"], element["x"] + (element["width"] or 0));
+            shT = Math.min(element["y"], element["y"] + (element["height"] or 0));
+            shB = Math.max(element["y"], element["y"] + (element["height"] or 0));
             return shL <= boxMaxX and shR >= boxMinX and shT <= boxMaxY and shB >= boxMinY;
-        } elif element.type == "line" or element.type == "arrow" {
-            lnL = Math.min(element.x1, element.x2);
-            lnR = Math.max(element.x1, element.x2);
-            lnT = Math.min(element.y1, element.y2);
-            lnB = Math.max(element.y1, element.y2);
+        } elif element["type"] == "line" or element["type"] == "arrow" {
+            lnL = Math.min(element["x1"], element["x2"]);
+            lnR = Math.max(element["x1"], element["x2"]);
+            lnT = Math.min(element["y1"], element["y2"]);
+            lnB = Math.max(element["y1"], element["y2"]);
             return lnL <= boxMaxX and lnR >= boxMinX and lnT <= boxMaxY and lnB >= boxMinY;
-        } elif element.type == "freehand" {
-            if not element.points or element.points.length == 0 {
+        } elif element["type"] == "freehand" {
+            if not element["points"] or element["points"].length == 0 {
                 return False;
             }
-            fhL = element.points[0].x;
-            fhR = element.points[0].x;
-            fhT = element.points[0].y;
-            fhB = element.points[0].y;
+            fhL = element["points"][0].x;
+            fhR = element["points"][0].x;
+            fhT = element["points"][0].y;
+            fhB = element["points"][0].y;
             fi = 1;
-            while fi < element.points.length {
-                pt = element.points[fi];
+            while fi < element["points"].length {
+                pt = element["points"][fi];
                 if pt.x < fhL { fhL = pt.x; }
                 if pt.x > fhR { fhR = pt.x; }
                 if pt.y < fhT { fhT = pt.y; }
