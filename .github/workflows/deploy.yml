@@ -24,6 +24,10 @@ jobs:
   # modules the output touches, so the wheel installs and runs under `uvx` with
   # no jac toolchain present.
   publish-mcp:
+    # RELEASES ONLY. A PyPI version cannot be unpublished and its number can
+    # never be reused, so a manual dispatch -- which is how previews and test
+    # deploys are run -- must not be able to push one.
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -109,6 +113,8 @@ jobs:
 
   deploy:
     needs: [publish-mcp]
+    # publish-mcp is skipped on a dispatch; `needs` alone would skip this too.
+    if: always() && needs.publish-mcp.result != 'failure' && needs.publish-mcp.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
