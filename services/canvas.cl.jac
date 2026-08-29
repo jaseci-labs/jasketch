@@ -321,6 +321,25 @@ def:pub drawLineLabel(ctx: any, element: dict, background: str) -> None {
 }
 
 
+"""A soft outline on the shape the pointer is over.
+
+Answers "which one am I about to get" BEFORE the click, which matters most
+exactly where it is hardest to tell: overlapping or closely packed shapes."""
+def:pub draw_hover_outline(ctx: any, bounds: any, zoom: float) -> None {
+    if not bounds {
+        return;
+    }
+    ctx.save();
+    ctx.strokeStyle = "rgba(232, 89, 12, 0.5)";
+    # Constant on screen at any zoom: this is UI, not part of the drawing.
+    ctx.lineWidth = 1.5 / zoom;
+    ctx.setLineDash([]);
+    pad = 3 / zoom;
+    ctx.strokeRect(bounds.x - pad, bounds.y - pad, bounds.width + pad * 2, bounds.height + pad * 2);
+    ctx.restore();
+}
+
+
 def:pub drawShapeElement(ctx: any, element: dict) -> None {
     ctx.save();
     ctx.globalAlpha = element["opacity"] or 1.0;

@@ -2225,3 +2225,56 @@ class TestDeletingClearsBindings:
         arrows = [e for e in get_elements(app) if e["type"] == "arrow"]
         assert arrows, "the arrow itself should still be there"
         assert not arrows[0].get("endBinding"), "the binding to the deleted shape was kept"
+
+
+class TestPointerFeedback:
+    """Nothing distinguished "you will move this", "you will resize it" and
+    "you will start a selection box" until after you had committed to it."""
+
+    def _one_shape(self, page: Page):
+        clear_canvas(page)
+        press_key(page, "Escape")
+        press_key(page, "5")
+        drag_canvas(page, 400, 250, 560, 350)
+        wait_for_elements(page, 1)
+        press_key(page, "Escape")
+        press_key(page, "1")
+
+    @staticmethod
+    def _cursor(page: Page) -> str:
+        return page.evaluate("() => getComputedStyle(document.querySelector('canvas')).cursor")
+
+    def _hover(self, page: Page, x: int, y: int):
+        box = get_canvas(page).bounding_box()
+        page.mouse.move(box["x"] + x, box["y"] + y)
+        page.wait_for_timeout(ACTION_DELAY)
+
+    def test_cursor_reflects_what_a_click_would_do(self, app: Page):
+        self._one_shape(app)
+        self._hover(app, 900, 600)
+        empty = self._cursor(app)
+        self._hover(app, 480, 300)
+        over = self._cursor(app)
+        assert over != empty, f"cursor did not change over a shape ({empty})"
+        assert over == "move", f"expected a move cursor over a shape, got {over}"
+
+    def test_cursor_shows_resize_and_rotate_on_the_handles(self, app: Page):
+        self._one_shape(app)
+        click_canvas(app, 480, 300)
+        self._hover(app, 560, 350)
+        assert self._cursor(app) == "nwse-resize", f"corner handle gave {self._cursor(app)}"
+        self._hover(app, 480, 225)
+        assert self._cursor(app) == "grab", f"rotate handle gave {self._cursor(app)}"
+
+    def test_hovering_outlines_the_shape_that_would_be_picked(self, app: Page):
+        self._one_shape(app)
+        click_canvas(app, 950, 620)          # deselect first
+        self._hover(app, 950, 620)
+        away = app.screenshot(clip={"x": 380, "y": 230, "width": 220, "height": 150})
+        self._hover(app, 480, 300)
+        over = app.screenshot(clip={"x": 380, "y": 230, "width": 220, "height": 150})
+        assert over != away, "hovering a shape showed no hint"
+        self._hover(app, 950, 620)
+        assert app.screenshot(clip={"x": 380, "y": 230, "width": 220, "height": 150}) == away, (
+            "the hover outline was left behind after moving away"
+        )
