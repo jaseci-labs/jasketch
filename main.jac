@@ -6,13 +6,10 @@ import from infrastructure.relay { start_relay_server }
 # Endpoint registration: a def:pub only reaches /function/<name> if the entry
 # module names it (jaseci-labs/jac#7695), so these imports are load-bearing.
 import from services.sharing { create_share, read_share, ShareRef, SharePayload }
+import from agent.chat { jasketch_chat, jasketch_chat_confirm }
 
 # Start relay by default unless explicitly disabled via JASKETCH_START_RELAY (helps avoid port conflicts when turned off in multi-process/reload scenarios)
 glob _relay_started: Any = start_relay_server() if os.environ.get("JASKETCH_START_RELAY", "true").lower() == "true" else None;
-
-# Load and initialize agent
-import from agent.server { _boot }
-glob _agent_booted: Any = _boot();
 
 cl {
     # Client-side imports
@@ -248,6 +245,8 @@ cl {
                 <ChatPanel
                     isOpen={chatOpen}
                     onToggle={lambda { chatOpen = not chatOpen; }}
+                    elementsRef={elementsForShareRef}
+                    setElementsRef={setElementsRef}
                 />
 
                 <ShareDialog

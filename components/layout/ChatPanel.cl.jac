@@ -268,7 +268,9 @@ def ChatInput(
 
 def:pub ChatPanel(
     isOpen: bool,
-    onToggle: Callable[[], None]
+    onToggle: Callable[[], None],
+    elementsRef: any,
+    setElementsRef: any
 ) -> JsxElement {
 
     has apiKey: str = "";
@@ -279,7 +281,16 @@ def:pub ChatPanel(
     has toastMsg: str = "";
     has toastType: str = "success";
 
-    chat = useChatSocket();
+    # The agent works on a server-side copy of the canvas, so the panel is the
+    # one that hands it over and applies what comes back (see agent/chat.jac).
+    chat = useChatSocket(
+        lambda () -> list { return elementsRef.current or []; },
+        lambda (els: list) {
+            if setElementsRef.current {
+                setElementsRef.current(els);
+            }
+        }
+    );
     messagesEndRef = useRef(None);
     inputRef = useRef(None);
 
