@@ -46,6 +46,13 @@ jobs:
         continue-on-error: true
         run: jac check .
 
+      # Unit tests first: they are seconds, and they cover the hand-rolled
+      # decoding that replaced byllm's schema enforcement.
+      - name: Run Jac tests
+        run: jac test tests/agent_decoding_tests.jac
+        env:
+          JAC_TEST_JOBS: "2"
+
       - name: Run E2E tests
         # The fixture starts the server with this same binary (see conftest).
         run: jac -m pytest tests/e2e/ -v --timeout=300

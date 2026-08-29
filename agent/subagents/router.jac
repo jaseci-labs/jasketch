@@ -5,15 +5,18 @@ Clear-canvas commands are handled upstream in the orchestrator before this agent
 """
 
 import from typing { Any }
-import from .schemas { RouteTag, RouteDecision }
+import from .schemas { RouteTag, RouteDecision, decode_json_object }
 
 node IntentRouter {
     has model: str = "";
     has api_key: str = "";
     has llm: Any = None;
 
+    # Returns JSON, not a typed RouteDecision: see decode_json_object() in
+    # schemas.jac for why a typed return cannot be used here yet. Decode with
+    # parse_route_decision() below.
     def handle(message: str, conversation_log: str,
-               has_diagram_blueprint: bool, canvas_summary: str) -> RouteDecision
+               has_diagram_blueprint: bool, canvas_summary: str) -> str
         by self.llm(
             incl_info={
                 "conversation": conversation_log,
@@ -24,7 +27,15 @@ node IntentRouter {
 }
 sem IntentRouter.handle = """
 You are a ROUTING CLASSIFIER for JaSketch, a diagram drawing app.
-Your ONLY job is to output a RouteDecision. You do NOT respond to users yourself (except NO_ROUTE).
+Your ONLY job is to output a routing decision. You do NOT respond to users yourself (except NO_ROUTE).
+
+OUTPUT FORMAT -- reply with a single JSON object and NOTHING else. No prose, no
+code fences:
+
+  {"route": "<ROUTE_TAG>", "reply": "<text>"}
+
+route MUST be exactly one of:
+  NO_ROUTE | ROUTE_PLAN | ROUTE_SYNTHESIZE | ROUTE_ANALYZE | ROUTE_REFINE
 
 ⚠ CRITICAL: You cannot draw diagrams — so NEVER say "I can't draw". Route to ROUTE_PLAN instead.
 ⚠ CRITICAL: reply MUST be "" (empty string) for every route EXCEPT NO_ROUTE. For NO_ROUTE, reply with a helpful conversational response.
@@ -59,3 +70,27 @@ Context available (from incl_info):
 
 User message: {{message}}
 """;
+
+
+# ── Decoding ───────────────────────────────────────────────────────────────────
+
+"""Turn the router's JSON reply into a RouteDecision.
+
+Unparseable output is NOT an error the user should see: fall through to
+ROUTE_PLAN, because a message that reached the router is far more likely to be a
+drawing request than small talk, and drawing something wrong beats refusing."""
+def:pub parse_route_decision(raw: str) -> RouteDecision {
+    data: dict = decode_json_object(raw);
+    label: str = str(data.get("route", "")).strip().upper();
+    reply: str = str(data.get("reply", "") or "");
+
+    by_name: dict[str, RouteTag] = {tag.name: tag for tag in RouteTag};
+    if label in by_name {
+        return RouteDecision(route=by_name[label], reply=reply);
+    }
+    if reply {
+        # Well-formed JSON but an unknown tag, and it wrote something usable.
+        return RouteDecision(route=RouteTag.NO_ROUTE, reply=reply);
+    }
+    return RouteDecision(route=RouteTag.ROUTE_PLAN, reply="");
+}

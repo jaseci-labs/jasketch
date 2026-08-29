@@ -47,6 +47,8 @@ import from .subagents {
     DiagramComposer,
     DiagramEditor
 }
+import from .subagents.router { parse_route_decision }
+import from .subagents.planner { parse_planner_decision }
 import from .subagents.synthesizer { _set_composer_provider }
 import from .subagents.refiner { _set_editor_provider }
 import from .llm_factory { create_llm }
@@ -219,11 +221,13 @@ walker AgentOrchestrator {
         # Call IntentRouter LLM — returns typed RouteDecision
         log("route_intent: calling IntentRouter");
         _emit(self.sink, {"type": "agent_start", "sessionId": self.session_id, "agent": "Routing"});
-        decision: RouteDecision = _intent_router.handle(
-            self.message,
-            self._session_context.conversation_log,
-            has_blueprint,
-            self._session_context.canvas_summary
+        decision: RouteDecision = parse_route_decision(
+            _intent_router.handle(
+                self.message,
+                self._session_context.conversation_log,
+                has_blueprint,
+                self._session_context.canvas_summary
+            )
         );
         log(f"route_intent: route = {decision.route}");
         _emit(self.sink, {"type": "agent_done", "sessionId": self.session_id, "agent": "Routing"});
@@ -260,9 +264,11 @@ walker AgentOrchestrator {
 
         _emit(self.sink, {"type": "agent_start", "sessionId": self.session_id, "agent": "Planning"});
         # Call DiagramPlanner LLM — returns typed PlannerDecision
-        decision: PlannerDecision = _diagram_planner.reason(
-            self.message,
-            self._session_context.conversation_log
+        decision: PlannerDecision = parse_planner_decision(
+            _diagram_planner.reason(
+                self.message,
+                self._session_context.conversation_log
+            )
         );
         log(f"build_blueprint: next_step = {decision.next_step}");
         _emit(self.sink, {"type": "agent_done", "sessionId": self.session_id, "agent": "Planning"});
