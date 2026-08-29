@@ -1901,3 +1901,155 @@ class TestAlignmentSnapping:
         assert abs(moved["x"] - (start_x + 4)) < 1.5, (
             f"Ctrl should suppress the snap, x is {moved['x']} (wanted {start_x + 4})"
         )
+
+
+class TestConnectorLabels:
+    """A flowchart's meaning lives on its arrows ("yes", "no", "on failure").
+    Before this the only way to write that was a floating text element that did
+    not travel with the arrow."""
+
+    def _labelled_arrow(self, page: Page, text: str = "Get money"):
+        clear_canvas(page)
+        press_key(page, "Escape")
+        press_key(page, "4")
+        drag_canvas(page, 400, 250, 400, 450)
+        wait_for_elements(page, 1)
+        press_key(page, "Escape")
+        double_click_canvas(page, 400, 350)
+        page.keyboard.type(text, delay=15)
+        press_key(page, "Escape")
+        page.wait_for_timeout(ACTION_DELAY)
+        return get_elements(page)[0]
+
+    def test_double_click_labels_an_arrow(self, app: Page):
+        el = self._labelled_arrow(app)
+        assert el["type"] == "arrow"
+        assert el.get("shapeText") == "Get money"
+
+    def test_labelling_leaves_the_geometry_alone(self, app: Page):
+        """fit_shape_to_label grows boxes; a connector has no height to grow and
+        must not pick up a NaN one."""
+        el = self._labelled_arrow(app)
+        for key in ("x1", "y1", "x2", "y2"):
+            assert el[key] == el[key], f"{key} became NaN"
+        assert el.get("height") in (None, 0) or el["height"] == el["height"]
+
+    def test_the_label_can_be_edited_again(self, app: Page):
+        self._labelled_arrow(app)
+        press_key(app, "Escape")
+        double_click_canvas(app, 400, 350)
+        value = app.locator("textarea").last.input_value()
+        assert "Get money" in value
+        press_key(app, "Escape")
+
+    def test_the_label_survives_the_arrow_moving(self, app: Page):
+        self._labelled_arrow(app)
+        press_key(app, "Escape")
+        click_canvas(app, 400, 350)
+        for _ in range(3):
+            press_key(app, "Shift+ArrowRight")
+        el = get_elements(app)[0]
+        assert el.get("shapeText") == "Get money"
+
+
+class TestConnectorHitTolerance:
+    """The old test measured |d1 + d2 - length|, which is an ellipse through the
+    endpoints rather than a corridor along the line: on a long connector it
+    accepted clicks tens of pixels away."""
+
+    def _one_arrow(self, page: Page):
+        clear_canvas(page)
+        press_key(page, "Escape")
+        press_key(page, "4")
+        drag_canvas(page, 400, 300, 700, 300)
+        wait_for_elements(page, 1)
+        press_key(page, "Escape")
+
+    def _selects_at(self, page: Page, x: int, y: int) -> bool:
+        get_canvas(page).click(position={"x": 1100, "y": 650}, force=True)  # deselect
+        page.wait_for_timeout(150)
+        before = get_elements(page)[0]["y1"]
+        get_canvas(page).click(position={"x": x, "y": y}, force=True)
+        page.wait_for_timeout(200)
+        press_key(page, "ArrowDown")
+        hit = abs(get_elements(page)[0]["y1"] - before) > 0.01
+        if hit:
+            press_key(page, "ArrowUp")
+        return hit
+
+    def test_a_click_on_the_line_selects_it(self, app: Page):
+        self._one_arrow(app)
+        assert self._selects_at(app, 550, 303), "a click on the connector should select it"
+
+    @pytest.mark.parametrize("offset", [20, 40])
+    def test_a_click_well_clear_of_the_line_does_not(self, app: Page, offset: int):
+        self._one_arrow(app)
+        assert not self._selects_at(app, 550, 300 + offset), (
+            f"a click {offset}px from the connector should be ignored"
+        )
+
+
+class TestGestureFollowsThePointer:
+    """A drag belongs to the pointer, not to the element it began on. Crossing
+    onto the sidebar used to stall the drag and swallow the release."""
+
+    def test_a_drag_survives_crossing_the_sidebar(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 600, 300, 760, 400)
+        wait_for_elements(app, 1)
+        press_key(app, "Escape")
+        click_canvas(app, 680, 350)
+        x0 = get_elements(app)[0]["x"]
+        box = get_canvas(app).bounding_box()
+        app.mouse.move(box["x"] + 680, box["y"] + 350)
+        app.mouse.down()
+        app.mouse.move(box["x"] + 400, box["y"] + 350, steps=8)
+        app.mouse.move(box["x"] + 60, box["y"] + 350, steps=8)   # over the sidebar
+        app.mouse.move(box["x"] + 500, box["y"] + 420, steps=8)  # and back
+        app.mouse.up()
+        app.wait_for_timeout(ACTION_DELAY)
+        x1 = get_elements(app)[0]["x"]
+        assert abs(x1 - x0) > 50, f"the drag stalled crossing the panel: {x0} -> {x1}"
+
+    def test_releasing_over_the_sidebar_ends_the_drag(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 600, 300, 760, 400)
+        wait_for_elements(app, 1)
+        press_key(app, "Escape")
+        click_canvas(app, 680, 350)
+        box = get_canvas(app).bounding_box()
+        app.mouse.move(box["x"] + 680, box["y"] + 350)
+        app.mouse.down()
+        app.mouse.move(box["x"] + 80, box["y"] + 350, steps=10)
+        app.mouse.up()                       # released over the panel
+        app.wait_for_timeout(ACTION_DELAY)
+        settled = get_elements(app)[0]["x"]
+        app.mouse.move(box["x"] + 700, box["y"] + 600)   # no button held
+        app.mouse.move(box["x"] + 780, box["y"] + 650, steps=6)
+        app.wait_for_timeout(ACTION_DELAY)
+        assert abs(get_elements(app)[0]["x"] - settled) < 0.5, (
+            "the shape kept following the pointer after the button was released"
+        )
+
+
+class TestDialogDismissal:
+    def test_share_dialog_closes_on_escape(self, app: Page):
+        app.locator("button[title='Shareable link']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        assert app.get_by_text("Share Canvas").is_visible()
+        press_key(app, "Escape")
+        app.wait_for_timeout(ACTION_DELAY)
+        assert app.get_by_text("Share Canvas").count() == 0
+
+    def test_share_dialog_closes_on_a_backdrop_click(self, app: Page):
+        app.locator("button[title='Shareable link']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        # The backdrop is fixed inset-0, so a corner is always on it and always
+        # inside the viewport whatever size the test window happens to be.
+        app.mouse.click(20, 20)
+        app.wait_for_timeout(ACTION_DELAY)
+        assert app.get_by_text("Share Canvas").count() == 0

@@ -50,20 +50,37 @@ def:pub isPointNearLine(point: dict, line: dict, tolerance: float) -> bool {
         return False;
     }
 
-    dist1 = calculateDistance(point, {"x": line["x1"], "y": line["y1"]});
-    dist2 = calculateDistance(point, {"x": line["x2"], "y": line["y2"]});
+    # PERPENDICULAR distance to the segment.
+    #
+    # This used to test |d1 + d2 - length| <= tolerance, which describes an
+    # ELLIPSE through the two endpoints, not a corridor along the line. On a
+    # 300-unit line that ellipse bulges tens of units out at the middle, so a
+    # click nowhere near the line still selected it -- and the longer the line,
+    # the wider the miss it accepted.
+    ax = line["x1"];
+    ay = line["y1"];
+    bx2 = line["x2"];
+    by2 = line["y2"];
+    vx = bx2 - ax;
+    vy = by2 - ay;
+    seg_len_sq = vx * vx + vy * vy;
 
-    if dist1 <= tolerance or dist2 <= tolerance {
-        return True;
+    if seg_len_sq == 0 {
+        return calculateDistance(point, {"x": ax, "y": ay}) <= tolerance;
     }
 
-    lineLength = calculateDistance({"x": line["x1"], "y": line["y1"]}, {"x": line["x2"], "y": line["y2"]});
-
-    if Math.abs(dist1 + dist2 - lineLength) <= tolerance * 2 {
-        return True;
+    # Where the point projects onto the segment, clamped to its ends so the
+    # corridor stops at the endpoints instead of running on forever.
+    t_proj = ((point["x"] - ax) * vx + (point["y"] - ay) * vy) / seg_len_sq;
+    if t_proj < 0 {
+        t_proj = 0;
     }
-
-    return False;
+    if t_proj > 1 {
+        t_proj = 1;
+    }
+    near_x = ax + vx * t_proj;
+    near_y = ay + vy * t_proj;
+    return calculateDistance(point, {"x": near_x, "y": near_y}) <= tolerance;
 }
 
 def:pub getLineEndpointAtPoint(point: dict, element: dict) -> str {
@@ -252,7 +269,10 @@ def:pub isPointInElement(point: dict, element: dict) -> bool {
     } elif element["type"] == "diamond" {
         return isPointInDiamond(testPoint, element);
     } elif element["type"] == "line" or element["type"] == "arrow" {
-        return isPointNearLine(testPoint, element, 20.0);
+        # Scaled to the stroke, with a small floor so a hairline stays catchable.
+        # A flat 20 units meant a click well clear of a connector still grabbed
+        # it, which made picking anything near an arrow a gamble.
+        return isPointNearLine(testPoint, element, Math.max(7.0, (element["strokeWidth"] or 2) * 2.0));
     } elif element["type"] == "freehand" {
         return isPointInFreehandPath(testPoint, element["points"], 15.0);
     }

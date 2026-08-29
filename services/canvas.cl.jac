@@ -181,6 +181,11 @@ def wrapTextLines(ctx: any, text: str, maxWidth: float) -> list {
 # the renderer and by shape_text_min_height so the two cannot drift apart.
 glob SHAPE_TEXT_PADDING: float = 10.0;
 
+# What the canvas actually looks like behind the elements (bg-gray-50/50 over
+# white). A connector label knocks a hole in the line using this, so the words
+# are not struck through by their own arrow.
+glob CANVAS_BACKGROUND: str = "#fbfbfc";
+
 
 """The smallest height this shape can be without its label spilling out.
 
@@ -245,6 +250,77 @@ def drawShapeText(ctx: any, element: dict) -> None {
     ctx.restore();
 }
 
+"""Draw a label sitting on a line or arrow.
+
+The connector is painted first and the label knocks a hole in it, so the words
+sit ON the arrow rather than being crossed out by it. That hole is filled with
+the canvas background rather than white, or a label would show as a pale block
+on a dark canvas."""
+def:pub drawLineLabel(ctx: any, element: dict, background: str) -> None {
+    label = element["shapeText"] or "";
+    if not label {
+        return;
+    }
+    ctx.save();
+    llFontSize = element["shapeTextFontSize"] or 16;
+    llFontFamily = element["shapeTextFontFamily"] or "Virgil";
+    ctx.font = llFontSize + "px " + llFontFamily;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+
+    # The bend, when there is one: a curved arrow reads from its curve.
+    llCx = (element["x1"] + element["x2"]) / 2;
+    llCy = (element["y1"] + element["y2"]) / 2;
+    if element["bendX"] != None and element["bendX"] != undefined {
+        llCx = element["bendX"];
+        llCy = element["bendY"];
+    }
+
+    # Wrap to a share of the connector's own length, so a label on a short
+    # arrow stacks up rather than sprawling across the diagram.
+    llSpan = Math.sqrt(
+        Math.pow(element["x2"] - element["x1"], 2) + Math.pow(element["y2"] - element["y1"], 2)
+    );
+    llMaxWidth = Math.max(80.0, llSpan * 0.8);
+    llLines = wrapTextLines(ctx, label, llMaxWidth);
+    llLineHeight = llFontSize * 1.2;
+
+    llWidest = 0.0;
+    lli = 0;
+    while lli < len(llLines) {
+        llW = ctx.measureText(llLines[lli]).width;
+        if llW > llWidest {
+            llWidest = llW;
+        }
+        lli = lli + 1;
+    }
+
+    llPadX = 6.0;
+    llPadY = 2.0;
+    llBoxH = len(llLines) * llLineHeight;
+    # CLEAR the line behind the words rather than painting over it. The canvas
+    # sits on a dot grid, so a flat fill read as a pale box floating on the
+    # page; clearing lets the page itself show through, whatever colour it is.
+    ctx.clearRect(
+        llCx - llWidest / 2 - llPadX,
+        llCy - llBoxH / 2 - llPadY,
+        llWidest + llPadX * 2,
+        llBoxH + llPadY * 2
+    );
+
+    ctx.fillStyle = element["shapeTextColor"] or element["color"];
+    llStartY = llCy - llBoxH / 2 + llLineHeight / 2;
+    lli = 0;
+    while lli < len(llLines) {
+        ctx.fillText(llLines[lli], llCx, llStartY + lli * llLineHeight);
+        lli = lli + 1;
+    }
+    ctx.restore();
+}
+
+
 def:pub drawShapeElement(ctx: any, element: dict) -> None {
     ctx.save();
     ctx.globalAlpha = element["opacity"] or 1.0;
@@ -253,10 +329,13 @@ def:pub drawShapeElement(ctx: any, element: dict) -> None {
     ctx.fillStyle = element["fillColor"] or "transparent";
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.shadowColor = "rgba(0, 0, 0, 0.08)";
-    ctx.shadowBlur = 4;
+    # No drop shadow. Shapes are stroked in two passes, so a shadow was applied
+    # twice and every line sat under a doubled blur -- which is what made the
+    # drawing read as soft and out of focus rather than confidently drawn.
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
     ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 2;
+    ctx.shadowOffsetY = 0;
 
     # Apply rotation transform if element has rotation
     apply_rotation_transform(ctx, element);
@@ -284,8 +363,13 @@ def:pub drawShapeElement(ctx: any, element: dict) -> None {
     } elif element["type"] == "arrow" {
         drawArrow(ctx, element);
     }
-    # Draw text inside shape if present
-    drawShapeText(ctx, element);
+    # A label belongs at the middle of a connector, not at the centre of a
+    # bounding box the connector does not have.
+    if element["type"] == "line" or element["type"] == "arrow" {
+        drawLineLabel(ctx, element, CANVAS_BACKGROUND);
+    } else {
+        drawShapeText(ctx, element);
+    }
     ctx.restore();
 }
 
@@ -318,29 +402,75 @@ def:pub drawFreehand(ctx: any, element: dict) -> None {
     ctx.stroke();
 }
 
+"""Corner radius for a box. Zero when the element asks for sharp edges.
+
+Scaled to the box so a small shape does not turn into a lozenge, and capped so
+a very large one still reads as a rectangle."""
+def _corner_radius(element: dict) -> float {
+    if element["edges"] == "sharp" {
+        return 0.0;
+    }
+    w = Math.abs(element["width"]);
+    h = Math.abs(element["height"]);
+    return Math.min(24.0, w * 0.16, h * 0.16);
+}
+
+
 def:pub drawRectangle(ctx: any, element: dict) -> None {
     seed = element["x"] * 7 + element["y"] * 13 + element["width"] * 3 + element["height"] * 11;
     x = element["x"];
     y = element["y"];
     w = element["width"];
     h = element["height"];
+    r = _corner_radius(element);
 
     # Draw 2 passes for a hand-drawn double-line effect
     pass_i = 0;
     while pass_i < 2 {
         s = seed + pass_i * 100;
         ctx.beginPath();
-        sketchyLine(ctx, x, y, x + w, y, s + 10);
-        sketchyLine(ctx, x + w, y, x + w, y + h, s + 20);
-        sketchyLine(ctx, x + w, y + h, x, y + h, s + 30);
-        sketchyLine(ctx, x, y + h, x, y, s + 40);
+        if r < 1.0 {
+            sketchyLine(ctx, x, y, x + w, y, s + 10);
+            sketchyLine(ctx, x + w, y, x + w, y + h, s + 20);
+            sketchyLine(ctx, x + w, y + h, x, y + h, s + 30);
+            sketchyLine(ctx, x, y + h, x, y, s + 40);
+        } else {
+            # Sides stop short of each corner; the corners themselves are clean
+            # arcs. Wobbling a corner as well reads as a mistake rather than as
+            # a hand-drawn line.
+            sketchyLine(ctx, x + r, y, x + w - r, y, s + 10);
+            ctx.moveTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            sketchyLine(ctx, x + w, y + r, x + w, y + h - r, s + 20);
+            ctx.moveTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            sketchyLine(ctx, x + w - r, y + h, x + r, y + h, s + 30);
+            ctx.moveTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            sketchyLine(ctx, x, y + h - r, x, y + r, s + 40);
+            ctx.moveTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+        }
         ctx.stroke();
         pass_i = pass_i + 1;
     }
 
     if element["fillColor"] and element["fillColor"] != "transparent" {
         ctx.beginPath();
-        ctx.rect(x, y, w, h);
+        if r < 1.0 {
+            ctx.rect(x, y, w, h);
+        } else {
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
         ctx.fill();
     }
 }

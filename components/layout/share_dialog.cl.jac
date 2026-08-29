@@ -27,6 +27,21 @@ def:pub ShareDialog(
     has confirm_end_session: bool = False;
     has _generating: bool = False;
 
+    def closeOnEscape(ev: any) -> None {
+        if ev.key == "Escape" {
+            on_close();
+        }
+    }
+
+    useEffect(lambda () -> any {
+        if is_open {
+            window.addEventListener("keydown", closeOnEscape);
+        }
+        return lambda {
+            window.removeEventListener("keydown", closeOnEscape);
+        };
+    }, [is_open]);
+
     useEffect(
         lambda () -> any {
             crypto_available = check_crypto_available();
@@ -163,14 +178,14 @@ def:pub ShareDialog(
     if static_status == "idle" {
         static_status_content = <button
             onClick={lambda { handle_generate_static_link(); }}
-            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 rounded-md transition"
+            className="w-full bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white font-medium py-2.5 rounded-xl shadow-sm transition-colors"
         >
             {"Generate Link"}
         </button>;
     } elif static_status == "loading" {
         static_status_content = <button
             disabled={True}
-            className="w-full bg-gray-300 text-gray-600 font-medium py-2 rounded-md cursor-not-allowed"
+            className="w-full bg-slate-100 text-slate-400 font-medium py-2.5 rounded-xl cursor-not-allowed"
         >
             {"Generating..."}
         </button>;
@@ -180,11 +195,11 @@ def:pub ShareDialog(
                 type="text"
                 value={static_link}
                 readOnly={True}
-                className="w-full px-3 py-2 border rounded-md bg-gray-50 font-mono text-sm"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 font-mono text-sm text-slate-700"
             />
             <button
                 onClick={lambda { handle_copy_link(static_link); }}
-                className={"w-full font-medium py-2 rounded-md transition " + ("bg-green-500 hover:bg-green-600 text-white" if copied else "bg-gray-200 hover:bg-gray-300 text-gray-800")}
+                className={"w-full font-medium py-2 rounded-md transition " + ("bg-emerald-600 text-white" if copied else "bg-slate-100 hover:bg-slate-200 text-slate-700")}
             >
                 {copied and "Copied!" or "Copy Link"}
             </button>
@@ -194,14 +209,14 @@ def:pub ShareDialog(
         </div>;
     } else {
         static_status_content = <div className="space-y-2">
-            <div className="bg-red-50 border border-red-200 rounded-md p-3">
+            <div className="bg-rose-50 border border-rose-100 rounded-xl p-3.5">
                 <p className="text-sm text-red-700">
                     {error_message or "Failed to generate link. Please try again."}
                 </p>
             </div>
             <button
                 onClick={lambda { handle_try_again(); }}
-                className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 rounded-md transition"
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 rounded-xl transition-colors"
             >
                 {"Try Again"}
             </button>
@@ -220,17 +235,17 @@ def:pub ShareDialog(
                 type="text"
                 value={collab_link}
                 readOnly={True}
-                className="w-full px-3 py-2 border rounded-md bg-gray-50 font-mono text-sm"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 font-mono text-sm text-slate-700"
             />
             <button
                 onClick={lambda { handle_copy_link(collab_link); }}
-                className={"w-full font-medium py-2 rounded-md transition " + ("bg-green-500 hover:bg-green-600 text-white" if copied else "bg-gray-200 hover:bg-gray-300 text-gray-800")}
+                className={"w-full font-medium py-2 rounded-md transition " + ("bg-emerald-600 text-white" if copied else "bg-slate-100 hover:bg-slate-200 text-slate-700")}
             >
                 {copied and "Copied!" or "Copy Link"}
             </button>
             <button
                 onClick={lambda { confirm_end_session = True; }}
-                className="w-full bg-red-500 hover:bg-red-600 text-white font-medium py-2 rounded-md transition"
+                className="w-full bg-rose-600 hover:bg-rose-700 text-white font-medium py-2.5 rounded-xl shadow-sm transition-colors"
             >
                 {"End Session"}
             </button>
@@ -248,13 +263,13 @@ def:pub ShareDialog(
                     type="text"
                     value={username_input}
                     onChange={lambda (e: any) { handle_username_change(e.target.value); }}
-                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm placeholder:text-slate-400 focus:outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10 transition"
                     placeholder="Enter your name"
                 />
             </div>
             <button
                 onClick={lambda { handle_start_collab_session(); }}
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 rounded-md transition"
+                className="w-full bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white font-medium py-2.5 rounded-xl shadow-sm transition-colors"
             >
                 {"Start Session"}
             </button>
@@ -279,11 +294,11 @@ def:pub ShareDialog(
                 type="text"
                 value={mcp_command}
                 readOnly={True}
-                className="w-full px-3 py-2 border rounded-md bg-gray-50 font-mono text-xs"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700"
             />
             <button
                 onClick={lambda { handle_copy_link(mcp_command); }}
-                className={"mt-2 w-full font-medium py-2 rounded-md transition " + ("bg-green-500 hover:bg-green-600 text-white" if copied else "bg-gray-200 hover:bg-gray-300 text-gray-800")}
+                className={"mt-2 w-full font-medium py-2 rounded-md transition " + ("bg-emerald-600 text-white" if copied else "bg-slate-100 hover:bg-slate-200 text-slate-700")}
             >
                 {copied and "Copied!" or "Copy command"}
             </button>
@@ -297,11 +312,11 @@ def:pub ShareDialog(
                 type="text"
                 value={mcp_session}
                 readOnly={True}
-                className="w-full px-3 py-2 border rounded-md bg-gray-50 font-mono text-xs"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700"
             />
             <button
                 onClick={lambda { handle_copy_link(mcp_session); }}
-                className="mt-2 w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 rounded-md transition"
+                className="mt-2 w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 rounded-xl transition-colors"
             >
                 {"Copy session id"}
             </button>
@@ -326,9 +341,10 @@ def:pub ShareDialog(
         tab_content = assistant_content;
     }
 
-    return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div className="bg-white rounded-lg shadow-lg max-w-md w-full mx-4">
-            <div className="border-b px-6 py-4 flex justify-between items-center">
+    return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4"
+        onClick={lambda (ev: any) { if ev.target == ev.currentTarget { on_close(); } }}>
+        <div className="bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 max-w-md w-full overflow-hidden">
+            <div className="px-6 pt-5 pb-1 flex justify-between items-start">
                 <h2 className="text-lg font-semibold">{"Share Canvas"}</h2>
                 <button
                     onClick={lambda { on_close(); }}
@@ -344,24 +360,24 @@ def:pub ShareDialog(
                 </p>
             </div> or None}
 
-            <div className="flex border-b px-6 mt-4">
+            <div className="mx-6 mt-4 mb-1 flex gap-1 bg-slate-100 rounded-xl p-1">
                 <button
                     onClick={lambda { active_tab = "static"; }}
-                    className={"pb-3 px-4 border-b-2 transition " + ("border-blue-500 text-blue-600 font-medium" if active_tab == "static" else "border-transparent text-gray-600 hover:text-gray-900")}
+                    className={"flex-1 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-all duration-150 " + ("bg-white text-slate-900 font-medium shadow-sm ring-1 ring-slate-900/5" if active_tab == "static" else "text-slate-500 hover:text-slate-800")}
                 >
-                    {"Read-only Share"}
+                    {"Read-only"}
                 </button>
                 <button
                     onClick={lambda { active_tab = "collab"; }}
-                    className={"pb-3 px-4 border-b-2 transition " + ("border-blue-500 text-blue-600 font-medium" if active_tab == "collab" else "border-transparent text-gray-600 hover:text-gray-900")}
+                    className={"flex-1 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-all duration-150 " + ("bg-white text-slate-900 font-medium shadow-sm ring-1 ring-slate-900/5" if active_tab == "collab" else "text-slate-500 hover:text-slate-800")}
                 >
-                    {"Live Collaboration"}
+                    {"Live"}
                 </button>
                 <button
                     onClick={lambda { active_tab = "assistant"; }}
-                    className={"pb-3 px-4 border-b-2 transition " + ("border-blue-500 text-blue-600 font-medium" if active_tab == "assistant" else "border-transparent text-gray-600 hover:text-gray-900")}
+                    className={"flex-1 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-all duration-150 " + ("bg-white text-slate-900 font-medium shadow-sm ring-1 ring-slate-900/5" if active_tab == "assistant" else "text-slate-500 hover:text-slate-800")}
                 >
-                    {"AI Assistant"}
+                    {"AI"}
                 </button>
             </div>
 
