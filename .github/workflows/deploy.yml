@@ -7,6 +7,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      namespace:
+        description: "Target namespace. `jasketch` is PRODUCTION."
+        required: true
+        default: jasketch-dev
 
 permissions:
   id-token: write
@@ -125,15 +130,21 @@ jobs:
             | bash -s -- --version "${{ steps.jac.outputs.version }}"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      # AWS is only needed to REACH the cluster now. There is no image to build
-      # and no registry to push to, so the ECR permissions this role carried are
-      # no longer exercised.
+      # AWS is only needed to REACH the cluster now: nothing is built and nothing
+      # is pushed to a registry.
+      #
+      # This is deliberately NOT GitHubActionsSharedECRRole, which the old
+      # image-building workflow used. That role is absent from the cluster's
+      # aws-auth ConfigMap, so it cannot talk to Kubernetes at all -- IAM
+      # permissions are irrelevant when the cluster does not map the principal.
+      # GitHubActionsJaseciDeployRole is mapped, as `github-actions-deployer` in
+      # system:masters.
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4.2.0
         with:
           aws-region: us-east-2
-          role-to-assume: arn:aws:iam::776241927220:role/GitHubActionsSharedECRRole
-          role-session-name: GitHubActions
+          role-to-assume: arn:aws:iam::776241927220:role/GitHubActionsJaseciDeployRole
+          role-session-name: GitHubActionsJasketchDeploy
           audience: sts.amazonaws.com
 
       - name: Configure kubectl
@@ -144,12 +155,12 @@ jobs:
       - name: Lint the deploy plan
         run: jac start --scale --dry-run
         env:
-          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'jasketch' }}
+          K8S_NAMESPACE: ${{ inputs.namespace || 'jasketch' }}
 
       - name: Deploy
         run: jac start --scale
         env:
-          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'jasketch' }}
+          K8S_NAMESPACE: ${{ inputs.namespace || 'jasketch' }}
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
 
@@ -159,6 +170,7 @@ jobs:
           {
             echo "## JaSketch deploy"
             echo "- **jac**: ${{ steps.jac.outputs.version }}"
+            echo "- **namespace**: ${{ inputs.namespace || 'jasketch' }}"
             echo "- **result**: ${{ job.status }}"
             echo "- **MCP published**: ${{ needs.publish-mcp.outputs.published || 'skipped (version unchanged)' }}"
             echo "- **URL**: https://jasketch.jaseci.org"
