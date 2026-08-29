@@ -1,5 +1,6 @@
 import from react { useRef, useEffect }
 import from "..services.scene_sharing" { encrypt_scene, decrypt_scene }
+import from "..services.ws_endpoint" { ws_url, ws_should_retry_under_prefix }
 
 def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, canvasHook: dict, roomState: dict = None, onSessionEnded: any = None) -> dict {
     wsRef = useRef(None);
@@ -35,8 +36,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
 
     def getRelayUrl() -> str {
         # The relay is an endpoint of this app now, not a server on its own port.
-        wsProtocol = "wss:" if window.location.protocol == "https:" else "ws:";
-        return wsProtocol + "//" + window.location.host + "/ws/function/jasketch_relay";
+        return str(ws_url("function/jasketch_relay"));
     }
 
     """Send one relay frame. `kind` names the exchange; see infrastructure/relay.jac."""
@@ -615,13 +615,15 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             handleMessage(ws, event);
         };
 
-        ws.onclose = lambda {
+        ws.onclose = lambda (ev: any) {
             connectedRef.current = False;
             wsRef.current = None;
-            # Reconnect after 3 seconds
+            # 1008 means the gateway does not route /ws at the root; retry at
+            # once under the service prefix rather than waiting out the backoff.
+            retry_now = ws_should_retry_under_prefix(ev.code or 0);
             reconnectTimerRef.current = setTimeout(lambda {
                 connect();
-            }, 3000);
+            }, 50 if retry_now else 3000);
         };
 
         ws.onerror = lambda {

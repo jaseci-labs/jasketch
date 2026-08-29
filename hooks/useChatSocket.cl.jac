@@ -12,6 +12,7 @@ agent/chat.jac):
 import from react { useRef, useEffect }
 
 sv import from ..agent.chat { jasketch_chat_confirm }
+import from "..services.ws_endpoint" { ws_url, ws_should_retry_under_prefix }
 
 
 def:pub useChatSocket(
@@ -46,8 +47,7 @@ def:pub useChatSocket(
     }
 
     def getChatUrl() -> str {
-        wsProtocol = "wss:" if window.location.protocol == "https:" else "ws:";
-        return wsProtocol + "//" + window.location.host + "/ws/function/jasketch_chat";
+        return str(ws_url("function/jasketch_chat"));
     }
 
     def appendMessage(role: str, content: str) -> None {
@@ -119,11 +119,14 @@ def:pub useChatSocket(
         ws.onmessage = lambda (event: any) {
             handleWsMessage(event);
         };
-        ws.onclose = lambda {
+        ws.onclose = lambda (ev: any) {
             connectedRef.current = False;
             isConnected = False;
             wsRef.current = None;
-            reconnectTimerRef.current = setTimeout(lambda { connect(); }, 3000);
+            # A gateway that does not route /ws at the root closes with 1008;
+            # retry immediately under the service prefix instead of backing off.
+            retry_now = ws_should_retry_under_prefix(ev.code or 0);
+            reconnectTimerRef.current = setTimeout(lambda { connect(); }, 50 if retry_now else 3000);
         };
         ws.onerror = lambda { _ = 0; };
 
