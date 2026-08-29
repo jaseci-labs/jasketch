@@ -29,9 +29,9 @@ def:pub useElements() -> dict {
         stored = localStorage.getItem(STORAGE_KEY);
         if stored {
             parsed = JSON.parse(stored);
-            if parsed and parsed.length > 0 {
+            if parsed and len(parsed) > 0 {
                 mi = 0;
-                while mi < parsed.length {
+                while mi < len(parsed) {
                     if not parsed[mi].id {
                         parsed[mi].id = crypto.randomUUID();
                     }
@@ -66,25 +66,25 @@ def:pub useElements() -> dict {
         if not element["id"] {
             element["id"] = crypto.randomUUID();
         }
-        newElements = elements.concat([element]);
+        newElements = elements + [element];
         setElementsWithHistory(newElements);
     }
 
     def addMultipleElements(newItems: list) -> None {
         ni = 0;
-        while ni < newItems.length {
+        while ni < len(newItems) {
             if not newItems[ni].id {
                 newItems[ni].id = crypto.randomUUID();
             }
             ni = ni + 1;
         }
-        newElements = elements.concat(newItems);
+        newElements = elements + newItems;
         setElementsWithHistory(newElements);
     }
 
     def _findIndex(id: str) -> int {
         fi = 0;
-        while fi < elements.length {
+        while fi < len(elements) {
             if elements[fi] and elements[fi].id == id {
                 return fi;
             }
@@ -96,7 +96,7 @@ def:pub useElements() -> dict {
     def updateElement(id: str, newElement: dict) -> None {
         idx = _findIndex(id);
         if idx >= 0 {
-            newElements = elements.slice();
+            newElements = elements[:];
             newElements[idx] = newElement;
             setElementsWithHistory(newElements);
         }
@@ -105,16 +105,16 @@ def:pub useElements() -> dict {
     def updateElementSilent(id: str, newElement: dict) -> None {
         idx = _findIndex(id);
         if idx >= 0 {
-            newElements = elements.slice();
+            newElements = elements[:];
             newElements[idx] = newElement;
             setElementsInternal(newElements);
         }
     }
 
     def updateMultipleElements(updates: list) -> None {
-        newElements = elements.slice();
+        newElements = elements[:];
         i = 0;
-        while i < updates.length {
+        while i < len(updates) {
             idx = _findIndex(updates[i].id);
             if idx >= 0 {
                 newElements[idx] = updates[i].element;
@@ -125,9 +125,9 @@ def:pub useElements() -> dict {
     }
 
     def updateMultipleElementsSilent(updates: list) -> None {
-        newElements = elements.slice();
+        newElements = elements[:];
         i = 0;
-        while i < updates.length {
+        while i < len(updates) {
             idx = _findIndex(updates[i].id);
             if idx >= 0 {
                 newElements[idx] = updates[i].element;
@@ -144,9 +144,9 @@ def:pub useElements() -> dict {
     def removeElement(id: str) -> None {
         newElements = [];
         ri = 0;
-        while ri < elements.length {
+        while ri < len(elements) {
             if elements[ri] and elements[ri].id != id {
-                newElements.push(elements[ri]);
+                newElements.append(elements[ri]);
             }
             ri = ri + 1;
         }
@@ -156,15 +156,15 @@ def:pub useElements() -> dict {
     def removeMultipleElements(ids: list) -> None {
         idSet = {};
         i = 0;
-        while i < ids.length {
+        while i < len(ids) {
             idSet[ids[i]] = True;
             i = i + 1;
         }
         newElements = [];
         rmi = 0;
-        while rmi < elements.length {
+        while rmi < len(elements) {
             if elements[rmi] and not idSet[elements[rmi].id] {
-                newElements.push(elements[rmi]);
+                newElements.append(elements[rmi]);
             }
             rmi = rmi + 1;
         }
@@ -178,7 +178,7 @@ def:pub useElements() -> dict {
     def setElementsReplaceAll(newElements: list) -> None {
         # Add IDs to any elements missing them
         i = 0;
-        while i < newElements.length {
+        while i < len(newElements) {
             if not newElements[i].id {
                 newElements[i].id = crypto.randomUUID();
             }

@@ -13,7 +13,7 @@ def:pub ShareDialog(
     on_end_session: Callable[[], None],
     on_username_set: Callable[[str, str], None] | None = None,
     default_tab: str = "static"
-) -> JsxElement {
+) -> JsxElement | None {
     has active_tab: str = default_tab;
     has static_status: str = "idle";     # idle, loading, done, error
     has static_link: str = "";

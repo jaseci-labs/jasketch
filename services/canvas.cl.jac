@@ -117,17 +117,17 @@ def wrapTextLines(ctx: any, text: str, maxWidth: float) -> list {
     rawLines = text.split(String.fromCharCode(10));
     wrapped = [];
     wri = 0;
-    while wri < rawLines.length {
+    while wri < len(rawLines) {
         rawLine = rawLines[wri];
         if rawLine == "" {
-            wrapped.push("");
+            wrapped.append("");
             wri = wri + 1;
             continue;
         }
         words = rawLine.split(" ");
         currentLine = "";
         wrj = 0;
-        while wrj < words.length {
+        while wrj < len(words) {
             testLine = currentLine;
             if currentLine == "" {
                 testLine = words[wrj];
@@ -136,7 +136,7 @@ def wrapTextLines(ctx: any, text: str, maxWidth: float) -> list {
             }
             testWidth = ctx.measureText(testLine).width;
             if testWidth > maxWidth and currentLine != "" {
-                wrapped.push(currentLine);
+                wrapped.append(currentLine);
                 currentLine = words[wrj];
             } else {
                 currentLine = testLine;
@@ -144,7 +144,7 @@ def wrapTextLines(ctx: any, text: str, maxWidth: float) -> list {
             wrj = wrj + 1;
         }
         if currentLine != "" {
-            wrapped.push(currentLine);
+            wrapped.append(currentLine);
         }
         wri = wri + 1;
     }
@@ -177,11 +177,11 @@ def drawShapeText(ctx: any, element: dict) -> None {
 
     stLines = wrapTextLines(ctx, element["shapeText"], stMaxWidth);
     stLineHeight = stFontSize * 1.2;
-    stTotalHeight = stLines.length * stLineHeight;
+    stTotalHeight = len(stLines) * stLineHeight;
     stStartY = stCy - stTotalHeight / 2 + stLineHeight / 2;
 
     stIdx = 0;
-    while stIdx < stLines.length {
+    while stIdx < len(stLines) {
         ctx.fillText(stLines[stIdx], stCx, stStartY + stIdx * stLineHeight);
         stIdx = stIdx + 1;
     }
@@ -374,7 +374,7 @@ def sketchyCurve(ctx: any, x1: float, y1: float, cpx: float, cpy: float, x2: flo
 
 def drawElbowPath(ctx: any, element: dict, seed: float, pass_i: int) -> None {
     elbowPts = get_elbow_full_points(element);
-    eptLen = elbowPts.length;
+    eptLen = len(elbowPts);
     if eptLen >= 2 {
         elj = jitter(seed + pass_i * 37, 1.2);
         ctx.moveTo(elbowPts[0].x + elj, elbowPts[0].y + jitter(seed + pass_i * 37 + 1, 1.2));
@@ -483,7 +483,7 @@ def:pub drawArrow(ctx: any, element: dict) -> None {
     arrowAngle = Math.atan2(element["y2"] - element["y1"], element["x2"] - element["x1"]);
     if curveStyle == "elbow" {
         elbowPtsA = get_elbow_full_points(element);
-        eptLenA = elbowPtsA.length;
+        eptLenA = len(elbowPtsA);
         if eptLenA >= 2 {
             pSecondLast = elbowPtsA[eptLenA - 2];
             pLast = elbowPtsA[eptLenA - 1];
@@ -743,7 +743,7 @@ def:pub drawSelectionBox(ctx: any, element: dict) -> None {
             ctx.strokeStyle = "rgba(100, 70, 200, 0.5)";
             ctx.lineWidth = 1;
             shi = 1;
-            while shi < elbowSelPts.length {
+            while shi < len(elbowSelPts) {
                 segMidX = (elbowSelPts[shi - 1].x + elbowSelPts[shi].x) / 2;
                 segMidY = (elbowSelPts[shi - 1].y + elbowSelPts[shi].y) / 2;
                 ctx.beginPath();
@@ -796,7 +796,7 @@ def:pub drawSelectionBox(ctx: any, element: dict) -> None {
     ];
 
     i = 0;
-    while i < handlePositions.length {
+    while i < len(handlePositions) {
         hp = handlePositions[i];
         ctx.beginPath();
         ctx.arc(hp.x, hp.y, handleSize / 2, 0, Math.PI * 2);
@@ -831,7 +831,7 @@ def:pub drawSelectionBox(ctx: any, element: dict) -> None {
 }
 
 def:pub drawGroupSelectionBox(ctx: any, elements: list) -> None {
-    if elements.length == 0 {
+    if len(elements) == 0 {
         return;
     }
     ctx.save();
@@ -842,7 +842,7 @@ def:pub drawGroupSelectionBox(ctx: any, elements: list) -> None {
     gMaxX = firstBounds["x"] + firstBounds["width"];
     gMaxY = firstBounds["y"] + firstBounds["height"];
     gbi = 1;
-    while gbi < elements.length {
+    while gbi < len(elements) {
         elBounds = getElementBounds(ctx, elements[gbi]);
         if elBounds["x"] < gMinX { gMinX = elBounds["x"]; }
         if elBounds["y"] < gMinY { gMinY = elBounds["y"]; }
@@ -883,7 +883,7 @@ def:pub drawGroupSelectionBox(ctx: any, elements: list) -> None {
     ];
 
     ghi = 0;
-    while ghi < ghPositions.length {
+    while ghi < len(ghPositions) {
         ghp = ghPositions[ghi];
         ctx.beginPath();
         ctx.arc(ghp.x, ghp.y, ghSize / 2, 0, Math.PI * 2);
@@ -897,7 +897,7 @@ def:pub drawGroupSelectionBox(ctx: any, elements: list) -> None {
 
 def:pub drawConnectionPoints(ctx: any, element: dict) -> None {
     points = getConnectionPoints(element);
-    if points.length == 0 {
+    if len(points) == 0 {
         return;
     }
     # Apply rotation to connection points if element is rotated
@@ -916,7 +916,7 @@ def:pub drawConnectionPoints(ctx: any, element: dict) -> None {
     ctx.strokeStyle = "#f97316";
     ctx.lineWidth = 1.5;
     i = 0;
-    while i < points.length {
+    while i < len(points) {
         cp = points[i];
         ctx.beginPath();
         ctx.arc(cp.x, cp.y, 5, 0, Math.PI * 2);

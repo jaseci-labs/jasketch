@@ -2,7 +2,7 @@ import from "...constants.colors" { PRESET_COLORS }
 import from "...constants.fonts" { FONTS, FONT_SIZES }
 import from "...constants.tools" { LINE_STYLES, CURVE_STYLES }
 
-def:pub Sidebar(props: dict) -> JsxElement {
+def:pub Sidebar(props: dict) -> JsxElement | None {
     currentTool = props["currentTool"] or "select";
     currentColor = props["currentColor"] or "#000000";
     currentStrokeWidth = props["currentStrokeWidth"] or 2;

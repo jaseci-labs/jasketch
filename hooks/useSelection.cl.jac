@@ -42,7 +42,7 @@ def:pub useSelection() -> dict {
     }
 
     def findElementAtPoint(point: dict, elems: list) -> dict {
-        i = elems.length - 1;
+        i = len(elems) - 1;
         while i >= 0 {
             if isPointInElement(point, elems[i]) {
                 return {"element": elems[i], "id": elems[i].id};
@@ -100,9 +100,9 @@ def:pub useSelection() -> dict {
     def removeFromSelection(id: str) -> None {
         newList = [sel for sel in selectedElements if sel.id != id];
         selectedElements = newList;
-        if newList.length == 1 {
+        if len(newList) == 1 {
             selectedElement = newList[0];
-        } elif newList.length == 0 {
+        } elif len(newList) == 0 {
             selectedElement = None;
         }
     }
@@ -126,16 +126,16 @@ def:pub useSelection() -> dict {
 
             selected = [];
             i = 0;
-            while i < elems.length {
+            while i < len(elems) {
                 element = elems[i];
                 if isElementInBox(element, minX, minY, maxX, maxY) {
-                    selected.push({"element": element, "id": element.id});
+                    selected.append({"element": element, "id": element.id});
                 }
                 i = i + 1;
             }
 
             selectedElements = selected;
-            if selected.length == 1 {
+            if len(selected) == 1 {
                 selectedElement = selected[0];
             } else {
                 selectedElement = None;

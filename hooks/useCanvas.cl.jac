@@ -38,11 +38,11 @@ def:pub useCanvas() -> dict {
         };
 
         drIdx = 0;
-        while drIdx < elements.length {
+        while drIdx < len(elements) {
             drEl = elements[drIdx];
             if editingShapeId != None and editingShapeId != undefined and drEl.id == editingShapeId and drEl.shapeText {
                 # Temporarily hide shapeText while editing this shape
-                drCopy = Object.assign({}, drEl);
+                drCopy = {**drEl};
                 drCopy.shapeText = None;
                 drawElement(ctx, drCopy, imgLoadRedraw);
             } else {
@@ -55,7 +55,7 @@ def:pub useCanvas() -> dict {
             drawSelectionBox(ctx, selectedElement.element);
         }
 
-        if selectedElements and selectedElements.length > 0 {
+        if selectedElements and len(selectedElements) > 0 {
             # Check if all selected elements share the same groupId
             allGrouped = True;
             sharedGroupId = None;
@@ -66,7 +66,7 @@ def:pub useCanvas() -> dict {
             }
             if allGrouped {
                 gci = 1;
-                while gci < selectedElements.length {
+                while gci < len(selectedElements) {
                     if not selectedElements[gci].element or selectedElements[gci].element.groupId != sharedGroupId {
                         allGrouped = False;
                     }
@@ -77,9 +77,9 @@ def:pub useCanvas() -> dict {
                 # Draw single combined selection box for group
                 groupEls = [];
                 gei = 0;
-                while gei < selectedElements.length {
+                while gei < len(selectedElements) {
                     if selectedElements[gei].element {
-                        groupEls.push(selectedElements[gei].element);
+                        groupEls.append(selectedElements[gei].element);
                     }
                     gei = gei + 1;
                 }
@@ -87,7 +87,7 @@ def:pub useCanvas() -> dict {
             } else {
                 # Draw individual selection boxes
                 selBoxIdx = 0;
-                while selBoxIdx < selectedElements.length {
+                while selBoxIdx < len(selectedElements) {
                     if selectedElements[selBoxIdx].element {
                         drawSelectionBox(ctx, selectedElements[selBoxIdx].element);
                     }

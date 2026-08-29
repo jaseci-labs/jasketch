@@ -2,12 +2,13 @@
 
 import from react { useRef }
 
-def:pub ParticipantList(props: dict) -> JsxElement {
-    participants = props["participants"] or {};
-    isHost = props["isHost"] or False;
-    mySessionId = props["mySessionId"] or "";
-    onClose = props["onClose"];
-    onRenameMe = props["onRenameMe"];
+def:pub ParticipantList(
+    participants: dict,
+    mySessionId: str,
+    onClose: Callable[[], None],
+    onRenameMe: Callable[[str], None],
+    isHost: bool = False
+) -> JsxElement {
 
     # __hostSid is a meta key injected by Canvas alongside participants
     hostSessionId = participants["__hostSid"] or "";
@@ -15,12 +16,12 @@ def:pub ParticipantList(props: dict) -> JsxElement {
     my_data = participants[mySessionId] or {"username": localStorage.getItem("jasketch_username") or "Anonymous", "color": "#f97316"};
 
     has editingName: bool = False;
-    has nameInput: str = my_data.username or "Anonymous";
+    has nameInput: str = str(my_data["username"] or "Anonymous");
     has nameSaved: bool = False;
     nameInputRef = useRef(None);
 
     def handleStartEdit() -> None {
-        nameInput = (participants[mySessionId] and participants[mySessionId].username) or localStorage.getItem("jasketch_username") or "Anonymous";
+        nameInput = str((participants[mySessionId] and participants[mySessionId]["username"]) or localStorage.getItem("jasketch_username") or "Anonymous");
         editingName = True;
         setTimeout(lambda {
             if nameInputRef.current { nameInputRef.current.focus(); nameInputRef.current.select(); }
@@ -41,7 +42,7 @@ def:pub ParticipantList(props: dict) -> JsxElement {
         if e.key == "Escape" { editingName = False; }
     }
 
-    all_sids = [sid for sid in Object.keys(participants) if sid != "__hostSid"];
+    all_sids = [sid for sid in participants.keys() if sid != "__hostSid"];
     other_sids = [sid for sid in all_sids if sid != mySessionId];
     # Refresh my_data reactively
     current_my_data = participants[mySessionId] or {"username": localStorage.getItem("jasketch_username") or "Anonymous", "color": "#f97316"};
@@ -49,7 +50,7 @@ def:pub ParticipantList(props: dict) -> JsxElement {
     return <div className="bg-white border border-gray-200 rounded-lg shadow-xl w-72">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <span className="text-sm font-semibold text-gray-700">
-                {"Participants (" + String(all_sids.length) + ")"}
+                {"Participants (" + str(len(all_sids)) + ")"}
             </span>
             <button
                 onClick={lambda { if onClose { onClose(); } }}
@@ -62,7 +63,7 @@ def:pub ParticipantList(props: dict) -> JsxElement {
         </div>
         <div className="py-1 max-h-64 overflow-y-auto">
             <div className="px-4 py-2.5 flex items-center gap-3">
-                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{"backgroundColor": current_my_data.color or "#f97316"}}></div>
+                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{"backgroundColor": current_my_data["color"] or "#f97316"}}></div>
                 <div className="flex-1 min-w-0">
                     {editingName and <input
                         ref={nameInputRef}
@@ -72,7 +73,7 @@ def:pub ParticipantList(props: dict) -> JsxElement {
                         onKeyDown={handleNameKeyDown}
                         onBlur={lambda { handleSaveName(); }}
                         className="w-full text-sm border border-orange-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
-                    /> or <span className="text-sm text-gray-800 truncate block">{current_my_data.username or "Anonymous"}</span>}
+                    /> or <span className="text-sm text-gray-800 truncate block">{current_my_data["username"] or "Anonymous"}</span>}
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                     <span className="text-xs text-gray-400">{"(me)"}</span>
@@ -92,10 +93,10 @@ def:pub ParticipantList(props: dict) -> JsxElement {
                     >{"Save"}</button>}
                 </div>
             </div>
-            {other_sids.length > 0 and <div className="border-t border-gray-50 my-0.5"></div> or None}
+            {len(other_sids) > 0 and <div className="border-t border-gray-50 my-0.5"></div> or None}
             {[<div key={osid} className="px-4 py-2.5 flex items-center gap-3">
-                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{"backgroundColor": participants[osid].color or "#999999"}}></div>
-                <span className="text-sm text-gray-700 truncate flex-1">{participants[osid].username or "Anonymous"}</span>
+                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{"backgroundColor": participants[osid]["color"] or "#999999"}}></div>
+                <span className="text-sm text-gray-700 truncate flex-1">{participants[osid]["username"] or "Anonymous"}</span>
                 {osid == hostSessionId and <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">{"Host"}</span> or None}
             </div> for osid in other_sids]}
         </div>

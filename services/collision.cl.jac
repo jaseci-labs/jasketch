@@ -112,7 +112,7 @@ def:pub isPointInText(point: dict, textElement: dict) -> bool {
 }
 
 def:pub isPointInFreehandPath(point: dict, path: list, tolerance: float) -> bool {
-    if path.length == 0 {
+    if len(path) == 0 {
         return False;
     }
 
@@ -122,7 +122,7 @@ def:pub isPointInFreehandPath(point: dict, path: list, tolerance: float) -> bool
     maxY = path[0].y;
 
     i = 1;
-    while i < path.length {
+    while i < len(path) {
         if path[i].x < minX {
             minX = path[i].x;
         }
@@ -143,7 +143,7 @@ def:pub isPointInFreehandPath(point: dict, path: list, tolerance: float) -> bool
     }
 
     i = 0;
-    while i < path.length {
+    while i < len(path) {
         pathPoint = path[i];
         distance = calculateDistance(point, pathPoint);
         if distance <= tolerance {
@@ -169,7 +169,7 @@ def:pub getResizeHandleAtPoint(point: dict, bounds: dict) -> str {
     ];
 
     i = 0;
-    while i < handlePositions.length {
+    while i < len(handlePositions) {
         dist = calculateDistance(point, handlePositions[i]);
         if dist <= handleRadius {
             return handleIds[i];
@@ -184,7 +184,7 @@ def:pub get_rotation_handle_at_point(point: dict, bounds: dict, element: dict) -
     supportedTypes = ["rectangle", "circle", "diamond", "image", "text", "freehand"];
     isSupported = False;
     i = 0;
-    while i < supportedTypes.length {
+    while i < len(supportedTypes) {
         if element["type"] == supportedTypes[i] {
             isSupported = True;
         }
@@ -270,7 +270,7 @@ def:pub get_elbow_segment_at_point(point: dict, element: dict) -> int {
     fullPts = get_elbow_full_points(element);
     handleRadius = 8;
     si = 1;
-    while si < fullPts.length {
+    while si < len(fullPts) {
         midX = (fullPts[si - 1].x + fullPts[si].x) / 2;
         midY = (fullPts[si - 1].y + fullPts[si].y) / 2;
         dist = Math.sqrt((point["x"] - midX) * (point["x"] - midX) + (point["y"] - midY) * (point["y"] - midY));

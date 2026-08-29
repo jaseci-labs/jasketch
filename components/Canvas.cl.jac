@@ -105,7 +105,7 @@ def:pub Canvas(props: dict) -> JsxElement {
     can with [wsHook.participants, wsHook.hostSessionId] entry {
         if onParticipantsChange {
             # Merge hostSessionId as __hostSid meta key so parent can read it
-            merged = Object.assign({}, wsHook.participants);
+            merged = {**wsHook.participants};
             if wsHook.hostSessionId {
                 merged["__hostSid"] = wsHook.hostSessionId;
             }
@@ -195,7 +195,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 allElements = [];
                 idx = 0;
                 while idx < elementsHook.elements.length {
-                    allElements.push({"element": elementsHook.elements[idx], "id": elementsHook.elements[idx].id});
+                    allElements.append({"element": elementsHook.elements[idx], "id": elementsHook.elements[idx].id});
                     idx = idx + 1;
                 }
                 selectionHook.setSelectedElements(allElements);
@@ -245,12 +245,12 @@ def:pub Canvas(props: dict) -> JsxElement {
                     copied = [];
                     ci = 0;
                     while ci < curMulti.length {
-                        copied.push(Object.assign({}, curMulti[ci].element));
+                        copied.append({**curMulti[ci].element});
                         ci = ci + 1;
                     }
                     clipboardRef.current = copied;
                 } elif curSingle and curSingle.element {
-                    clipboardRef.current = [Object.assign({}, curSingle.element)];
+                    clipboardRef.current = [{**curSingle.element}];
                 }
             }
             if not textInputHook.textInput and (e.key == "v" or e.key == "V") and (e.ctrlKey or e.metaKey) {
@@ -306,12 +306,12 @@ def:pub Canvas(props: dict) -> JsxElement {
                     copied = [];
                     ci = 0;
                     while ci < curMultiCut.length {
-                        copied.push(Object.assign({}, curMultiCut[ci].element));
+                        copied.append({**curMultiCut[ci].element});
                         ci = ci + 1;
                     }
                     clipboardRef.current = copied;
                 } elif curSingleCut and curSingleCut.element {
-                    clipboardRef.current = [Object.assign({}, curSingleCut.element)];
+                    clipboardRef.current = [{**curSingleCut.element}];
                 }
                 deleteSelected();
             }
@@ -427,7 +427,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                     fi = fi + 1;
                 }
                 if foundEl {
-                    newElement = Object.assign({}, foundEl, changes);
+                    newElement = {**foundEl, **changes};
                     elementsHook.updateElement(id, newElement);
                     selectionHook.setSelectedElement({"element": newElement, "id": id});
                 }
@@ -546,7 +546,7 @@ def:pub Canvas(props: dict) -> JsxElement {
         if shapeId != None and shapeId != undefined {
             # Updating text inside a shape
             shapeElement = textInputHook.textInput.editingShapeElement;
-            updatedShape = Object.assign({}, shapeElement);
+            updatedShape = {**shapeElement};
             trimmedText = textInputHook.textInput.text;
             if trimmedText and trimmedText.trim() != "" {
                 updatedShape.shapeText = trimmedText;
@@ -598,7 +598,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             delIds = [];
             di = 0;
             while di < curMulti.length {
-                delIds.push(curMulti[di].id);
+                delIds.append(curMulti[di].id);
                 di = di + 1;
             }
             elementsHook.removeMultipleElements(delIds);
@@ -626,7 +626,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             ctxAllSelected = [selectionHook.selectedElement];
         }
         ctxi = 0;
-        while ctxi < ctxAllSelected.length {
+        while ctxi < len(ctxAllSelected) {
             if ctxAllSelected[ctxi].element and ctxAllSelected[ctxi].element.groupId {
                 ctxCanUngroup = True;
             }
@@ -647,7 +647,7 @@ def:pub Canvas(props: dict) -> JsxElement {
     }
 
     def offsetElement(original: dict, dx: float, dy: float) -> dict {
-        dup = Object.assign({}, original);
+        dup = {**original};
         dup.id = None;
         if original["type"] == "text" or original["type"] == "rectangle" or original["type"] == "circle" or original["type"] == "image" or original["type"] == "diamond" {
             dup.x = original["x"] + dx;
@@ -664,7 +664,7 @@ def:pub Canvas(props: dict) -> JsxElement {
         } elif original["type"] == "freehand" {
             newPoints: list = [];
             for p in original["points"] {
-                newPoints.push({"x": p.x + dx, "y": p.y + dy});
+                newPoints.append({"x": p.x + dx, "y": p.y + dy});
             }
             dup.points = newPoints;
         }
@@ -678,14 +678,14 @@ def:pub Canvas(props: dict) -> JsxElement {
             dups = [];
             ddi = 0;
             while ddi < curMultiDup.length {
-                dups.push(offsetElement(curMultiDup[ddi].element, 20, 20));
+                dups.append(offsetElement(curMultiDup[ddi].element, 20, 20));
                 ddi = ddi + 1;
             }
             elementsHook.addMultipleElements(dups);
             dupSel = [];
             dsi = 0;
-            while dsi < dups.length {
-                dupSel.push({"element": dups[dsi], "id": dups[dsi].id});
+            while dsi < len(dups) {
+                dupSel.append({"element": dups[dsi], "id": dups[dsi].id});
                 dsi = dsi + 1;
             }
             selectionHook.setSelectedElements(dupSel);
@@ -716,11 +716,11 @@ def:pub Canvas(props: dict) -> JsxElement {
             bfi = 0;
             while bfi < elementsHook.elements.length {
                 if elementsHook.elements[bfi].id != selId {
-                    otherElements.push(elementsHook.elements[bfi]);
+                    otherElements.append(elementsHook.elements[bfi]);
                 }
                 bfi = bfi + 1;
             }
-            newElements = [element].concat(otherElements);
+            newElements = [element] + otherElements;
             elementsHook.setElements(newElements);
             selectionHook.clearSelection();
         }
@@ -736,20 +736,20 @@ def:pub Canvas(props: dict) -> JsxElement {
             contextMenu = None;
             return;
         }
-        if allSelected.length < 2 {
+        if len(allSelected) < 2 {
             contextMenu = None;
             return;
         }
-        groupId = "g_" + String(Date.now()) + "_" + String(Math.floor(Math.random() * 10000));
-        newElements = elementsHook.elements.slice();
+        groupId = "g_" + str(Date.now()) + "_" + str(Math.floor(Math.random() * 10000));
+        newElements = elementsHook.elements[:];
         gi = 0;
-        while gi < allSelected.length {
+        while gi < len(allSelected) {
             selElId = allSelected[gi].id;
             # Find element in sliced array by id
             gfi = 0;
             while gfi < newElements.length {
                 if newElements[gfi].id == selElId {
-                    updated = Object.assign({}, newElements[gfi]);
+                    updated = {**newElements[gfi]};
                     updated.groupId = groupId;
                     newElements[gfi] = updated;
                 }
@@ -761,13 +761,13 @@ def:pub Canvas(props: dict) -> JsxElement {
         # Refresh selectedElements with updated elements
         newSel = [];
         gsi = 0;
-        while gsi < allSelected.length {
+        while gsi < len(allSelected) {
             selElId2 = allSelected[gsi].id;
             # Find updated element in newElements by id
             gsi2 = 0;
             while gsi2 < newElements.length {
                 if newElements[gsi2].id == selElId2 {
-                    newSel.push({"element": newElements[gsi2], "id": selElId2});
+                    newSel.append({"element": newElements[gsi2], "id": selElId2});
                 }
                 gsi2 = gsi2 + 1;
             }
@@ -784,14 +784,14 @@ def:pub Canvas(props: dict) -> JsxElement {
         } elif selectionHook.selectedElement {
             allSelected = [selectionHook.selectedElement];
         }
-        if allSelected.length == 0 {
+        if len(allSelected) == 0 {
             contextMenu = None;
             return;
         }
         # Collect all groupIds from selected elements
         groupIdsToRemove = {};
         ugi = 0;
-        while ugi < allSelected.length {
+        while ugi < len(allSelected) {
             el = allSelected[ugi].element;
             if el.groupId {
                 groupIdsToRemove[el.groupId] = True;
@@ -799,11 +799,11 @@ def:pub Canvas(props: dict) -> JsxElement {
             ugi = ugi + 1;
         }
         # Remove groupId from ALL elements that share those groupIds
-        newElements = elementsHook.elements.slice();
+        newElements = elementsHook.elements[:];
         rei = 0;
         while rei < newElements.length {
             if newElements[rei].groupId and groupIdsToRemove[newElements[rei].groupId] {
-                updated = Object.assign({}, newElements[rei]);
+                updated = {**newElements[rei]};
                 updated.groupId = None;
                 newElements[rei] = updated;
             }
@@ -813,21 +813,21 @@ def:pub Canvas(props: dict) -> JsxElement {
         # Refresh selection
         newSel = [];
         ursi = 0;
-        while ursi < allSelected.length {
+        while ursi < len(allSelected) {
             selElId3 = allSelected[ursi].id;
             # Find updated element in newElements by id
             urfi = 0;
             while urfi < newElements.length {
                 if newElements[urfi].id == selElId3 {
-                    newSel.push({"element": newElements[urfi], "id": selElId3});
+                    newSel.append({"element": newElements[urfi], "id": selElId3});
                 }
                 urfi = urfi + 1;
             }
             ursi = ursi + 1;
         }
-        if newSel.length > 1 {
+        if len(newSel) > 1 {
             selectionHook.setSelectedElements(newSel);
-        } elif newSel.length == 1 {
+        } elif len(newSel) == 1 {
             selectionHook.setSelectedElement(newSel[0]);
             selectionHook.setSelectedElements([]);
         }
@@ -871,18 +871,18 @@ def:pub Canvas(props: dict) -> JsxElement {
             newElements = [];
             pi = 0;
             while pi < clipboardRef.current.length {
-                newElements.push(offsetElement(clipboardRef.current[pi], 20, 20));
+                newElements.append(offsetElement(clipboardRef.current[pi], 20, 20));
                 pi = pi + 1;
             }
             elementsHook.addMultipleElements(newElements);
             pastedSelection = [];
             psi = 0;
-            while psi < newElements.length {
-                pastedSelection.push({"element": newElements[psi], "id": newElements[psi].id});
+            while psi < len(newElements) {
+                pastedSelection.append({"element": newElements[psi], "id": newElements[psi].id});
                 psi = psi + 1;
             }
             selectionHook.setSelectedElements(pastedSelection);
-            if pastedSelection.length == 1 {
+            if len(pastedSelection) == 1 {
                 selectionHook.setSelectedElement(pastedSelection[0]);
             } else {
                 selectionHook.setSelectedElement(None);
@@ -999,7 +999,7 @@ def:pub Canvas(props: dict) -> JsxElement {
         allElements = [];
         idx = 0;
         while idx < elementsHook.elements.length {
-            allElements.push({"element": elementsHook.elements[idx], "id": elementsHook.elements[idx].id});
+            allElements.append({"element": elementsHook.elements[idx], "id": elementsHook.elements[idx].id});
             idx = idx + 1;
         }
         selectionHook.setSelectedElements(allElements);
@@ -1030,7 +1030,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 if vertexHandle {
                     isDraggingVertex = True;
                     draggingVertexHandle = vertexHandle;
-                    selectionHook.setResizeStartElement(Object.assign({}, selEl));
+                    selectionHook.setResizeStartElement({**selEl});
                     return;
                 }
                 if selEl.type == "line" or selEl.type == "arrow" {
@@ -1040,7 +1040,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                         if elbowSegIdx >= 1 {
                             isDraggingElbowSegment = True;
                             draggingElbowSegIndex = elbowSegIdx;
-                            selectionHook.setResizeStartElement(Object.assign({}, selEl));
+                            selectionHook.setResizeStartElement({**selEl});
                             return;
                         }
                     } else {
@@ -1069,7 +1069,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                     if handle {
                         selectionHook.setIsResizing(True);
                         selectionHook.setResizeHandle(handle);
-                        selectionHook.setResizeStartElement(Object.assign({}, selEl));
+                        selectionHook.setResizeStartElement({**selEl});
                         selectionHook.setDragStartPos(pos);
                         return;
                     }
@@ -1095,7 +1095,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                         selectionHook.removeFromSelection(elementInfo.id);
                     } else {
                         # Build the full list in one go to avoid stale state
-                        newMulti = selectionHook.selectedElements.slice();
+                        newMulti = selectionHook.selectedElements[:];
                         # If there's a single selectedElement not yet in the list, include it
                         if selectionHook.selectedElement and newMulti.length == 0 {
                             newMulti.push(selectionHook.selectedElement);
@@ -1128,7 +1128,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                         gmi = 0;
                         while gmi < elementsHook.elements.length {
                             if elementsHook.elements[gmi].groupId == clickedGroupId {
-                                groupMembers.push({"element": elementsHook.elements[gmi], "id": elementsHook.elements[gmi].id});
+                                groupMembers.append({"element": elementsHook.elements[gmi], "id": elementsHook.elements[gmi].id});
                             }
                             gmi = gmi + 1;
                         }
@@ -1226,7 +1226,7 @@ def:pub Canvas(props: dict) -> JsxElement {
 
         if isDraggingBend and selectionHook.selectedElement {
             selId = selectionHook.selectedElement.id;
-            updatedEl = Object.assign({}, selectionHook.selectedElement.element);
+            updatedEl = {**selectionHook.selectedElement.element};
             updatedEl.bendX = pos.x;
             updatedEl.bendY = pos.y;
             elementsHook.updateElement(selId, updatedEl);
@@ -1237,12 +1237,12 @@ def:pub Canvas(props: dict) -> JsxElement {
             selId = selectionHook.selectedElement.id;
             fullPts = get_elbow_full_points(selectionHook.resizeStartElement);
             newPts = move_elbow_segment(fullPts, draggingElbowSegIndex, pos);
-            updatedEl = Object.assign({}, selectionHook.resizeStartElement);
+            updatedEl = {**selectionHook.resizeStartElement};
             # Extract intermediate bends (exclude first and last = start/end endpoints)
             newBends = [];
             bi2 = 1;
             while bi2 < newPts.length - 1 {
-                newBends.push({"x": newPts[bi2].x, "y": newPts[bi2].y});
+                newBends.append({"x": newPts[bi2].x, "y": newPts[bi2].y});
                 bi2 = bi2 + 1;
             }
             updatedEl.elbowBends = newBends;
@@ -1253,7 +1253,7 @@ def:pub Canvas(props: dict) -> JsxElement {
 
         if isDraggingVertex and selectionHook.selectedElement and selectionHook.resizeStartElement {
             selId = selectionHook.selectedElement.id;
-            updatedEl = Object.assign({}, selectionHook.resizeStartElement);
+            updatedEl = {**selectionHook.resizeStartElement};
             vertexPos = pos;
             # Snap to connection points
             vertexSnap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
@@ -1293,7 +1293,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 new_rotation = Math.round(new_rotation / 15) * 15;
             }
             if selectionHook.selectedElement {
-                updatedEl = Object.assign({}, selectionHook.selectedElement.element);
+                updatedEl = {**selectionHook.selectedElement.element};
                 updatedEl.rotation = new_rotation;
 
                 connLineUpdates = find_bound_line_updates_for_shape(updatedEl, elementsHook.elements);
@@ -1319,7 +1319,7 @@ def:pub Canvas(props: dict) -> JsxElement {
             handle = selectionHook.resizeHandle;
             deltaX = pos.x - selectionHook.dragStartPos.x;
             deltaY = pos.y - selectionHook.dragStartPos.y;
-            newElement = Object.assign({}, origEl);
+            newElement = {**origEl};
 
             if origEl.type == "rectangle" or origEl.type == "circle" or origEl.type == "image" or origEl.type == "diamond" {
                 if handle == "se" {
@@ -1419,7 +1419,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                         if scaleY < 0.1 { scaleY = 0.1; }
                         scaledPoints: list = [];
                         for point in origEl.points {
-                            scaledPoints.push({"x": minX + (point.x - minX) * scaleX, "y": minY + (point.y - minY) * scaleY});
+                            scaledPoints.append({"x": minX + (point.x - minX) * scaleX, "y": minY + (point.y - minY) * scaleY});
                         }
                         newElement.points = scaledPoints;
                     }
@@ -1444,17 +1444,17 @@ def:pub Canvas(props: dict) -> JsxElement {
                     clones = [];
                     aci = 0;
                     while aci < selectionHook.selectedElements.length {
-                        clone = Object.assign({}, selectionHook.selectedElements[aci].element);
+                        clone = {**selectionHook.selectedElements[aci].element};
                         clone.id = None;
-                        clones.push(clone);
+                        clones.append(clone);
                         aci = aci + 1;
                     }
                     elementsHook.addMultipleElements(clones);
                     # Point selection to the new copies
                     newSel = [];
                     nsi = 0;
-                    while nsi < clones.length {
-                        newSel.push({"element": clones[nsi], "id": clones[nsi].id});
+                    while nsi < len(clones) {
+                        newSel.append({"element": clones[nsi], "id": clones[nsi].id});
                         nsi = nsi + 1;
                     }
                     selectionHook.setSelectedElements(newSel);
@@ -1462,7 +1462,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                     altDragCopiedRef.current = True;
                     return;
                 } elif selectionHook.selectedElement {
-                    singleClone = Object.assign({}, selectionHook.selectedElement.element);
+                    singleClone = {**selectionHook.selectedElement.element};
                     singleClone.id = None;
                     elementsHook.addElement(singleClone);
                     selectionHook.setSelectedElement({"element": singleClone, "id": singleClone.id});
@@ -1481,7 +1481,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 while i < selectionHook.selectedElements.length {
                     selectedInfo = selectionHook.selectedElements[i];
                     originalElement = selectedInfo.element;
-                    newElement = Object.assign({}, originalElement);
+                    newElement = {**originalElement};
 
                     if originalElement.type == "text" or originalElement.type == "rectangle" or originalElement.type == "circle" or originalElement.type == "image" or originalElement.type == "diamond" {
                         newElement.x = originalElement.x + multiDx;
@@ -1499,7 +1499,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                             multiTransBends = [];
                             mebi = 0;
                             while mebi < originalElement.elbowBends.length {
-                                multiTransBends.push({"x": originalElement.elbowBends[mebi].x + multiDx, "y": originalElement.elbowBends[mebi].y + multiDy});
+                                multiTransBends.append({"x": originalElement.elbowBends[mebi].x + multiDx, "y": originalElement.elbowBends[mebi].y + multiDy});
                                 mebi = mebi + 1;
                             }
                             newElement.elbowBends = multiTransBends;
@@ -1507,12 +1507,12 @@ def:pub Canvas(props: dict) -> JsxElement {
                     } elif originalElement.type == "freehand" {
                         multiPoints: list = [];
                         for point in originalElement.points {
-                            multiPoints.push({"x": point.x + multiDx, "y": point.y + multiDy});
+                            multiPoints.append({"x": point.x + multiDx, "y": point.y + multiDy});
                         }
                         newElement.points = multiPoints;
                     }
 
-                    updates.push({"id": selectedInfo.id, "element": newElement});
+                    updates.append({"id": selectedInfo.id, "element": newElement});
                     i = i + 1;
                 }
                 # Find connected lines/arrows not in the selection and move them too
@@ -1528,7 +1528,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                     # Find the already-computed updated element for this id
                     mcUpdatedEl = mcSelInfo.element;
                     ui2 = 0;
-                    while ui2 < updates.length {
+                    while ui2 < len(updates) {
                         if updates[ui2].id == mcSelInfo.id {
                             mcUpdatedEl = updates[ui2].element;
                         }
@@ -1538,7 +1538,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                     mcli = 0;
                     while mcli < mcLineUpdates.length {
                         if not selectedIdSet[mcLineUpdates[mcli].id] {
-                            updates.push(mcLineUpdates[mcli]);
+                            updates.append(mcLineUpdates[mcli]);
                             selectedIdSet[mcLineUpdates[mcli].id] = True;
                         }
                         mcli = mcli + 1;
@@ -1555,14 +1555,14 @@ def:pub Canvas(props: dict) -> JsxElement {
                     # Find the updated element for this selection id
                     ufi = 0;
                     foundUpdate = None;
-                    while ufi < updates.length {
+                    while ufi < len(updates) {
                         if updates[ufi].id == selElId4 {
                             foundUpdate = updates[ufi];
                         }
                         ufi = ufi + 1;
                     }
                     if foundUpdate {
-                        newSelectedElements.push({"element": foundUpdate.element, "id": foundUpdate.id});
+                        newSelectedElements.append({"element": foundUpdate.element, "id": foundUpdate.id});
                     }
                     ui = ui + 1;
                 }
@@ -1572,7 +1572,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 return;
             } elif selectionHook.selectedElement {
                 element = selectionHook.selectedElement.element;
-                newElement = Object.assign({}, element);
+                newElement = {**element};
 
                 if element.type == "text" or element.type == "rectangle" or element.type == "circle" or element.type == "image" or element.type == "diamond" {
                     newElement.x = pos.x - selectionHook.dragOffset.x;
@@ -1592,7 +1592,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                         translatedBends = [];
                         ebi = 0;
                         while ebi < element.elbowBends.length {
-                            translatedBends.push({"x": element.elbowBends[ebi].x + lineDx, "y": element.elbowBends[ebi].y + lineDy});
+                            translatedBends.append({"x": element.elbowBends[ebi].x + lineDx, "y": element.elbowBends[ebi].y + lineDy});
                             ebi = ebi + 1;
                         }
                         newElement.elbowBends = translatedBends;
@@ -1602,7 +1602,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                     fhDy = pos.y - selectionHook.dragOffset.y - element.points[0].y;
                     fhPoints: list = [];
                     for point in element.points {
-                        fhPoints.push({"x": point.x + fhDx, "y": point.y + fhDy});
+                        fhPoints.append({"x": point.x + fhDx, "y": point.y + fhDy});
                     }
                     newElement.points = fhPoints;
                 }
@@ -1630,7 +1630,7 @@ def:pub Canvas(props: dict) -> JsxElement {
         }
 
         if currentTool == "freehand" {
-            newPath = drawingState.currentPath.concat([pos]);
+            newPath = drawingState.currentPath + [pos];
             drawingState.setCurrentPath(newPath);
 
             canvas = canvasRef.current;
@@ -1729,7 +1729,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                         live_draft_el = {"type": currentTool, "id": "__draft__", "x1": drawingState.startPoint.x, "y1": drawingState.startPoint.y, "x2": pos.x, "y2": pos.y, "color": currentColor, "strokeWidth": currentStrokeWidth, "lineStyle": currentLineStyle, "curveStyle": currentCurveStyle, "opacity": currentOpacity};
                     }
                     if live_draft_el {
-                        preview_ws_hook.sendRoomPreviewRef.current(elementsHook.elements.concat([live_draft_el]));
+                        preview_ws_hook.sendRoomPreviewRef.current(elementsHook.elements + [live_draft_el]);
                     }
                 }
             }
@@ -2014,7 +2014,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                         viewportHook.setZoom(1);
                         viewportHook.setPanOffset({"x": 0, "y": 0});
                     }}
-                >{String(Math.round(viewportHook.zoom * 100)) + "%"}</button>
+                >{str(Math.round(viewportHook.zoom * 100)) + "%"}</button>
                 <button
                     className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-r-xl text-base font-medium transition-colors"
                     onClick={lambda {

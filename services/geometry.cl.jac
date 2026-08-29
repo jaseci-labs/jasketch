@@ -19,14 +19,14 @@ def:pub getTextDimensions(text: str, fontSize: float) -> dict {
     lines = text.split(String.fromCharCode(10));
     maxLen = 0;
     i = 0;
-    while i < lines.length {
-        if lines[i].length > maxLen {
-            maxLen = lines[i].length;
+    while i < len(lines) {
+        if len(lines[i]) > maxLen {
+            maxLen = len(lines[i]);
         }
         i = i + 1;
     }
     textWidth = fontSize * maxLen * 0.6;
-    textHeight = lines.length * fontSize * 1.2;
+    textHeight = len(lines) * fontSize * 1.2;
     return {
         "width": textWidth,
         "height": textHeight
@@ -39,11 +39,11 @@ def:pub _rotate_points(points: list, cx: float, cy: float, angle_deg: float) -> 
     sin_r = Math.sin(rad);
     result = [];
     i = 0;
-    while i < points.length {
+    while i < len(points) {
         p = points[i];
         dx = p.x - cx;
         dy = p.y - cy;
-        result.push({
+        result.append({
             "x": cx + dx * cos_r - dy * sin_r,
             "y": cy + dx * sin_r + dy * cos_r,
             "side": p.side
@@ -128,10 +128,10 @@ def:pub get_elbow_full_points(element: dict) -> list {
         pts = [{"x": element["x1"], "y": element["y1"]}];
         bi = 0;
         while bi < element["elbowBends"].length {
-            pts.push({"x": element["elbowBends"][bi].x, "y": element["elbowBends"][bi].y});
+            pts.append({"x": element["elbowBends"][bi].x, "y": element["elbowBends"][bi].y});
             bi = bi + 1;
         }
-        pts.push({"x": element["x2"], "y": element["y2"]});
+        pts.append({"x": element["x2"], "y": element["y2"]});
         return pts;
     }
 
@@ -188,7 +188,7 @@ def:pub move_elbow_segment(fullPoints: list, segIdx: int, pos: dict) -> list {
     # Inner segments: both vertices move in the perpendicular axis.
     # First/last segments: a stub is inserted to maintain the fixed endpoint.
     # Returns new full-points list.
-    n = fullPoints.length;
+    n = len(fullPoints);
     if segIdx < 1 or segIdx >= n {
         return fullPoints;
     }
@@ -201,7 +201,7 @@ def:pub move_elbow_segment(fullPoints: list, segIdx: int, pos: dict) -> list {
     pts = [];
     ci = 0;
     while ci < n {
-        pts.push({"x": fullPoints[ci].x, "y": fullPoints[ci].y});
+        pts.append({"x": fullPoints[ci].x, "y": fullPoints[ci].y});
         ci = ci + 1;
     }
 
@@ -212,8 +212,8 @@ def:pub move_elbow_segment(fullPoints: list, segIdx: int, pos: dict) -> list {
             pts[1].y = newY;
             newResult = [{"x": pts[0].x, "y": pts[0].y}, {"x": pts[0].x, "y": newY}];
             rj = 1;
-            while rj < pts.length {
-                newResult.push({"x": pts[rj].x, "y": pts[rj].y});
+            while rj < len(pts) {
+                newResult.append({"x": pts[rj].x, "y": pts[rj].y});
                 rj = rj + 1;
             }
             return newResult;
@@ -223,12 +223,12 @@ def:pub move_elbow_segment(fullPoints: list, segIdx: int, pos: dict) -> list {
             pts[n - 2].y = newY;
             newResult = [];
             rj = 0;
-            while rj < pts.length - 1 {
-                newResult.push({"x": pts[rj].x, "y": pts[rj].y});
+            while rj < len(pts) - 1 {
+                newResult.append({"x": pts[rj].x, "y": pts[rj].y});
                 rj = rj + 1;
             }
-            newResult.push({"x": pts[n - 1].x, "y": newY});
-            newResult.push({"x": pts[n - 1].x, "y": pts[n - 1].y});
+            newResult.append({"x": pts[n - 1].x, "y": newY});
+            newResult.append({"x": pts[n - 1].x, "y": pts[n - 1].y});
             return newResult;
         }
         # Inner segment: move both vertices
@@ -241,8 +241,8 @@ def:pub move_elbow_segment(fullPoints: list, segIdx: int, pos: dict) -> list {
             pts[1].x = newX;
             newResult = [{"x": pts[0].x, "y": pts[0].y}, {"x": newX, "y": pts[0].y}];
             rj = 1;
-            while rj < pts.length {
-                newResult.push({"x": pts[rj].x, "y": pts[rj].y});
+            while rj < len(pts) {
+                newResult.append({"x": pts[rj].x, "y": pts[rj].y});
                 rj = rj + 1;
             }
             return newResult;
@@ -252,12 +252,12 @@ def:pub move_elbow_segment(fullPoints: list, segIdx: int, pos: dict) -> list {
             pts[n - 2].x = newX;
             newResult = [];
             rj = 0;
-            while rj < pts.length - 1 {
-                newResult.push({"x": pts[rj].x, "y": pts[rj].y});
+            while rj < len(pts) - 1 {
+                newResult.append({"x": pts[rj].x, "y": pts[rj].y});
                 rj = rj + 1;
             }
-            newResult.push({"x": newX, "y": pts[n - 1].y});
-            newResult.push({"x": pts[n - 1].x, "y": pts[n - 1].y});
+            newResult.append({"x": newX, "y": pts[n - 1].y});
+            newResult.append({"x": pts[n - 1].x, "y": pts[n - 1].y});
             return newResult;
         }
         # Inner segment
@@ -271,7 +271,7 @@ def:pub move_elbow_segment(fullPoints: list, segIdx: int, pos: dict) -> list {
 def:pub find_bound_line_updates_for_shape(updated_shape: dict, elements: list) -> list {
     result = [];
     cpts = getConnectionPoints(updated_shape);
-    if cpts.length == 0 {
+    if len(cpts) == 0 {
         return result;
     }
 
@@ -288,15 +288,15 @@ def:pub find_bound_line_updates_for_shape(updated_shape: dict, elements: list) -
     }
 
     i = 0;
-    while i < elements.length {
+    while i < len(elements) {
         el = elements[i];
         if el.id != updated_shape["id"] {
             if el.type == "line" or el.type == "arrow" {
                 updated = False;
-                updatedEl = Object.assign({}, el);
+                updatedEl = {**el};
                 if el.startBinding and el.startBinding.elementId == updated_shape["id"] {
                     j = 0;
-                    while j < cpts.length {
+                    while j < len(cpts) {
                         if cpts[j].side == el.startBinding.side {
                             updatedEl.x1 = cpts[j].x;
                             updatedEl.y1 = cpts[j].y;
@@ -307,7 +307,7 @@ def:pub find_bound_line_updates_for_shape(updated_shape: dict, elements: list) -
                 }
                 if el.endBinding and el.endBinding.elementId == updated_shape["id"] {
                     j = 0;
-                    while j < cpts.length {
+                    while j < len(cpts) {
                         if cpts[j].side == el.endBinding.side {
                             updatedEl.x2 = cpts[j].x;
                             updatedEl.y2 = cpts[j].y;
@@ -321,7 +321,7 @@ def:pub find_bound_line_updates_for_shape(updated_shape: dict, elements: list) -
                     if updatedEl.curveStyle == "elbow" {
                         updatedEl.elbowBends = None;
                     }
-                    result.push({"id": el.id, "element": updatedEl});
+                    result.append({"id": el.id, "element": updatedEl});
                 }
             }
         }
@@ -355,7 +355,7 @@ def:pub findNearestConnectionPoint(mousePos: dict, elements: list, threshold: fl
     nearestDist = threshold;
 
     i = 0;
-    while i < elements.length {
+    while i < len(elements) {
         element = elements[i];
         connPoints = getConnectionPoints(element);
 
@@ -372,7 +372,7 @@ def:pub findNearestConnectionPoint(mousePos: dict, elements: list, threshold: fl
         }
 
         j = 0;
-        while j < connPoints.length {
+        while j < len(connPoints) {
             dist = calculateDistance(mousePos, connPoints[j]);
             if dist < nearestDist {
                 nearestDist = dist;

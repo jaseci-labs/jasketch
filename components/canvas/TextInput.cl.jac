@@ -1,22 +1,23 @@
-def:pub TextInput(props: dict) -> JsxElement {
-    textInput = props["textInput"];
-    textInputRef = props["textInputRef"];
-    currentColor = props["currentColor"] or "#000000";
-    currentFontSize = props["currentFontSize"] or 24;
-    currentFontFamily = props["currentFontFamily"] or "Virgil";
-    zoom = props["zoom"] or 1;
-    panOffset = props["panOffset"] or {"x": 0, "y": 0};
-    onTextChange = props["onTextChange"];
-    onKeyDown = props["onKeyDown"];
-    onBlur = props["onBlur"];
+def:pub TextInput(
+    textInput: any,
+    textInputRef: any,
+    onTextChange: Callable[[str], None],
+    onKeyDown: Callable[[KeyboardEvent], None],
+    onBlur: Callable[[], None],
+    currentColor: str = "#000000",
+    currentFontSize: float = 24,
+    currentFontFamily: str = "Virgil",
+    zoom: float = 1.0,
+    panOffset: dict = {"x": 0, "y": 0}
+) -> JsxElement | None {
 
     if not textInput {
         return None;
     }
 
     # Transform world coordinates to screen coordinates
-    screenX = textInput.x * zoom + panOffset.x;
-    screenY = textInput.y * zoom + panOffset.y;
+    screenX = textInput.x * zoom + panOffset["x"];
+    screenY = textInput.y * zoom + panOffset["y"];
     scaledFontSize = currentFontSize * zoom;
 
     isShapeEdit = textInput.editingShapeId != None and textInput.editingShapeId != undefined;

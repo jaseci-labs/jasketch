@@ -115,7 +115,7 @@ def:pub useChatSocket() -> dict {
         history = [];
         for m in messagesRef.current {
             if m.role == "user" or m.role == "assistant" {
-                history.push({"role": m.role, "content": m.content});
+                history.append({"role": m.role, "content": m.content});
             }
         }
 

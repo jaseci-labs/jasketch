@@ -130,7 +130,7 @@ def:pub TopBar(props: dict) -> JsxElement {
 
     def handleJaSketchFileChange(e: ChangeEvent) -> None {
         files = e.target.files;
-        if files.length > 0 {
+        if len(files) > 0 {
             if onLoad { onLoad(files[0]); }
             e.target.value = "";
         }
@@ -138,7 +138,7 @@ def:pub TopBar(props: dict) -> JsxElement {
 
     def handleFileChange(e: ChangeEvent) -> None {
         files = e.target.files;
-        if files.length > 0 {
+        if len(files) > 0 {
             file = files[0];
             reader = Reflect.construct(FileReader, []);
             reader.onload = lambda (event: any) {
@@ -161,8 +161,8 @@ def:pub TopBar(props: dict) -> JsxElement {
     }
 
     is_session_active = roomState and roomState.room_id;
-    participant_sids = [k for k in Object.keys(participants) if k != "__hostSid"];
-    participant_count = participant_sids.length;
+    participant_sids = [k for k in participants.keys() if k != "__hostSid"];
+    participant_count = len(participant_sids);
     collab_btn_class = "w-8 h-8 rounded-md flex items-center justify-center transition-all duration-150 " + (is_session_active and "text-green-600 bg-green-50 shadow-[0_0_8px_2px_rgba(34,197,94,0.35)] hover:bg-green-100" or "text-orange-600 hover:bg-orange-50");
 
     return <header className="topbar bg-white/95 border-b border-gray-200/60 flex-shrink-0 relative overflow-visible">
@@ -233,7 +233,7 @@ def:pub TopBar(props: dict) -> JsxElement {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <circle cx="12" cy="8" r="4" /><path d="M20 21a8 8 0 1 0-16 0" />
                     </svg>
-                    {String(participant_count)}
+                    {str(participant_count)}
                 </button> or None}
 
                 <button onClick={lambda { menuOpen = not menuOpen; }} title="Menu" className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400">

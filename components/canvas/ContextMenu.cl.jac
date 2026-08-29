@@ -1,25 +1,26 @@
-def:pub ContextMenu(props: dict) -> JsxElement {
-    visible = props["visible"] or False;
-    x = props["x"] or 0;
-    y = props["y"] or 0;
-    onClose = props["onClose"];
-    onDelete = props["onDelete"];
-    onDuplicate = props["onDuplicate"];
-    onBringToFront = props["onBringToFront"];
-    onSendToBack = props["onSendToBack"];
-    onClearCanvas = props["onClearCanvas"];
-    onExportPNG = props["onExportPNG"];
-    onExportSVG = props["onExportSVG"];
-    onCopySelectionPNG = props["onCopySelectionPNG"];
-    onPaste = props["onPaste"];
-    onCopyCanvasPNG = props["onCopyCanvasPNG"];
-    onCopyCanvasSVG = props["onCopyCanvasSVG"];
-    onSelectAll = props["onSelectAll"];
-    onGroup = props["onGroup"];
-    onUngroup = props["onUngroup"];
-    hasSelection = props["hasSelection"] or False;
-    canGroup = props["canGroup"] or False;
-    canUngroup = props["canUngroup"] or False;
+def:pub ContextMenu(
+    onClose: Callable[[], None],
+    onDelete: Callable[[], None],
+    onDuplicate: Callable[[], None],
+    onBringToFront: Callable[[], None],
+    onSendToBack: Callable[[], None],
+    onClearCanvas: Callable[[], None],
+    onExportPNG: Callable[[], None],
+    onExportSVG: Callable[[], None],
+    onCopySelectionPNG: Callable[[], None],
+    onPaste: Callable[[], None],
+    onCopyCanvasPNG: Callable[[], None],
+    onCopyCanvasSVG: Callable[[], None],
+    onSelectAll: Callable[[], None],
+    onGroup: Callable[[], None],
+    onUngroup: Callable[[], None],
+    visible: bool = False,
+    x: float = 0,
+    y: float = 0,
+    hasSelection: bool = False,
+    canGroup: bool = False,
+    canUngroup: bool = False
+) -> JsxElement | None {
 
     if not visible {
         return None;
@@ -32,7 +33,7 @@ def:pub ContextMenu(props: dict) -> JsxElement {
 
     return <div
         className="fixed bg-white rounded-lg shadow-[0_6px_24px_rgba(0,0,0,0.15)] border border-gray-200/80 py-1 min-w-[200px] z-50"
-        style={{"left": String(x) + "px", "top": String(y) + "px"}}
+        style={{"left": str(x) + "px", "top": str(y) + "px"}}
         onMouseLeave={onClose}
     >
         {hasSelection and <div>

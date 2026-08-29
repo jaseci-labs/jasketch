@@ -369,7 +369,7 @@ def:pub ChatPanel(props: dict) -> JsxElement {
             {chat.messages.length == 0 and <ChatEmptyState /> or None}
 
             {[
-                <div key={String(msg.id)}>
+                <div key={str(msg.id)}>
                     <ChatMessage msg={msg} />
                 </div>
                 for msg in chat.messages

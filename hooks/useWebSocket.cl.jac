@@ -81,11 +81,11 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             rj_sid = getSessionId();
             rj_name = localStorage.getItem("jasketch_username") or "Anonymous";
             rj_color = msg.cursorColor or "#999999";
-            rj_parts = Object.assign({}, participantsRef.current);
+            rj_parts = {**participantsRef.current};
             rj_parts[rj_sid] = {"username": rj_name, "color": rj_color};
             # Add all existing room members sent by the server
             if msg.members {
-                rj_member_sids = Object.keys(msg.members);
+                rj_member_sids = msg.members.keys();
                 for rj_msid in rj_member_sids {
                     rj_parts[rj_msid] = {
                         "username": msg.members[rj_msid].username or "Anonymous",
@@ -94,7 +94,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                 }
             }
             participantsRef.current = rj_parts;
-            participants = Object.assign({}, rj_parts);
+            participants = {**rj_parts};
             # Store host session ID from server
             if msg.hostSessionId {
                 hostSessionIdRef.current = msg.hostSessionId;
@@ -125,7 +125,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             cu_sid = msg.sessionId or "";
             # Ignore own cursor echoes (relay broadcasts to all during update_username)
             if cu_sid == getSessionId() { return; }
-            cu_updated = Object.assign({}, cursorStatesRef.current);
+            cu_updated = {**cursorStatesRef.current};
             cu_updated[cu_sid] = {
                 "username": msg.username or "Anonymous",
                 "color": msg.cursorColor or "#999999",
@@ -133,17 +133,17 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                 "y": msg.y or 0.0
             };
             cursorStatesRef.current = cu_updated;
-            cursorStates = Object.assign({}, cu_updated);
+            cursorStates = {**cu_updated};
             # Always upsert participant info (handles users not yet seen via room_joined)
             if cu_sid {
-                cu_parts = Object.assign({}, participantsRef.current);
+                cu_parts = {**participantsRef.current};
                 cu_existing = cu_parts[cu_sid] or {};
-                cu_parts[cu_sid] = Object.assign({}, cu_existing, {
+                cu_parts[cu_sid] = {**cu_existing, **{
                     "username": msg.username or "Anonymous",
                     "color": msg.cursorColor or "#999999"
-                });
+                }};
                 participantsRef.current = cu_parts;
-                participants = Object.assign({}, cu_parts);
+                participants = {**cu_parts};
             }
             return;
         }
@@ -153,10 +153,10 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             # Add new member to participants
             rmj_sid = msg.sessionId or "";
             if rmj_sid {
-                rmj_parts = Object.assign({}, participantsRef.current);
+                rmj_parts = {**participantsRef.current};
                 rmj_parts[rmj_sid] = {"username": msg.username or "Anonymous", "color": msg.cursorColor or "#999999"};
                 participantsRef.current = rmj_parts;
-                participants = Object.assign({}, rmj_parts);
+                participants = {**rmj_parts};
             }
             sync_hook = elementsHookRef.current;
             sync_elems = (sync_hook.elementsRef and sync_hook.elementsRef.current) or sync_hook.elements;
@@ -170,15 +170,15 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         if msg_type == "room_member_left" {
             left_sid = msg.sessionId or "";
             if left_sid {
-                cl_updated = Object.assign({}, cursorStatesRef.current);
-                cl_filtered = Object.fromEntries(Object.entries(cl_updated).filter(lambda (kv: any) -> bool { return kv[0] != left_sid; }));
+                cl_updated = {**cursorStatesRef.current};
+                cl_filtered = {cl_k: cl_v for (cl_k, cl_v) in cl_updated.items() if cl_k != left_sid};
                 cursorStatesRef.current = cl_filtered;
-                cursorStates = Object.assign({}, cl_filtered);
+                cursorStates = {**cl_filtered};
                 # Remove from participants
-                rml_parts = Object.assign({}, participantsRef.current);
-                rml_filtered = Object.fromEntries(Object.entries(rml_parts).filter(lambda (kv: any) -> bool { return kv[0] != left_sid; }));
+                rml_parts = {**participantsRef.current};
+                rml_filtered = {rml_k: rml_v for (rml_k, rml_v) in rml_parts.items() if rml_k != left_sid};
                 participantsRef.current = rml_filtered;
-                participants = Object.assign({}, rml_filtered);
+                participants = {**rml_filtered};
             }
             console.log("[JaSketch] Member left");
             return;
@@ -209,7 +209,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             hook.addMultipleElements(items);
             addedIds = [];
             for it in items {
-                addedIds.push(it.id or "");
+                addedIds.append(it.id or "");
             }
             sendResponse(ws, requestId, True, {"ids": addedIds, "count": items.length, "action": "created"});
         } elif action == "getElements" {
@@ -218,7 +218,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             result = [];
             for el in elems {
                 if el and (not data.type or el.type == data.type) {
-                    result.push({"id": el.id, "element": el});
+                    result.append({"id": el.id, "element": el});
                 }
             }
             sendResponse(ws, requestId, True, {"elements": result, "total": elems.length});
@@ -233,7 +233,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                 }
             }
             if foundEl {
-                updated = Object.assign({}, foundEl, changes);
+                updated = {**foundEl, **changes};
                 hook.updateElement(targetId, updated);
                 sendResponse(ws, requestId, True, {"id": targetId, "action": "updated"});
             } else {
@@ -460,9 +460,9 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         # Filter out draft elements (id="__draft__") received from remote previews
         bcast_filtered = [];
         bcast_fi = 0;
-        while bcast_fi < bcast_elements.length {
+        while bcast_fi < len(bcast_elements) {
             if bcast_elements[bcast_fi] and bcast_elements[bcast_fi].id != "__draft__" {
-                bcast_filtered.push(bcast_elements[bcast_fi]);
+                bcast_filtered.append(bcast_elements[bcast_fi]);
             }
             bcast_fi = bcast_fi + 1;
         }
@@ -555,10 +555,10 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         # Optimistic self-update
         uu_sid = getSessionId();
         if participantsRef.current[uu_sid] {
-            uu_parts = Object.assign({}, participantsRef.current);
-            uu_parts[uu_sid] = Object.assign({}, uu_parts[uu_sid], {"username": uu_username});
+            uu_parts = {**participantsRef.current};
+            uu_parts[uu_sid] = {**uu_parts[uu_sid], **{"username": uu_username}};
             participantsRef.current = uu_parts;
-            participants = Object.assign({}, uu_parts);
+            participants = {**uu_parts};
         }
     }
     sendUpdateUsernameRef.current = sendUpdateUsername;
