@@ -117,3 +117,34 @@ max_replicas = 3
 cpu_request = "250m"
 cpu_utilization_target = 70
 memory_limit = "2Gi"
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+# Joins the SHARED ALB (group.name) instead of provisioning a second load
+# balancer -- the same group and certificate the existing jasketch.jaseci.org
+# ingress uses. Each deploy sets K8S_INGRESS_HOST for its own hostname.
+#
+# The host deliberately defaults to the dev name rather than empty: an EMPTY
+# host means match-any-host, and a match-any ingress joined to a shared ALB
+# would swallow traffic meant for every other app on it. A wrong-but-specific
+# hostname is inert; a wildcard is not.
+#
+# This lives at the top level because [environments.<name>.scale.*] profiles are
+# silently ignored -- `--profile dev` produced an identical plan with no ingress,
+# while the same block at the top level produced one. Checked on 0.34.14.
+#
+# Stickiness is copied from the existing ingress deliberately: without it the ALB
+# can land successive requests from one browser on different replicas, breaking a
+# websocket whose backplane subscription lives on another pod.
+[scale.microservices.ingress]
+enabled = true
+host = "${K8S_INGRESS_HOST:-jasketch-dev.jaseci.org}"
+ingress_class_name = "alb"
+
+[scale.microservices.ingress.annotations]
+"alb.ingress.kubernetes.io/group.name" = "jaseci-cluster-alb-2"
+"alb.ingress.kubernetes.io/scheme" = "internet-facing"
+"alb.ingress.kubernetes.io/target-type" = "ip"
+"alb.ingress.kubernetes.io/listen-ports" = "[{\"HTTP\": 80}, {\"HTTPS\": 443}]"
+"alb.ingress.kubernetes.io/ssl-redirect" = "443"
+"alb.ingress.kubernetes.io/certificate-arn" = "arn:aws:acm:us-east-2:776241927220:certificate/642526d6-00ee-4394-970d-89d5dc898906"
+"alb.ingress.kubernetes.io/target-group-attributes" = "stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=86400"

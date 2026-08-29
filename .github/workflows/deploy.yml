@@ -12,6 +12,10 @@ on:
         description: "Target namespace. `jasketch` is PRODUCTION."
         required: true
         default: jasketch-dev
+      ingress_host:
+        description: "Hostname for the ingress. `jasketch.jaseci.org` is PRODUCTION."
+        required: true
+        default: jasketch-dev.jaseci.org
 
 permissions:
   id-token: write
@@ -168,11 +172,13 @@ jobs:
         run: jac start --scale --dry-run
         env:
           K8S_NAMESPACE: ${{ inputs.namespace || 'jasketch' }}
+          K8S_INGRESS_HOST: ${{ inputs.ingress_host || 'jasketch.jaseci.org' }}
 
       - name: Deploy
         run: jac start --scale
         env:
           K8S_NAMESPACE: ${{ inputs.namespace || 'jasketch' }}
+          K8S_INGRESS_HOST: ${{ inputs.ingress_host || 'jasketch.jaseci.org' }}
 
       - name: Report status
         if: always()
