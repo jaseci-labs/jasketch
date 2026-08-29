@@ -2053,3 +2053,127 @@ class TestDialogDismissal:
         app.mouse.click(20, 20)
         app.wait_for_timeout(ACTION_DELAY)
         assert app.get_by_text("Share Canvas").count() == 0
+
+
+class TestGroupingAndLayering:
+    """These are all reached from the keydown listener, whose closure only
+    refreshes when the ELEMENT list changes -- so anything that read the
+    selection from it saw the state from before the selection was made."""
+
+    def _three_boxes(self, page: Page):
+        clear_canvas(page)
+        for i in range(3):
+            press_key(page, "Escape")
+            press_key(page, "5")
+            drag_canvas(page, 300 + i * 110, 250, 300 + i * 110 + 90, 320)
+        wait_for_elements(page, 3)
+        press_key(page, "Escape")
+        press_key(page, "Control+a")
+        page.wait_for_timeout(ACTION_DELAY)
+
+    def test_select_all_then_group(self, app: Page):
+        self._three_boxes(app)
+        press_key(app, "Control+g")
+        app.wait_for_timeout(ACTION_DELAY)
+        grouped = [e for e in get_elements(app) if e.get("groupId")]
+        assert len(grouped) == 3, f"Ctrl+A then Ctrl+G grouped {len(grouped)}/3"
+
+    def test_select_all_then_duplicate(self, app: Page):
+        self._three_boxes(app)
+        press_key(app, "Control+d")
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        assert get_elements_count(app) == 6, "Ctrl+A then Ctrl+D should duplicate all three"
+
+    def test_layering_works_in_both_directions(self, app: Page):
+        """bring-to-front used to do removeElement then addElement -- two writes
+        in one tick that cancelled each other out."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 300, 250, 500, 400)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 360, 300, 560, 450)
+        wait_for_elements(app, 2)
+        original = [e["id"] for e in get_elements(app)]
+        press_key(app, "Escape")
+        click_canvas(app, 530, 430)
+        press_key(app, "Control+BracketLeft")
+        app.wait_for_timeout(ACTION_DELAY)
+        sent_back = [e["id"] for e in get_elements(app)]
+        assert sent_back != original, "send to back did not reorder"
+        press_key(app, "Control+BracketRight")
+        app.wait_for_timeout(ACTION_DELAY)
+        assert [e["id"] for e in get_elements(app)] == original, (
+            "bring to front did not undo the send to back"
+        )
+
+    def test_layering_keeps_the_selection(self, app: Page):
+        """Clearing it meant you could not layer twice in a row."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 250, 540, 340)
+        wait_for_elements(app, 1)
+        press_key(app, "Escape")
+        click_canvas(app, 470, 295)
+        press_key(app, "Control+BracketLeft")
+        app.wait_for_timeout(ACTION_DELAY)
+        x0 = get_elements(app)[0]["x"]
+        press_key(app, "ArrowRight")
+        assert abs(get_elements(app)[0]["x"] - x0 - 1) < 0.6, (
+            "the shape was deselected by the layer change"
+        )
+
+
+class TestRapidDrawing:
+    def test_twelve_shapes_drawn_quickly_all_land(self, app: Page):
+        """Every mutation used to rebuild from the render-time element list, so
+        two in one tick meant the second discarded the first."""
+        clear_canvas(app)
+        box = get_canvas(app).bounding_box()
+        for i in range(12):
+            press_key(app, "Escape")
+            press_key(app, "5")
+            app.mouse.move(box["x"] + 300 + i * 58, box["y"] + 250)
+            app.mouse.down()
+            app.mouse.move(box["x"] + 300 + i * 58 + 48, box["y"] + 310, steps=3)
+            app.mouse.up()
+            app.wait_for_timeout(40)
+        wait_for_elements(app, 12, timeout=8000)
+        assert get_elements_count(app) == 12
+
+
+class TestConnectorLabelRoundTrip:
+    def test_a_connector_label_survives_save_and_load(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 250, 540, 340)
+        wait_for_elements(app, 1)
+        press_key(app, "Escape")
+        double_click_canvas(app, 470, 295)
+        app.keyboard.type("Box A", delay=12)
+        press_key(app, "Escape")
+        press_key(app, "Escape")
+        press_key(app, "4")
+        drag_canvas(app, 560, 300, 700, 300)
+        wait_for_elements(app, 2)
+        press_key(app, "Escape")
+        double_click_canvas(app, 630, 300)
+        app.keyboard.type("yes", delay=12)
+        press_key(app, "Escape")
+        app.wait_for_timeout(ACTION_DELAY)
+
+        with app.expect_download(timeout=15000) as dl:
+            press_key(app, "Control+s")
+        saved = "/tmp/jasketch-roundtrip.jasketch"
+        dl.value.save_as(saved)
+
+        clear_canvas(app)
+        # index 1 is the .jasketch input; index 0 accepts images
+        app.locator("input[type=file]").nth(1).set_input_files(saved)
+        app.wait_for_timeout(ACTION_DELAY * 6)
+        restored = {e["type"]: e.get("shapeText") for e in get_elements(app)}
+        assert restored.get("rectangle") == "Box A", f"shape label lost: {restored}"
+        assert restored.get("arrow") == "yes", f"connector label lost: {restored}"

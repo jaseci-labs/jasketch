@@ -65,7 +65,7 @@ def:pub TextInput(
             span = Math.sqrt(
                 Math.pow(shapeEl.x2 - shapeEl.x1, 2) + Math.pow(shapeEl.y2 - shapeEl.y1, 2)
             );
-            baseStyle.width = Math.max(80.0, span * 0.8) * zoom + "px";
+            baseStyle.width = Math.max(150.0, span * 0.9) * zoom + "px";
         }
         baseStyle.whiteSpace = "pre-wrap";
         baseStyle.wordBreak = "break-word";

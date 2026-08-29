@@ -1,5 +1,19 @@
 import from .canvas { drawElement, getElementBounds }
 
+"""Make text safe to drop into SVG markup.
+
+Labels are user-written, so a single `&` or `<` in one produced a document that
+would not parse. Every text node in the export goes through this."""
+def escapeXml(raw: str) -> str {
+    out = str(raw or "");
+    out = out.replace("&", "&amp;");
+    out = out.replace("<", "&lt;");
+    out = out.replace(">", "&gt;");
+    out = out.replace("\"", "&quot;");
+    return out;
+}
+
+
 def extractElements(selectedElements: list) -> list {
     elements = [];
     i = 0;
@@ -143,7 +157,7 @@ def buildSvgString(elements: list, bounds: dict) -> str {
             ay2 = el.y2 - headLen * Math.sin(arrAngle + Math.PI / 6);
             parts.append("<polygon points=\"" + str(el.x2) + "," + str(el.y2) + " " + str(ax1) + "," + str(ay1) + " " + str(ax2) + "," + str(ay2) + "\" fill=\"" + el.color + "\"/>");
         } elif el.type == "text" {
-            parts.append("<text x=\"" + str(el.x) + "\" y=\"" + str(el.y + el.fontSize) + "\" font-size=\"" + str(el.fontSize) + "\" font-family=\"" + el.fontFamily + "\" fill=\"" + el.color + "\">" + el.text + "</text>");
+            parts.append("<text x=\"" + str(el.x) + "\" y=\"" + str(el.y + el.fontSize) + "\" font-size=\"" + str(el.fontSize) + "\" font-family=\"" + el.fontFamily + "\" fill=\"" + el.color + "\">" + escapeXml(el.text) + "</text>");
         } elif el.type == "freehand" and el.points and el.points.length > 1 {
             d = "M " + str(el.points[0].x) + " " + str(el.points[0].y);
             pi = 1;
@@ -156,6 +170,32 @@ def buildSvgString(elements: list, bounds: dict) -> str {
             parts.append("<image x=\"" + str(el.x) + "\" y=\"" + str(el.y) + "\" width=\"" + str(el.width) + "\" height=\"" + str(el.height) + "\" href=\"" + el.src + "\"/>");
         }
         # Add text inside shapes if present (with word wrapping)
+        if el.shapeText and (el.type == "line" or el.type == "arrow") {
+            # Connector labels sit at the midpoint, or the bend when there is one.
+            svgLCx = (el.x1 + el.x2) / 2;
+            svgLCy = (el.y1 + el.y2) / 2;
+            if el.bendX != None and el.bendX != undefined {
+                svgLCx = el.bendX;
+                svgLCy = el.bendY;
+            }
+            svgLFs = el.shapeTextFontSize or 16;
+            svgLFf = el.shapeTextFontFamily or "Virgil";
+            svgLFc = el.shapeTextColor or el.color or "#000000";
+            svgLLines = el.shapeText.split(String.fromCharCode(10));
+            svgLLh = svgLFs * 1.2;
+            svgLStart = svgLCy - (len(svgLLines) * svgLLh) / 2 + svgLLh / 2;
+            svgLi = 0;
+            while svgLi < len(svgLLines) {
+                parts.append(
+                    "<text x=\"" + str(svgLCx) + "\" y=\"" + str(svgLStart + svgLi * svgLLh)
+                    + "\" font-family=\"" + svgLFf + "\" font-size=\"" + str(svgLFs)
+                    + "\" fill=\"" + svgLFc
+                    + "\" text-anchor=\"middle\" dominant-baseline=\"middle\">"
+                    + escapeXml(svgLLines[svgLi]) + "</text>"
+                );
+                svgLi = svgLi + 1;
+            }
+        }
         if el.shapeText and (el.type == "rectangle" or el.type == "circle" or el.type == "diamond") {
             svgTCx = el.x + el.width / 2;
             svgTCy = el.y + el.height / 2;
@@ -236,7 +276,7 @@ def buildSvgString(elements: list, bounds: dict) -> str {
             svgTLi = 0;
             while svgTLi < len(svgTWrapped) {
                 svgTLy = svgTStartY + svgTLi * svgTLineH;
-                parts.append("<text x=\"" + str(svgTCx) + "\" y=\"" + str(svgTLy) + "\" font-size=\"" + str(svgTFs) + "\" font-family=\"" + svgTFf + "\" fill=\"" + svgTFc + "\" text-anchor=\"middle\" dominant-baseline=\"central\">" + svgTWrapped[svgTLi] + "</text>");
+                parts.append("<text x=\"" + str(svgTCx) + "\" y=\"" + str(svgTLy) + "\" font-size=\"" + str(svgTFs) + "\" font-family=\"" + svgTFf + "\" fill=\"" + svgTFc + "\" text-anchor=\"middle\" dominant-baseline=\"central\">" + escapeXml(svgTWrapped[svgTLi]) + "</text>");
                 svgTLi = svgTLi + 1;
             }
         }
@@ -425,7 +465,14 @@ def:pub saveAsJaSketch(elements: list, filename: str) -> None {
                 "opacity": el.opacity or 1,
                 "boundElements": None,
                 "startBinding": el.startBinding and {"elementId": el.startBinding.elementId, "side": el.startBinding.side or "", "mode": "inside"} or None,
-                "endBinding": el.endBinding and {"elementId": el.endBinding.elementId, "side": el.endBinding.side or "", "mode": "orbit"} or None
+                "endBinding": el.endBinding and {"elementId": el.endBinding.elementId, "side": el.endBinding.side or "", "mode": "orbit"} or None,
+                # A connector carries a label too. Leaving these out meant
+                # saving a flowchart and reopening it lost every arrow label,
+                # which is where most of a flowchart's meaning lives.
+                "shapeText": el.shapeText or None,
+                "shapeTextColor": el.shapeTextColor or None,
+                "shapeTextFontSize": el.shapeTextFontSize or None,
+                "shapeTextFontFamily": el.shapeTextFontFamily or None
             });
 
         } elif el.type == "freehand" {
@@ -621,7 +668,13 @@ def:pub loadFromJaSketch(file: any, onLoad: any, onError: any) -> None {
                     "endBinding": el.endBinding or None,
                     "bendX": lBendX,
                     "bendY": lBendY,
-                    "elbowBends": lElbowBends
+                    "elbowBends": lElbowBends,
+                    # The saver writes these; without reading them back, opening
+                    # a saved flowchart dropped every arrow label.
+                    "shapeText": el.shapeText or None,
+                    "shapeTextColor": el.shapeTextColor or None,
+                    "shapeTextFontSize": el.shapeTextFontSize or None,
+                    "shapeTextFontFamily": el.shapeTextFontFamily or None
                 });
 
             } elif el.type == "freehand" and el.points {
