@@ -88,18 +88,15 @@ def:pub TopBar(
         "text": "Text",
         "image": "Image"
     };
-    # Both keys are shown because both work, and the letter is the one people
-    # arrive already knowing: a tooltip that only says "5" hides the shortcut
-    # they would actually reach for.
     toolShortcuts = {
-        "select": "V or 1",
-        "freehand": "P or 2",
-        "line": "L or 3",
-        "arrow": "A or 4",
-        "rectangle": "R or 5",
-        "diamond": "D or 6",
-        "circle": "O or 7",
-        "text": "T or 8",
+        "select": "1",
+        "freehand": "2",
+        "line": "3",
+        "arrow": "4",
+        "rectangle": "5",
+        "diamond": "6",
+        "circle": "7",
+        "text": "8",
         "image": "9"
     };
 

@@ -7,7 +7,7 @@ import from "..hooks.useViewport" { useViewport }
 import from "..hooks.useTextInput" { useTextInput }
 import from "..hooks.useWebSocket" { useWebSocket }
 import from "..services.geometry" { constrain_drag_point, shift_element, getMousePosition, findNearestConnectionPoint, find_bound_line_updates_for_shape, get_elbow_full_points, move_elbow_segment }
-import from "..services.canvas" { drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
+import from "..services.canvas" { shape_text_min_height, drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
 import from "..services.collision" { getResizeHandleAtPoint, getBendHandleAtPoint, get_rotation_handle_at_point, getLineEndpointAtPoint, get_elbow_segment_at_point }
 import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, copySelectionAsPNG, copyCanvasAsPNG, copyCanvasAsSVG, saveAsJaSketch, loadFromJaSketch }
 import from "..constants.tools" { TOOL_SHORTCUTS }
@@ -368,28 +368,11 @@ def:pub Canvas(
             }
             if not textInputHook.textInput and (e.key == "<" or e.key == ",") and (e.ctrlKey or e.metaKey) and e.shiftKey {
                 e.preventDefault();
-                curSel = selectedElementRef.current;
-                if curSel and curSel.element.type == "text" {
-                    element = curSel.element;
-                    newSize = element.fontSize or 16;
-                    newSize = newSize - 2;
-                    if newSize < 8 {
-                        newSize = 8;
-                    }
-                    elementsHook.updateElement(element.id, {**element, "fontSize": newSize});
-                    selectionHookRef.current.setSelectedElement({"element": {**element, "fontSize": newSize}, "id": element.id});
-                }
+                bumpFontSize(-2);
             }
             if not textInputHook.textInput and (e.key == ">" or e.key == ".") and (e.ctrlKey or e.metaKey) and e.shiftKey {
                 e.preventDefault();
-                curSel = selectedElementRef.current;
-                if curSel and curSel.element.type == "text" {
-                    element = curSel.element;
-                    newSize = element.fontSize or 16;
-                    newSize = newSize + 2;
-                    elementsHook.updateElement(element.id, {**element, "fontSize": newSize});
-                    selectionHookRef.current.setSelectedElement({"element": {**element, "fontSize": newSize}, "id": element.id});
-                }
+                bumpFontSize(2);
             }
             if not textInputHook.textInput and e.key == "?" {
                 e.preventDefault();
@@ -465,18 +448,77 @@ def:pub Canvas(
         }
         if updateElementRef {
             updateElementRef.current = lambda (id: any, changes: any) {
-                fi = 0;
-                foundEl = None;
-                while fi < elementsHook.elements.length {
-                    if elementsHook.elements[fi] and elementsHook.elements[fi].id == id {
-                        foundEl = elementsHook.elements[fi];
+                # A style change applies to EVERY selected shape, not just the
+                # one the sidebar happens to hold. The panel has a single id to
+                # hand back, so without this a user who selects six boxes and
+                # picks a colour watches exactly one of them change, with
+                # nothing on screen explaining why the rest were ignored.
+                styleTargets = [id];
+                # Read the selection through the ref, not the closure: this
+                # lambda is installed by an effect that only re-runs when the
+                # ELEMENT list changes, so selecting shapes does not refresh it
+                # and the captured selection would still be the empty one from
+                # before Ctrl+A.
+                multiSel = selectedElementsRef.current;
+                if multiSel and multiSel.length > 1 {
+                    inSel = False;
+                    mi = 0;
+                    while mi < multiSel.length {
+                        if multiSel[mi] and multiSel[mi].id == id { inSel = True; }
+                        mi = mi + 1;
                     }
-                    fi = fi + 1;
+                    # Only widen when the sidebar's element really is part of the
+                    # selection; otherwise this is some other caller's update.
+                    if inSel {
+                        styleTargets = [];
+                        mi = 0;
+                        while mi < multiSel.length {
+                            if multiSel[mi] and multiSel[mi].id {
+                                styleTargets.append(multiSel[mi].id);
+                            }
+                            mi = mi + 1;
+                        }
+                    }
                 }
-                if foundEl {
-                    newElement = {**foundEl, **changes};
-                    elementsHook.updateElement(id, newElement);
-                    selectionHook.setSelectedElement({"element": newElement, "id": id});
+
+                styleBatch = [];
+                stillSelected = [];
+                primaryEl = None;
+                ti = 0;
+                while ti < styleTargets.length {
+                    wantId = styleTargets[ti];
+                    liveEls = (elementsHook.elementsRef and elementsHook.elementsRef.current)
+                        or elementsHook.elements;
+                    fi = 0;
+                    foundEl = None;
+                    while fi < liveEls.length {
+                        if liveEls[fi] and liveEls[fi].id == wantId {
+                            foundEl = liveEls[fi];
+                        }
+                        fi = fi + 1;
+                    }
+                    if foundEl {
+                        # A bigger label needs a bigger box, so restyling can
+                        # change geometry too.
+                        newElement = fit_shape_to_label({**foundEl, **changes});
+                        styleBatch.append({"id": wantId, "element": newElement});
+                        stillSelected.append({"element": newElement, "id": wantId});
+                        if wantId == id { primaryEl = newElement; }
+                    }
+                    ti = ti + 1;
+                }
+                if styleBatch.length == 0 {
+                    return;
+                }
+                # One write for the whole selection: N separate updateElement
+                # calls would each rebuild from the same list and only the last
+                # would survive.
+                elementsHook.updateMultipleElements(styleBatch);
+                if primaryEl {
+                    selectionHook.setSelectedElement({"element": primaryEl, "id": id});
+                }
+                if stillSelected.length > 1 {
+                    selectionHook.setSelectedElements(stillSelected);
                 }
             };
         }
@@ -607,6 +649,7 @@ def:pub Canvas(
                 updatedShape.shapeTextFontSize = None;
                 updatedShape.shapeTextFontFamily = None;
             }
+            updatedShape = fit_shape_to_label(updatedShape);
             elementsHook.updateElement(shapeId, updatedShape);
             selectionHook.setSelectedElement({"element": updatedShape, "id": shapeId});
         } elif textInputHook.hasContent() {
@@ -654,6 +697,73 @@ def:pub Canvas(
             elementsHook.removeElement(curSingle.id);
             selectionHook.clearSelection();
         }
+    }
+
+    """Grow a shape so its label fits inside it, and return the adjusted copy.
+
+    The label wraps to the shape's width, so a shape can always be made too
+    short for its own text. Excalidraw grows the container instead of letting
+    the words escape it, and so do we: a label rendered outside its own box
+    looks like a rendering fault, and nothing in the UI tells the user that
+    making the box taller would fix it."""
+    def fit_shape_to_label(el: any) -> any {
+        if not el or not el.shapeText {
+            return el;
+        }
+        fit_canvas = canvasRef.current;
+        if not fit_canvas {
+            return el;
+        }
+        needed = shape_text_min_height(fit_canvas.getContext("2d"), el);
+        if needed <= 0 {
+            return el;
+        }
+        # Height can be negative when the shape was drawn bottom-up; grow it
+        # along whichever direction it already runs so it does not flip.
+        if Math.abs(el.height) >= needed {
+            return el;
+        }
+        grown = {**el};
+        grown.height = needed if el.height >= 0 else -needed;
+        return grown;
+    }
+
+    """Resize the selected element's text by `delta` points.
+
+    A label living inside a shape is stored as shapeText/shapeTextFontSize, not
+    as a text element, so keying off type == "text" alone silently ignored every
+    labelled box -- while the help dialog went on advertising the shortcut."""
+    def bumpFontSize(delta: float) -> None {
+        curSel = selectedElementRef.current;
+        if not curSel or not curSel.element {
+            return;
+        }
+        element = curSel.element;
+        is_label = element.type != "text";
+        if is_label and not element.shapeText {
+            return;
+        }
+        current = (element.shapeTextFontSize or 16) if is_label else (element.fontSize or 16);
+        newSize = current + delta;
+        if newSize < 8 {
+            newSize = 8;
+        }
+        if newSize > 120 {
+            newSize = 120;
+        }
+        # Written out per field rather than with a computed key: a dict literal
+        # keyed by a variable does not survive the client compile, and fails
+        # silently -- the update is applied to a key nothing ever reads.
+        updated = {**element};
+        if is_label {
+            updated.shapeTextFontSize = newSize;
+        } else {
+            updated.fontSize = newSize;
+        }
+        # A bigger label needs a bigger box.
+        updated = fit_shape_to_label(updated);
+        elementsHook.updateElement(element.id, updated);
+        selectionHookRef.current.setSelectedElement({"element": updated, "id": element.id});
     }
 
     """Move the selection by (dx, dy) world units. False when nothing is selected.
@@ -1506,6 +1616,12 @@ def:pub Canvas(
                     newElement.x = origEl.x + deltaX;
                     newElement.width = origEl.width - deltaX;
                 }
+                # A labelled shape cannot be dragged smaller than its own text.
+                # The label re-wraps to the new width, so shrinking the width
+                # makes the text TALLER -- without this the words spill out of
+                # the box entirely and the diagram falls apart in the user's
+                # hands with no way to undo it except undo.
+                newElement = fit_shape_to_label(newElement);
             } elif origEl.type == "line" or origEl.type == "arrow" {
                 if handle == "nw" or handle == "w" or handle == "sw" {
                     newElement.x1 = origEl.x1 + deltaX;
