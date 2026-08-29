@@ -131,7 +131,7 @@ def:pub useChatSocket(
     }
 
     def getSessionId() -> any {
-        # Same key as useWebSocket — both hooks read the same stable per-tab ID
+        # Same key as useWebSocket - both hooks read the same stable per-tab ID
         key = "jasketch_session_id";
         sid = sessionStorage.getItem(key);
         if not sid {
