@@ -388,3 +388,61 @@ def:pub findNearestConnectionPoint(mousePos: dict, elements: list, threshold: fl
     }
     return nearest;
 }
+
+
+"""Constrain a drag end-point while Shift is held.
+
+Rectangles, diamonds and ellipses become square; lines and arrows snap to the
+nearest 45 degrees. Every other whiteboard does this, so the muscle memory
+arrives before the user reads any documentation -- holding Shift and getting a
+lopsided rectangle reads as the tool being broken."""
+def:pub constrain_drag_point(start: dict[str, float], pos: dict[str, float], tool: str) -> dict[str, float] {
+    dx: float = pos["x"] - start["x"];
+    dy: float = pos["y"] - start["y"];
+
+    if tool == "line" or tool == "arrow" {
+        step: float = Math.PI / 4;
+        snapped: float = Math.round(Math.atan2(dy, dx) / step) * step;
+        dist: float = Math.sqrt(dx * dx + dy * dy);
+        return {
+            "x": start["x"] + Math.cos(snapped) * dist,
+            "y": start["y"] + Math.sin(snapped) * dist
+        };
+    }
+
+    size: float = Math.max(Math.abs(dx), Math.abs(dy));
+    return {
+        "x": start["x"] + (size if dx >= 0 else -size),
+        "y": start["y"] + (size if dy >= 0 else -size)
+    };
+}
+
+
+"""Return a copy of `el` translated by (dx, dy), whatever its geometry is.
+
+Shapes carry x/y, lines and arrows carry two endpoints plus an optional bend,
+and freehand carries a point list. Moving one means touching whichever of those
+it actually has."""
+def:pub shift_element(el: any, dx: float, dy: float) -> any {
+    # `any`, not dict: an element is a heterogeneous JSON record, and a dict
+    # here types every value Unknown and turns the arithmetic below into errors.
+    moved: any = {**el};
+    if "x" in moved and moved["x"] != None {
+        moved["x"] = moved["x"] + dx;
+    }
+    if "y" in moved and moved["y"] != None {
+        moved["y"] = moved["y"] + dy;
+    }
+    for (a, b) in [("x1", "y1"), ("x2", "y2"), ("bendX", "bendY")] {
+        if a in moved and moved[a] != None {
+            moved[a] = moved[a] + dx;
+        }
+        if b in moved and moved[b] != None {
+            moved[b] = moved[b] + dy;
+        }
+    }
+    if "points" in moved and moved["points"] {
+        moved["points"] = [{**pt, "x": pt["x"] + dx, "y": pt["y"] + dy} for pt in moved["points"]];
+    }
+    return moved;
+}

@@ -12,16 +12,24 @@ def:pub TOOLS() -> list {
     ];
 }
 
+"""Single-key tool shortcuts.
+
+Two spellings reach every tool. The digits are JaSketch's own, in toolbar
+order, and are unchanged. The letters are Excalidraw's, matched exactly --
+V select, R rectangle, D diamond, O ellipse, A arrow, L line, P pencil,
+T text -- because a letter that lands on a DIFFERENT tool than the one the
+user's hand expects is worse than no letter at all. Before this, none of the
+letters did anything."""
 def:pub TOOL_SHORTCUTS() -> dict {
     return {
-        "1": "select",
-        "2": "freehand",
-        "3": "line",
-        "4": "arrow",
-        "5": "rectangle",
-        "6": "diamond",
-        "7": "circle",
-        "8": "text"
+        "1": "select",     "v": "select",
+        "2": "freehand",   "p": "freehand",
+        "3": "line",       "l": "line",
+        "4": "arrow",      "a": "arrow",
+        "5": "rectangle",  "r": "rectangle",
+        "6": "diamond",    "d": "diamond",
+        "7": "circle",     "o": "circle",
+        "8": "text",       "t": "text"
     };
 }
 

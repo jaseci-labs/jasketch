@@ -13,8 +13,10 @@ Run:
     pytest tests/e2e/test_jasketch.py -v --headed
 """
 
+import math
 import re
 
+import pytest
 from playwright.sync_api import Page, expect
 
 ACTION_DELAY = 300  # ms between UI actions
@@ -1271,3 +1273,259 @@ class TestLiveCollaboration:
             assert mirrored[0]["type"] == "rectangle"
         finally:
             guest_ctx.close()
+
+
+# -- UX parity tests -----------------------------------------------------------
+#
+# These cover the interaction habits a user brings from Excalidraw. Each one
+# stands for a gesture that silently did nothing before: they are here so a
+# refactor cannot quietly take the muscle memory away again.
+
+
+def drag_canvas(page: Page, x1: int, y1: int, x2: int, y2: int, modifier: str = ""):
+    """Drag on the canvas, optionally holding a modifier for the whole gesture."""
+    box = get_canvas(page).bounding_box()
+    page.mouse.move(box["x"] + x1, box["y"] + y1)
+    page.mouse.down()
+    if modifier:
+        page.keyboard.down(modifier)
+    page.mouse.move(box["x"] + x2, box["y"] + y2, steps=10)
+    page.mouse.up()
+    if modifier:
+        page.keyboard.up(modifier)
+    page.wait_for_timeout(ACTION_DELAY)
+
+
+class TestLetterShortcuts:
+    """Tools answer to their Excalidraw letter, not only to a digit."""
+
+    @pytest.mark.parametrize(
+        "key,tool_title",
+        [
+            ("r", "Rectangle"),
+            ("o", "Ellipse"),
+            ("p", "Pencil"),
+            ("d", "Diamond"),
+            ("a", "Arrow"),
+            ("l", "Line"),
+            ("t", "Text"),
+            ("v", "Select"),
+        ],
+    )
+    def test_letter_selects_tool(self, app: Page, key: str, tool_title: str):
+        press_key(app, "Escape")
+        press_key(app, key)
+        btn_class = app.locator(f"button[title^='{tool_title}']").get_attribute("class")
+        assert "text-orange-600" in btn_class, (
+            f"'{key}' should select {tool_title}, class: {btn_class}"
+        )
+
+    def test_digit_shortcuts_still_work(self, app: Page):
+        """The letters are additions, not replacements."""
+        press_key(app, "Escape")
+        press_key(app, "5")
+        assert "text-orange-600" in app.locator("button[title^='Rectangle']").get_attribute("class")
+
+
+class TestShiftConstrain:
+    """Shift means 'keep it regular' both while drawing and while resizing."""
+
+    def test_shift_draws_a_square(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "r")
+        drag_canvas(app, 400, 150, 640, 250, modifier="Shift")
+        wait_for_elements(app, 1)
+        el = get_elements(app)[0]
+        assert abs(abs(el["width"]) - abs(el["height"])) < 3, (
+            f"Shift should force a square, got {el['width']}x{el['height']}"
+        )
+
+    def test_no_shift_draws_a_free_rectangle(self, app: Page):
+        """The constraint must be opt-in, or every rectangle becomes a square."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "r")
+        drag_canvas(app, 400, 150, 640, 250)
+        wait_for_elements(app, 1)
+        el = get_elements(app)[0]
+        assert abs(abs(el["width"]) - abs(el["height"])) > 50, (
+            f"Without Shift the drag should stay free, got {el['width']}x{el['height']}"
+        )
+
+    def test_shift_snaps_a_line_to_45_degrees(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "l")
+        # A 240x100 drag is ~23 degrees; Shift should pull it to a flat 0.
+        drag_canvas(app, 400, 200, 640, 300, modifier="Shift")
+        wait_for_elements(app, 1)
+        el = get_elements(app)[0]
+        angle = math.degrees(math.atan2(el["y2"] - el["y1"], el["x2"] - el["x1"]))
+        nearest = round(angle / 45.0) * 45.0
+        assert abs(angle - nearest) < 3, f"Line should snap to a 45 multiple, got {angle:.1f}deg"
+
+    def test_shift_corner_resize_keeps_aspect_ratio(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "r")
+        drag_canvas(app, 400, 150, 560, 230)  # 160x80, a 2:1 box
+        wait_for_elements(app, 1)
+        click_canvas(app, 480, 190)  # select it
+        drag_canvas(app, 560, 230, 700, 280, modifier="Shift")  # drag the SE handle
+        el = get_elements(app)[0]
+        ratio = abs(el["width"]) / max(abs(el["height"]), 1)
+        assert abs(ratio - 2.0) < 0.15, f"Shift should hold the 2:1 ratio, got {ratio:.2f}"
+
+
+class TestToolLock:
+    """Q keeps a tool armed so a diagram can be drawn without re-picking."""
+
+    def test_lock_keeps_the_tool_after_each_shape(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "r")
+        press_key(app, "q")
+        try:
+            for x in (350, 500, 650):
+                drag_canvas(app, x, 300, x + 90, 380)
+            wait_for_elements(app, 3)
+            assert get_elements_count(app) == 3, "A locked tool should draw three in a row"
+        finally:
+            press_key(app, "q")  # the lock is module-scoped state; hand it back off
+
+    def test_unlocked_tool_still_reverts_to_select(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "r")
+        drag_canvas(app, 400, 300, 490, 380)
+        wait_for_elements(app, 1)
+        sel_class = app.locator("button[title^='Select']").get_attribute("class")
+        assert "text-orange-600" in sel_class, "Without the lock the tool must revert to Select"
+
+    def test_lock_button_is_present(self, app: Page):
+        expect(app.locator("button[title*='Keep the tool selected']")).to_be_visible()
+
+
+class TestArrowKeyNudge:
+    """Arrow keys move the selection by a pixel, Shift by ten."""
+
+    def test_single_element_nudges_one_pixel_per_press(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "r")
+        drag_canvas(app, 400, 200, 560, 300)
+        wait_for_elements(app, 1)
+        click_canvas(app, 480, 250)
+        start_x = get_elements(app)[0]["x"]
+        for _ in range(5):
+            press_key(app, "ArrowRight")
+        moved = get_elements(app)[0]["x"] - start_x
+        assert abs(moved - 5) < 0.51, f"Five presses should travel 5px, travelled {moved}"
+
+    def test_shift_arrow_nudges_ten_pixels(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "r")
+        drag_canvas(app, 400, 200, 560, 300)
+        wait_for_elements(app, 1)
+        click_canvas(app, 480, 250)
+        start_y = get_elements(app)[0]["y"]
+        press_key(app, "Shift+ArrowDown")
+        moved = get_elements(app)[0]["y"] - start_y
+        assert abs(moved - 10) < 0.51, f"Shift+Down should travel 10px, travelled {moved}"
+
+    def test_multi_selection_nudges_every_element(self, app: Page):
+        """Each element is written in ONE batch: a per-element write would let
+        the last one overwrite the rest and only that shape would move."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "r")
+        drag_canvas(app, 350, 200, 470, 290)
+        press_key(app, "r")
+        drag_canvas(app, 600, 200, 720, 290)
+        wait_for_elements(app, 2)
+        press_key(app, "Escape")
+        press_key(app, "Control+a")
+        before = [el["x"] for el in get_elements(app)]
+        for _ in range(4):
+            press_key(app, "ArrowLeft")
+        after = [el["x"] for el in get_elements(app)]
+        for i, (b, a) in enumerate(zip(before, after)):
+            assert abs((a - b) + 4) < 0.51, f"element {i} should move -4px, moved {a - b}"
+
+    def test_nudge_carries_bound_arrows_with_the_shape(self, app: Page):
+        """The shape and every arrow bound to it move in ONE write. Two separate
+        writes in a single keypress would leave the arrow behind."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "r")
+        drag_canvas(app, 350, 200, 470, 290)
+        press_key(app, "r")
+        drag_canvas(app, 650, 200, 770, 290)
+        wait_for_elements(app, 2)
+        press_key(app, "Escape")
+        press_key(app, "a")
+        drag_canvas(app, 470, 245, 648, 245)  # bind the two boxes together
+        wait_for_elements(app, 3)
+        press_key(app, "Escape")
+        click_canvas(app, 700, 245)  # select the right-hand box only
+        before = {e["type"]: dict(e) for e in get_elements(app)}
+        for _ in range(5):
+            press_key(app, "ArrowDown")
+        after = {e["type"]: dict(e) for e in get_elements(app)}
+        box_moved = after["rectangle"]["y"] - before["rectangle"]["y"]
+        assert abs(box_moved - 5) < 0.51, f"the selected box should move 5px, moved {box_moved}"
+        arrow_moved = after["arrow"]["y2"] - before["arrow"]["y2"]
+        assert abs(arrow_moved - 5) < 1.01, (
+            f"the bound arrow endpoint should follow the box, moved {arrow_moved}"
+        )
+
+
+class TestCanvasActionButtons:
+    """Undo, redo and zoom-to-fit are reachable with the mouse alone."""
+
+    def test_undo_and_redo_buttons(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "r")
+        drag_canvas(app, 400, 200, 520, 300)
+        wait_for_elements(app, 1)
+        app.locator("button[title^='Undo']").click()
+        wait_for_elements(app, 0)
+        app.locator("button[title^='Redo']").click()
+        wait_for_elements(app, 1)
+
+    def test_zoom_to_fit_button_frames_the_drawing(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "r")
+        drag_canvas(app, 400, 200, 520, 300)
+        wait_for_elements(app, 1)
+        press_key(app, "Control+0")
+        # Zoom well past the shape, then ask to be brought back to it.
+        for _ in range(4):
+            app.locator("button", has_text="+").last.click()
+            app.wait_for_timeout(100)
+        zoomed = int(app.locator("button", has_text="%").text_content().replace("%", ""))
+        assert zoomed > 100
+        app.locator("button[title^='Zoom to fit']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        fitted = int(app.locator("button", has_text="%").text_content().replace("%", ""))
+        assert fitted != zoomed, "Zoom to fit should reframe the canvas"
+        assert fitted <= 100, f"Fit never zooms past 1:1, got {fitted}%"
+
+    def test_zoom_to_fit_keyboard_shortcut(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "r")
+        drag_canvas(app, 400, 200, 520, 300)
+        wait_for_elements(app, 1)
+        press_key(app, "Control+0")
+        for _ in range(4):
+            app.locator("button", has_text="+").last.click()
+            app.wait_for_timeout(100)
+        press_key(app, "Shift+1")
+        app.wait_for_timeout(ACTION_DELAY)
+        fitted = int(app.locator("button", has_text="%").text_content().replace("%", ""))
+        assert fitted <= 100, f"Shift+1 should frame the drawing, got {fitted}%"

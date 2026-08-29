@@ -6,7 +6,7 @@ import from "..hooks.useSelection" { useSelection }
 import from "..hooks.useViewport" { useViewport }
 import from "..hooks.useTextInput" { useTextInput }
 import from "..hooks.useWebSocket" { useWebSocket }
-import from "..services.geometry" { getMousePosition, findNearestConnectionPoint, find_bound_line_updates_for_shape, get_elbow_full_points, move_elbow_segment }
+import from "..services.geometry" { constrain_drag_point, shift_element, getMousePosition, findNearestConnectionPoint, find_bound_line_updates_for_shape, get_elbow_full_points, move_elbow_segment }
 import from "..services.canvas" { drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
 import from "..services.collision" { getResizeHandleAtPoint, getBendHandleAtPoint, get_rotation_handle_at_point, getLineEndpointAtPoint, get_elbow_segment_at_point }
 import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, copySelectionAsPNG, copyCanvasAsPNG, copyCanvasAsSVG, saveAsJaSketch, loadFromJaSketch }
@@ -33,7 +33,9 @@ def:pub Canvas(
     onSelectionChange: Callable[[any], None],
     onToolChange: Callable[[str], None],
     onToggleShortcuts: Callable[[], None],
+    onToolLockChange: Callable[[bool], None],
     showShortcuts: bool = False,
+    toolLocked: bool = False,
     roomState: dict = {},
     currentTool: str = "select",
     currentColor: str = "#000000",
@@ -53,6 +55,11 @@ def:pub Canvas(
     viewportHook = useViewport();
     textInputHook = useTextInput();
     wsHook = useWebSocket(elementsHook, viewportHook, canvasHook.canvasRef, canvasHook, roomState, onSessionEnded);
+    # The keydown listener is registered once, so it would capture the value of
+    # toolLocked from the first render forever.
+    toolLockedRef = useRef(toolLocked);
+    toolLockedRef.current = toolLocked;
+
     wsHookRef = useRef(wsHook);
     wsHookRef.current = wsHook;
     # Expose sendEndSession to parent via ref
@@ -164,7 +171,7 @@ def:pub Canvas(
                         elementsHook.addElement(imgElement);
                         selectionHook.setSelectedElement({"element": imgElement, "id": imgElement.id});
                         if onToolChange {
-                            onToolChange("select");
+                            if not toolLockedRef.current { onToolChange("select"); }
                         }
                     };
                     imgObj.src = loadEvt.target.result;
@@ -216,6 +223,36 @@ def:pub Canvas(
                     drawingStateRef.current.setStartPoint(None);
                 }
             }
+            # Shift+1 frames everything -- the standard zoom-to-fit chord.
+            if not textInputHook.textInput and e.shiftKey and (e.key == "!" or e.key == "1") {
+                fitToContent();
+                e.preventDefault();
+            }
+
+            # Q locks the active tool, matching every other whiteboard.
+            if not textInputHook.textInput and (e.key == "q" or e.key == "Q")
+                and not e.ctrlKey and not e.metaKey and not e.altKey {
+                onToolLockChange(not toolLockedRef.current);
+                e.preventDefault();
+            }
+
+            # Arrow keys nudge the selection: 1px for precision, 10px with Shift
+            # for moving something across without reaching for the mouse.
+            if not textInputHook.textInput and e.key.startswith("Arrow") {
+                nudge_step = 10 if e.shiftKey else 1;
+                nudge_dx = 0;
+                nudge_dy = 0;
+                if e.key == "ArrowLeft"  { nudge_dx = -nudge_step; }
+                if e.key == "ArrowRight" { nudge_dx = nudge_step; }
+                if e.key == "ArrowUp"    { nudge_dy = -nudge_step; }
+                if e.key == "ArrowDown"  { nudge_dy = nudge_step; }
+                if nudge_dx != 0 or nudge_dy != 0 {
+                    if nudgeSelection(nudge_dx, nudge_dy) {
+                        e.preventDefault();
+                    }
+                }
+            }
+
             if not textInputHook.textInput and (e.key == "Delete" or e.key == "Backspace") {
                 deleteSelected();
                 e.preventDefault();
@@ -475,7 +512,7 @@ def:pub Canvas(
             if textInputHook.textInput {
                 handleTextSubmit();
                 if onToolChange {
-                    onToolChange("select");
+                    if not toolLockedRef.current { onToolChange("select"); }
                 }
                 return;
             }
@@ -589,7 +626,7 @@ def:pub Canvas(
         }
         textInputHook.cancelTextInput();
         if onToolChange {
-            onToolChange("select");
+            if not toolLockedRef.current { onToolChange("select"); }
         }
     }
 
@@ -617,6 +654,94 @@ def:pub Canvas(
             elementsHook.removeElement(curSingle.id);
             selectionHook.clearSelection();
         }
+    }
+
+    """Move the selection by (dx, dy) world units. False when nothing is selected.
+
+    Arrows are the fine-adjustment tool: nothing else lets you move a shape by
+    exactly one unit, and reaching for the mouse to fix a 2px misalignment is
+    the kind of friction that makes a canvas feel unfinished."""
+    def nudgeSelection(dx: float, dy: float) -> bool {
+        nudge_multi = selectedElementsRef.current;
+        nudge_single = selectedElementRef.current;
+
+        # Re-read each element from the live list rather than trusting the
+        # selection snapshot: holding an arrow key fires many keydowns before
+        # React re-renders, and shifting the same stale copy each time makes
+        # every repeat land in exactly the same place.
+        live = (elementsHook.elementsRef and elementsHook.elementsRef.current) or elementsHook.elements;
+        def current_by_id(want_id: str) -> any {
+            for cand in live {
+                if cand and cand.id == want_id {
+                    return cand;
+                }
+            }
+            return None;
+        }
+
+        if nudge_multi and len(nudge_multi) > 0 {
+            # One batched write, not one per element: each updateElement rebuilds
+            # the list from the CURRENT render's `elements`, so N calls in a
+            # single keydown would leave only the last one's change standing.
+            batch = [];
+            ni = 0;
+            while ni < len(nudge_multi) {
+                nel = current_by_id(nudge_multi[ni].id);
+                if nel {
+                    batch.append({"id": nel.id, "element": shift_element(nel, dx, dy)});
+                }
+                ni = ni + 1;
+            }
+            if len(batch) == 0 {
+                return False;
+            }
+            elementsHook.updateMultipleElements(batch);
+            return True;
+        }
+        if nudge_single and nudge_single.element {
+            nsel = current_by_id(nudge_single.id) or nudge_single.element;
+            moved = shift_element(nsel, dx, dy);
+            # The shape AND the arrows bound to it go out as one write, for the
+            # same reason as above: two updateElement calls in a single keydown
+            # both rebuild from the same list, so the second discards the first
+            # and the arrow would be left behind by its own shape.
+            single_batch = [{"id": nsel.id, "element": moved}];
+            for bound in find_bound_line_updates_for_shape(moved, live) {
+                single_batch.append({"id": bound.id, "element": bound.element});
+            }
+            elementsHook.updateMultipleElements(single_batch);
+            selectionHook.setSelectedElement({"element": moved, "id": nsel.id});
+            return True;
+        }
+        return False;
+    }
+
+    """Frame everything on the canvas."""
+    def fitToContent() -> None {
+        fit_els = elementsHook.elements;
+        if not fit_els or len(fit_els) == 0 {
+            return;
+        }
+        fit_canvas = canvasRef.current;
+        if not fit_canvas {
+            return;
+        }
+        fit_ctx = fit_canvas.getContext("2d");
+        fit_minx = None; fit_miny = None; fit_maxx = None; fit_maxy = None;
+        for fel in fit_els {
+            fb = getElementBounds(fit_ctx, fel);
+            if not fb { continue; }
+            if fit_minx == None or fb.x < fit_minx { fit_minx = fb.x; }
+            if fit_miny == None or fb.y < fit_miny { fit_miny = fb.y; }
+            if fit_maxx == None or fb.x + fb.width > fit_maxx { fit_maxx = fb.x + fb.width; }
+            if fit_maxy == None or fb.y + fb.height > fit_maxy { fit_maxy = fb.y + fb.height; }
+        }
+        if fit_minx == None { return; }
+        fit_rect = fit_canvas.getBoundingClientRect();
+        viewportHook.zoomToFit(
+            {"x": fit_minx, "y": fit_miny, "width": fit_maxx - fit_minx, "height": fit_maxy - fit_miny},
+            fit_rect.width, fit_rect.height
+        );
     }
 
     def handleContextMenu(e: MouseEvent) -> None {
@@ -1191,7 +1316,7 @@ def:pub Canvas(
                 drawingState.setStartPoint(None);
                 selectionHook.setSelectedElement({"element": lineElement, "id": lineElement.id});
                 if onToolChange {
-                    onToolChange("select");
+                    if not toolLockedRef.current { onToolChange("select"); }
                 }
             } else {
                 startSnap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
@@ -1330,6 +1455,28 @@ def:pub Canvas(
             deltaX = pos.x - selectionHook.dragStartPos.x;
             deltaY = pos.y - selectionHook.dragStartPos.y;
             newElement = {**origEl};
+
+            # Shift on a CORNER handle locks the aspect ratio, so a square stays
+            # square and a circle stays round while it is resized. This mirrors
+            # the way Shift already constrains a shape while it is being drawn;
+            # without it the two gestures disagree about what Shift means.
+            # Width leads and height follows, so the pointer never fights the
+            # shape along one axis.
+            is_corner_handle = handle == "se" or handle == "sw" or handle == "ne" or handle == "nw";
+            is_box_shape = origEl.type == "rectangle" or origEl.type == "circle"
+                or origEl.type == "image" or origEl.type == "diamond";
+            if e.shiftKey and is_corner_handle and is_box_shape and origEl.height {
+                lock_ratio = origEl.width / origEl.height;
+                if lock_ratio {
+                    locked_w = (origEl.width + deltaX)
+                        if (handle == "se" or handle == "ne")
+                        else (origEl.width - deltaX);
+                    locked_h = locked_w / lock_ratio;
+                    deltaY = (locked_h - origEl.height)
+                        if (handle == "se" or handle == "sw")
+                        else (origEl.height - locked_h);
+                }
+            }
 
             if origEl.type == "rectangle" or origEl.type == "circle" or origEl.type == "image" or origEl.type == "diamond" {
                 if handle == "se" {
@@ -1688,6 +1835,11 @@ def:pub Canvas(
 
             # For line/arrow, show connection points and snap endpoint (only while actively drawing)
             previewEnd = pos;
+            # Shift constrains the shape being previewed, so what you see while
+            # dragging is what you get on release.
+            if e.shiftKey and drawingState.startPoint and currentTool in ["rectangle", "diamond", "circle", "line", "arrow"] {
+                previewEnd = constrain_drag_point(drawingState.startPoint, pos, currentTool);
+            }
             if currentTool == "line" or currentTool == "arrow" {
                 # Draw connection points on all shapes when line/arrow tool is active
                 ei = 0;
@@ -1807,6 +1959,13 @@ def:pub Canvas(
                 dragEndPos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
                 dragDist = Math.sqrt(Math.pow(dragEndPos.x - drawingState.startPoint.x, 2) + Math.pow(dragEndPos.y - drawingState.startPoint.y, 2));
                 if dragDist > 5 {
+                    # Constrain BEFORE snapping: Shift decides the angle, and the
+                    # search for a shape to bind to then starts from the endpoint
+                    # the user actually sees. Snapping first would let a nearby
+                    # shape drag the line back off its 45 and undo the gesture.
+                    if e.shiftKey {
+                        dragEndPos = constrain_drag_point(drawingState.startPoint, dragEndPos, currentTool);
+                    }
                     dragEndBinding = None;
                     dragEndSnap = findNearestConnectionPoint(dragEndPos, elementsHook.elements, 20.0);
                     if dragEndSnap {
@@ -1833,7 +1992,7 @@ def:pub Canvas(
                     drawingState.setStartPoint(None);
                     selectionHook.setSelectedElement({"element": dragLineEl, "id": dragLineEl.id});
                     if onToolChange {
-                        onToolChange("select");
+                        if not toolLockedRef.current { onToolChange("select"); }
                     }
                 }
             }
@@ -1842,6 +2001,11 @@ def:pub Canvas(
 
         drawingState.setIsDrawing(False);
         pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
+        # Same Shift constraint the preview used, so release matches the preview.
+        if e.shiftKey and drawingState.isDrawing and drawingState.startPoint
+            and currentTool in ["rectangle", "diamond", "circle", "line", "arrow"] {
+            pos = constrain_drag_point(drawingState.startPoint, pos, currentTool);
+        }
 
         newElement = None;
 
@@ -1910,7 +2074,7 @@ def:pub Canvas(
                 selectionHook.setSelectedElement({"element": newElement, "id": newElement.id});
             }
             if onToolChange and currentTool != "freehand" {
-                onToolChange("select");
+                if not toolLockedRef.current { onToolChange("select"); }
             }
         }
     }
@@ -2007,7 +2171,30 @@ def:pub Canvas(
                 onSelectAll={handleSelectAll}
             />
 
-            <div className="absolute bottom-4 left-4 flex items-center bg-white/90 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-lg z-40 select-none">
+            <div className="absolute bottom-4 left-4 flex items-center gap-2 z-40 select-none">
+              <div className="flex items-center bg-white/90 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-lg">
+                <button
+                    title="Undo (Ctrl+Z)"
+                    aria-label="Undo"
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-l-xl transition-colors"
+                    onClick={lambda { elementsHook.undo(); selectionHook.clearSelection(); }}
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-3" />
+                    </svg>
+                </button>
+                <button
+                    title="Redo (Ctrl+Shift+Z)"
+                    aria-label="Redo"
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-r-xl transition-colors"
+                    onClick={lambda { elementsHook.redo(); selectionHook.clearSelection(); }}
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m15 14 5-5-5-5" /><path d="M20 9H10a6 6 0 0 0 0 12h3" />
+                    </svg>
+                </button>
+              </div>
+              <div className="flex items-center bg-white/90 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-lg">
                 <button
                     className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-l-xl text-base font-medium transition-colors"
                     onClick={lambda {
@@ -2026,7 +2213,7 @@ def:pub Canvas(
                     }}
                 >{str(Math.round(viewportHook.zoom * 100)) + "%"}</button>
                 <button
-                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-r-xl text-base font-medium transition-colors"
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 text-base font-medium transition-colors"
                     onClick={lambda {
                         ziCanvas = canvasRef.current;
                         if ziCanvas {
@@ -2035,6 +2222,18 @@ def:pub Canvas(
                         }
                     }}
                 >+</button>
+                <button
+                    title="Zoom to fit (Shift+1)"
+                    aria-label="Zoom to fit"
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-r-xl border-l border-gray-200/80 transition-colors"
+                    onClick={lambda { fitToContent(); }}
+                >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 8V5a2 2 0 0 1 2-2h3" /><path d="M16 3h3a2 2 0 0 1 2 2v3" />
+                        <path d="M21 16v3a2 2 0 0 1-2 2h-3" /><path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+                    </svg>
+                </button>
+              </div>
             </div>
 
             {toastMessage and <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm z-50 pointer-events-none animate-fade-in">

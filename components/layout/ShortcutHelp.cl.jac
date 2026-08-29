@@ -4,15 +4,16 @@ def:pub ShortcutHelp(onClose: Callable[[], None]) -> JsxElement {
 
     toolShortcuts = [
         {"action": "Hand (pan)", "key": "Space"},
-        {"action": "Select", "key": "1"},
-        {"action": "Pencil", "key": "2"},
-        {"action": "Line", "key": "3"},
-        {"action": "Arrow", "key": "4"},
-        {"action": "Rectangle", "key": "5"},
-        {"action": "Diamond", "key": "6"},
-        {"action": "Ellipse", "key": "7"},
-        {"action": "Text", "key": "8"},
+        {"action": "Select", "key": "V or 1"},
+        {"action": "Pencil", "key": "P or 2"},
+        {"action": "Line", "key": "L or 3"},
+        {"action": "Arrow", "key": "A or 4"},
+        {"action": "Rectangle", "key": "R or 5"},
+        {"action": "Diamond", "key": "D or 6"},
+        {"action": "Ellipse", "key": "O or 7"},
+        {"action": "Text", "key": "T or 8"},
         {"action": "Image", "key": "9"},
+        {"action": "Keep tool selected", "key": "Q"},
     ];
 
     editorShortcuts = [
@@ -32,6 +33,10 @@ def:pub ShortcutHelp(onClose: Callable[[], None]) -> JsxElement {
         {"action": "Zoom in", "key": "Ctrl++"},
         {"action": "Zoom out", "key": "Ctrl+-"},
         {"action": "Reset zoom", "key": "Ctrl+0"},
+        {"action": "Zoom to fit", "key": "Shift+1"},
+        {"action": "Nudge selection", "key": "Arrow keys"},
+        {"action": "Nudge by 10px", "key": "Shift+Arrow"},
+        {"action": "Constrain / keep proportions", "key": "Hold Shift"},
         {"action": "Reset canvas", "key": "Ctrl+Delete"},
         {"action": "Increase font size", "key": "Ctrl+Shift+>"},
         {"action": "Decrease font size", "key": "Ctrl+Shift+<"},
