@@ -2177,3 +2177,51 @@ class TestConnectorLabelRoundTrip:
         restored = {e["type"]: e.get("shapeText") for e in get_elements(app)}
         assert restored.get("rectangle") == "Box A", f"shape label lost: {restored}"
         assert restored.get("arrow") == "yes", f"connector label lost: {restored}"
+
+
+class TestNoJunkElements:
+    def test_a_bare_click_with_a_shape_tool_creates_nothing(self, app: Page):
+        """A click rather than a drag left an invisible zero-size element behind
+        that could still be selected, counted and exported."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        click_canvas(app, 500, 300)
+        app.wait_for_timeout(ACTION_DELAY)
+        assert get_elements_count(app) == 0
+
+    def test_escape_mid_drag_cancels_the_shape(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        box = get_canvas(app).bounding_box()
+        app.mouse.move(box["x"] + 400, box["y"] + 250)
+        app.mouse.down()
+        app.mouse.move(box["x"] + 560, box["y"] + 350, steps=6)
+        press_key(app, "Escape")
+        app.mouse.up()
+        app.wait_for_timeout(ACTION_DELAY)
+        assert get_elements_count(app) == 0
+
+
+class TestDeletingClearsBindings:
+    def test_deleting_a_shape_unbinds_its_arrows(self, app: Page):
+        """An arrow bound to a deleted shape kept a binding naming a ghost."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 300, 250, 430, 330)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 650, 250, 780, 330)
+        press_key(app, "Escape")
+        press_key(app, "4")
+        drag_canvas(app, 432, 290, 648, 290)
+        wait_for_elements(app, 3)
+        press_key(app, "Escape")
+        click_canvas(app, 710, 290)      # the right-hand box
+        press_key(app, "Delete")
+        app.wait_for_timeout(ACTION_DELAY)
+        arrows = [e for e in get_elements(app) if e["type"] == "arrow"]
+        assert arrows, "the arrow itself should still be there"
+        assert not arrows[0].get("endBinding"), "the binding to the deleted shape was kept"
