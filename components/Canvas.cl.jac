@@ -8,7 +8,7 @@ import from "..hooks.useTextInput" { useTextInput }
 import from "..hooks.useWebSocket" { useWebSocket }
 import from "..services.geometry" { normalize_box, constrain_drag_point, shift_element, getMousePosition, findNearestConnectionPoint, find_bound_line_updates_for_shape, get_elbow_full_points, move_elbow_segment }
 import from "..services.snapping" { element_bounds, union_bounds, compute_snap, draw_snap_guides, snap_threshold_for }
-import from "..services.canvas" { shape_text_min_height, drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
+import from "..services.canvas" { draw_hover_outline, shape_text_min_height, drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
 import from "..services.collision" { getResizeHandleAtPoint, getBendHandleAtPoint, get_rotation_handle_at_point, getLineEndpointAtPoint, get_elbow_segment_at_point }
 import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, copySelectionAsPNG, copyCanvasAsPNG, copyCanvasAsSVG, saveAsJaSketch, loadFromJaSketch }
 import from "..constants.tools" { TOOL_SHORTCUTS }
@@ -61,6 +61,9 @@ def:pub Canvas(
     # Guides are pure feedback for the gesture in flight, so they live in a ref
     # rather than state: they must not cause a re-render of their own.
     snapGuidesRef = useRef([]);
+    # Which element the pointer is over. A ref, so moving the mouse across the
+    # canvas does not re-render the whole component on every frame.
+    hoveredIdRef = useRef(None);
 
     toolLockedRef = useRef(toolLocked);
     toolLockedRef.current = toolLocked;
@@ -885,6 +888,81 @@ def:pub Canvas(
         updated = fit_shape_to_label(updated);
         elementsHook.updateElement(element.id, updated);
         selectionHookRef.current.setSelectedElement({"element": updated, "id": element.id});
+    }
+
+    """Say what a click here would do, through the cursor.
+
+    Without this the pointer stayed a plain arrow everywhere in select mode, so
+    nothing distinguished "you will move this", "you will resize it" and "you
+    will start a selection box" until after you had committed to the gesture.
+
+    Written straight onto the element rather than held in state: this runs on
+    every mouse move, and a re-render per move would be paid for nothing."""
+    def updateHoverCursor(pos: any) -> None {
+        target = canvasRef.current;
+        if not target {
+            return;
+        }
+        if currentTool != "select" or spacePressed {
+            target.style.cursor = "";
+            return;
+        }
+
+        sel = selectedElementRef.current;
+        if sel and sel.element {
+            hoverCtx = target.getContext("2d");
+            hb = getElementBounds(hoverCtx, sel.element);
+            if hb {
+                if get_rotation_handle_at_point(pos, hb, sel.element) {
+                    target.style.cursor = "grab";
+                    return;
+                }
+                hoverHandle = getResizeHandleAtPoint(pos, hb);
+                if hoverHandle {
+                    # The arrow points the way the corner will travel.
+                    if hoverHandle == "nw" or hoverHandle == "se" {
+                        target.style.cursor = "nwse-resize";
+                    } elif hoverHandle == "ne" or hoverHandle == "sw" {
+                        target.style.cursor = "nesw-resize";
+                    } elif hoverHandle == "n" or hoverHandle == "s" {
+                        target.style.cursor = "ns-resize";
+                    } else {
+                        target.style.cursor = "ew-resize";
+                    }
+                    return;
+                }
+            }
+        }
+
+        over = selectionHook.findElementAtPoint(pos, elementsHook.elements);
+        if over {
+            target.style.cursor = "move";
+        } else {
+            target.style.cursor = "";
+        }
+
+        # Outline what would be picked, but only when it CHANGES -- redrawing on
+        # every mouse move would be work done for nothing.
+        nextHover = None;
+        if over and over.id {
+            selNow = selectedElementRef.current;
+            # The selected element already has its own outline and handles.
+            if not (selNow and selNow.id == over.id) {
+                nextHover = over.id;
+            }
+        }
+        if nextHover != hoveredIdRef.current {
+            hoveredIdRef.current = nextHover;
+            canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, editingShapeId);
+            if nextHover {
+                hoverCtx2 = target.getContext("2d");
+                hoverCtx2.save();
+                hoverCtx2.translate(viewportHook.panOffset.x, viewportHook.panOffset.y);
+                hoverCtx2.scale(viewportHook.zoom, viewportHook.zoom);
+                draw_hover_outline(hoverCtx2, getElementBounds(hoverCtx2, over.element), viewportHook.zoom);
+                hoverCtx2.restore();
+            }
+        }
     }
 
     """Nudge a drag so the selection lines up with its neighbours.
@@ -1957,6 +2035,13 @@ def:pub Canvas(
             return;
         }
 
+        # Idle hover: keep the cursor honest about what a click would do.
+        if not selectionHook.isDragging and not selectionHook.isResizing
+            and not selectionHook.isBoxSelecting and not viewportHook.isPanning
+            and not drawingState.isDrawing and not isRotating {
+            updateHoverCursor(pos);
+        }
+
         if selectionHook.isDragging and currentTool == "select" {
             # Alt+Drag to duplicate: clone originals in place, then drag copies
             if e.altKey and not altDragCopiedRef.current {
@@ -2507,6 +2592,7 @@ def:pub Canvas(
     }
 
     def handleMouseLeave() -> None {
+        hoveredIdRef.current = None;
         if not (currentTool == "line" or currentTool == "arrow") {
             drawingState.setIsDrawing(False);
         }
