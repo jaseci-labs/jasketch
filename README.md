@@ -138,7 +138,21 @@ claude mcp add --scope user jasketch -- uvx jasketch-mcp-server@latest
 2. Copy that tab's session id - `sessionStorage.getItem('jasketch_session_id')` in
    the devtools console - and set `JASKETCH_SESSION_ID` for the bridge. The relay
    is a broadcast endpoint with no connection registry, so the target tab has to
-   be named.
+   be named:
+
+   ```bash
+   claude mcp add --scope user jasketch \
+     --env JASKETCH_SESSION_ID=<the tab's id> \
+     -- uvx jasketch-mcp-server@latest
+   ```
+
+   Deployments behind the microservice gateway also need the service prefix on
+   the relay URL, because the gateway does not route `/ws` at the root
+   (jaseci-labs/jac#8772):
+
+   ```
+   JASKETCH_RELAY_URL=wss://<host>/jasketch/ws/function/jasketch_relay
+   ```
 3. Ask Claude to draw - e.g. "draw a flowchart showing user authentication"
 
 ### Available Tools

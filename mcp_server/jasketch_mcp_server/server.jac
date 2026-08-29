@@ -14,7 +14,11 @@ import uuid;
 import websockets;
 import from mcp.server.fastmcp { FastMCP }
 import from typing { Any }
-import from .canvas_tools { CanvasToolProvider }
+# Absolute, not relative: `jac run jasketch_mcp_server/server.jac` from mcp_server/
+# loads the file without a parent package, and a relative import dies there with
+# "attempted relative import with no known parent package". Absolute resolves
+# both that way and from inside the installed wheel.
+import from jasketch_mcp_server.canvas_tools { CanvasToolProvider }
 
 # The relay is an endpoint of the app itself now (infrastructure/relay.jac), not
 # a separate server: one origin, one port, no bespoke ingress.
@@ -36,6 +40,13 @@ glob _canvas_sessions: Any = set();
 glob _pending: dict[str, tuple[Any, dict]] = {};
 glob _relay_loop: Any = None;
 glob _relay_ready: Any = threading.Event();
+# Set when the socket is actually OPEN, which is a different moment from
+# _relay_ready (that one only says the event loop exists). Without it the first
+# tool call after startup races the handshake and fails with "Not connected".
+glob _relay_connected: Any = threading.Event();
+# How long a tool call waits for the relay before giving up. Generous: an
+# assistant issuing its first command right after launch should wait, not fail.
+glob CONNECT_WAIT_SECONDS: float = 15.0;
 
 glob mcp: FastMCP = FastMCP("jasketch", host=MCP_HOST, port=MCP_PORT, streamable_http_path="/mcp/");
 
@@ -54,6 +65,7 @@ async def _connect_to_relay() -> None {
             async with websockets.connect(RELAY_URL, compression=None) as ws {
                 _ws = ws;
                 _connected = True;
+                _relay_connected.set();
                 log(f"Connected to relay at {RELAY_URL}");
 
                 # websockets' ClientConnection IS async-iterable; the bundled stub
@@ -98,6 +110,7 @@ async def _connect_to_relay() -> None {
 
         _ws = None;
         _connected = False;
+        _relay_connected.clear();
         log("Disconnected from relay, reconnecting in 3s...");
         await asyncio.sleep(3);
     }
@@ -129,8 +142,16 @@ def _resolve_session(session_id: str = "") -> str {
 
 """Send a command to the canvas via relay (blocking, thread-safe)."""
 def _send_command(action: str, data: dict | None = None, session_id: str = "", timeout: float | None = None) -> Any {
-    if (not _connected) or (_ws is None) {
-        raise Exception(f"Not connected to relay. Ensure the relay is running at {RELAY_URL}");
+    # Wait for the handshake rather than failing on it: the first tool call
+    # typically arrives within a second of launch, before the socket is open.
+    if not _relay_connected.wait(timeout=CONNECT_WAIT_SECONDS) {
+        raise Exception(
+            f"Not connected to relay after {CONNECT_WAIT_SECONDS:.0f}s. "
+            f"Check JASKETCH_RELAY_URL ({RELAY_URL}) and that JaSketch is reachable."
+        );
+    }
+    if _ws is None {
+        raise Exception("Relay socket went away mid-call; retry.");
     }
     if not _relay_ready.wait(timeout=5) {
         raise Exception("Relay event loop not ready");

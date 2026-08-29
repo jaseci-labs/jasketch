@@ -251,7 +251,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             for it in items {
                 addedIds.append(it.id or "");
             }
-            sendResponse(ws, requestId, True, {"ids": addedIds, "count": items.length, "action": "created"});
+            sendResponse(ws, requestId, True, {"ids": addedIds, "count": len(items), "action": "created"});
         } elif action == "getElements" {
             # Use elementsRef for synchronous read (avoids stale React state snapshot)
             elems = (hook.elementsRef and hook.elementsRef.current) or hook.elements;
