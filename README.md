@@ -65,7 +65,9 @@ jasketch/
 ├── components/               # Canvas, toolbar, sidebar, dialogs
 ├── hooks/                    # Reactive state: elements, selection, viewport, sockets
 ├── constants/                # Colors, fonts, tools, canvas defaults
-├── mcp_bridge/               # MCP server: drive a live canvas from an AI assistant
+├── mcp_server/               # MCP server: drive a live canvas from an AI assistant
+│   ├── jac.toml              #   its own manifest; published to PyPI as jasketch-mcp-server
+│   └── jasketch_mcp_server/  #   package dir (name must match project.name)
 └── tests/e2e/                # Playwright suite (the functional gate)
 ```
 
@@ -121,11 +123,13 @@ needs `jac` installed is the one running `jac start --scale`.
 
 ## MCP Server (AI Integration)
 
-`mcp_bridge/` lets an assistant like Claude draw on a canvas you have open. It is
-part of this repo - there is no `jasketch-mcp-server` package to install.
+`mcp_server/` lets an assistant like Claude draw on a canvas you have open. It is
+published to PyPI from its own `jac.toml`, so installing it needs no jac
+toolchain: `jac build --as wheel` transpiles the Jac to Python and vendors the
+runtime modules it touches.
 
 ```bash
-claude mcp add --scope user jasketch -- jac run /path/to/jasketch/mcp_bridge/server.jac
+claude mcp add --scope user jasketch -- uvx jasketch-mcp-server@latest
 ```
 
 ### Usage

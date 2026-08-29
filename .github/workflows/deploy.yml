@@ -13,7 +13,97 @@ permissions:
   contents: read
 
 jobs:
+  # The MCP server is published from mcp_server/jac.toml -- jac.toml IS the
+  # packaging manifest, so there is no pyproject.toml and no `python -m build`.
+  # `jac build --as wheel` transpiles Jac to Python and vendors the runtime
+  # modules the output touches, so the wheel installs and runs under `uvx` with
+  # no jac toolchain present.
+  publish-mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read the pinned jac version
+        id: jac
+        run: |
+          VERSION=$(grep -E '^jac-version' jac.toml | sed -E 's/.*"==?([0-9.]+)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install jac
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh \
+            | bash -s -- --version "${{ steps.jac.outputs.version }}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Does this version need publishing?
+        id: check
+        working-directory: mcp_server
+        run: |
+          LOCAL=$(grep -E '^version' jac.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          PUBLISHED=$(python3 - <<'PY'
+          import json, urllib.request
+          try:
+              with urllib.request.urlopen("https://pypi.org/pypi/jasketch-mcp-server/json", timeout=20) as r:
+                  print(json.load(r)["info"]["version"])
+          except Exception:
+              print("none")
+          PY
+          )
+          echo "Local: $LOCAL | Published: $PUBLISHED"
+          [ "$LOCAL" != "$PUBLISHED" ] && echo "needed=true" >> "$GITHUB_OUTPUT" || echo "needed=false" >> "$GITHUB_OUTPUT"
+
+      # Type-check gated: `jac build --as wheel` refuses to bundle a project
+      # that does not check, so a broken bridge cannot reach PyPI.
+      - name: Build wheel + sdist
+        if: steps.check.outputs.needed == 'true'
+        working-directory: mcp_server
+        run: jac build --as wheel
+
+      # Proves the artifact runs with NO jac toolchain: install it into a plain
+      # venv and complete a real MCP initialize/tools-list handshake over stdio.
+      - name: Smoke test the wheel in a jac-free venv
+        if: steps.check.outputs.needed == 'true'
+        working-directory: mcp_server
+        run: |
+          python3 -m venv /tmp/mcpcheck
+          /tmp/mcpcheck/bin/pip -q install dist/*.whl
+          ! /tmp/mcpcheck/bin/pip show jaclang >/dev/null 2>&1 || { echo "wheel pulled jaclang from PyPI"; exit 1; }
+          JASKETCH_SESSION_ID=ci JASKETCH_RELAY_URL=ws://127.0.0.1:9/none \
+            /tmp/mcpcheck/bin/python - <<'PY'
+          import json, subprocess
+          p = subprocess.Popen(["/tmp/mcpcheck/bin/jasketch-mcp-server"], text=True, bufsize=1,
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+          def send(m): p.stdin.write(json.dumps(m) + "\n"); p.stdin.flush()
+          send({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":"2024-11-05","capabilities":{},
+              "clientInfo":{"name":"ci","version":"1"}}})
+          assert json.loads(p.stdout.readline())["result"]["serverInfo"]["name"] == "jasketch"
+          send({"jsonrpc":"2.0","method":"notifications/initialized"})
+          send({"jsonrpc":"2.0","id":2,"method":"tools/list"})
+          tools = json.loads(p.stdout.readline())["result"]["tools"]
+          assert len(tools) >= 15, tools
+          print(f"MCP handshake ok, {len(tools)} tools")
+          p.terminate()
+          PY
+
+      - name: Publish to PyPI
+        id: publish
+        if: steps.check.outputs.needed == 'true'
+        working-directory: mcp_server
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          pip install --quiet twine
+          twine upload dist/*
+          echo "published=true" >> "$GITHUB_OUTPUT"
+
   deploy:
+    needs: [publish-mcp]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -64,5 +154,6 @@ jobs:
             echo "## JaSketch deploy"
             echo "- **jac**: ${{ steps.jac.outputs.version }}"
             echo "- **result**: ${{ job.status }}"
+            echo "- **MCP published**: ${{ needs.publish-mcp.outputs.published || 'skipped (version unchanged)' }}"
             echo "- **URL**: https://jasketch.jaseci.org"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -31,7 +31,9 @@ import uuid;
 
 import from typing { Any }
 import from .canvas_mirror { CanvasMirror }
-import from .canvas_tools { CanvasToolProvider }
+# The tool surface lives with the MCP package, which publishes it to PyPI;
+# one definition, so the agent and the bridge can never drift apart.
+import from mcp_server.jasketch_mcp_server.canvas_tools { CanvasToolProvider }
 import from .session { SessionContext }
 import from .subagents {
     RouteTag,

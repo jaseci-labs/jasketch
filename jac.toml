@@ -10,11 +10,11 @@ kind = "web-app"
 jac-version = "==0.34.14"
 
 [dependencies]
-# Relay/controller transport for the MCP bridge (mcp/server.jac connects to the
-# app's /ws endpoint as a websockets client).
+# Both are here for the MCP sub-project (mcp_server/), which shares this venv in
+# development but declares its own dependencies for the published wheel.
 websockets = ">=12.0"
 # Upper-bounded deliberately: mcp 2.0.0 renamed streamablehttp_client ->
-# streamable_http_client, which is a hard ImportError in mcp/server.jac.
+# streamable_http_client, which is a hard ImportError in the bridge.
 mcp = ">=1.0.0,<2.0.0"
 
 [dependencies.npm]

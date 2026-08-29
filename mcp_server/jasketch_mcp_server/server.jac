@@ -14,7 +14,7 @@ import uuid;
 import websockets;
 import from mcp.server.fastmcp { FastMCP }
 import from typing { Any }
-import from ..agent.canvas_tools { CanvasToolProvider }
+import from .canvas_tools { CanvasToolProvider }
 
 # The relay is an endpoint of the app itself now (infrastructure/relay.jac), not
 # a separate server: one origin, one port, no bespoke ingress.
@@ -56,9 +56,9 @@ async def _connect_to_relay() -> None {
                 _connected = True;
                 log(f"Connected to relay at {RELAY_URL}");
 
-                # jac:ignore[E1022] - websockets' ClientConnection IS async-iterable;
-                # the bundled stub does not model __aiter__.
-                async for raw in ws {
+                # websockets' ClientConnection IS async-iterable; the bundled stub
+                # does not model __aiter__.
+                async for raw in ws {  # jac:ignore[E1022]
                     try {
                         # The relay is a broadcast endpoint: it wraps each yielded
                         # envelope as {ok, type:"chunk", data}, and every client
@@ -383,7 +383,12 @@ async def get_drawing_guide(session_id: str | None = None) -> str {
 
 # ── Start server ──────────────────────────────────────────────────────────────
 
-with entry {
+"""Console-script entry point (`jasketch-mcp-server`), and what `jac run` calls.
+
+Deliberately NOT a bare `with entry`: that runs on every IMPORT of the module,
+so the packaged console script would start a relay thread and seize stdio the
+moment anything imported it."""
+def main() -> None {
     log(f"Starting MCP server, relay at {RELAY_URL}");
 
     relay_thread: Any = threading.Thread(target=_start_relay_thread, daemon=True);
@@ -398,4 +403,9 @@ with entry {
     } else {
         mcp.run(transport="stdio");
     }
+}
+
+
+with entry:__main__ {
+    main();
 }

@@ -1,0 +1,35 @@
+# Sub-project: the MCP server is published to PyPI on its own, so it carries its
+# own manifest. jac.toml IS the packaging manifest -- `jac build --as wheel`
+# reads [project]/[dependencies]/[entrypoints.scripts] straight from here and
+# there is no pyproject.toml or setup.py.
+#
+# The package directory MUST match project.name with hyphens as underscores
+# (jasketch-mcp-server -> jasketch_mcp_server/) or the build collects nothing.
+[project]
+name = "jasketch-mcp-server"
+version = "2.0.0"
+description = "MCP server for JaSketch - programmatic diagram creation on a live canvas"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+keywords = ["mcp", "jasketch", "diagrams", "whiteboard", "jac"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Multimedia :: Graphics :: Editors :: Vector-Based",
+]
+
+[project.urls]
+Homepage = "https://jasketch.jaseci.org"
+Source = "https://github.com/jaseci-labs/jasketch"
+
+# NOTE: jaclang is deliberately absent. It is not installable from PyPI (the
+# name is squatted by a 0.16.x package from the pre-binary era), and it is not
+# needed: `jac build --as wheel` vendors the runtime modules the transpiled
+# output actually touches.
+[dependencies]
+mcp = ">=1.0.0,<2.0.0"
+websockets = ">=12.0"
+
+[entrypoints.scripts]
+jasketch-mcp-server = "jasketch_mcp_server.server:main"
