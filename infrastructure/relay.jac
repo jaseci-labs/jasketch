@@ -40,6 +40,13 @@ glob CURSOR_COLORS: list[str] = [
 # room_id -> {"host": session_id, "members": {session_id: {"username", "color", "seen"}}}
 glob _rooms: dict[str, dict] = {};
 
+# session_id -> last time we heard from that canvas. Populated by the `hello`
+# frame every tab sends on connect, so a caller can tell "that tab is gone" from
+# "that tab is ignoring you" WITHOUT waiting for a request to time out. Room
+# membership is not enough: a tab that never joins a room is otherwise invisible.
+glob _canvases: dict[str, float] = {};
+glob CANVAS_TIMEOUT_SECONDS: float = 90.0;
+
 
 def _now() -> float {
     return time.monotonic();
@@ -133,6 +140,9 @@ def:pub jasketch_relay(
     error: str = ""
 ) -> Generator {
     def stream -> Generator[dict, None, None] {
+        if session_id {
+            _canvases[session_id] = _now();
+        }
         # Housekeeping first, so a departure is announced even on an unrelated frame.
         if room_id {
             for gone in _reap(room_id) {
@@ -146,6 +156,13 @@ def:pub jasketch_relay(
             }
             for envelope in _join(room_id, session_id, username) {
                 yield envelope;
+            }
+            return;
+        }
+
+        if kind == "hello" {
+            if session_id {
+                _canvases[session_id] = _now();
             }
             return;
         }
@@ -236,4 +253,27 @@ def:pub jasketch_relay(
     }
 
     return stream();
+}
+
+
+"""Is a canvas with this session id currently connected?
+
+Same process as the relay, so callers (the hosted MCP endpoint) can answer
+"no such canvas" instantly instead of blocking until a request times out."""
+def:pub canvas_is_online(session_id: str) -> bool {
+    seen: float = _canvases.get(session_id, 0.0);
+    if not seen {
+        return False;
+    }
+    if _now() - seen > CANVAS_TIMEOUT_SECONDS {
+        _canvases.pop(session_id, None);
+        return False;
+    }
+    return True;
+}
+
+
+"""Session ids of every canvas heard from recently."""
+def:pub online_canvases() -> list[str] {
+    return [sid for sid in list(_canvases.keys()) if canvas_is_online(sid)];
 }

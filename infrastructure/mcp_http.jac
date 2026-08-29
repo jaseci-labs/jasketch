@@ -31,6 +31,7 @@ import from typing { Any }
 import from http { HTTPMethod }
 
 import from mcp_server.jasketch_mcp_server.canvas_tools { CanvasToolProvider }
+import from infrastructure.relay { canvas_is_online, online_canvases }
 
 glob MCP_PROTOCOL_VERSION: str = "2024-11-05";
 glob SERVER_VERSION: str = "2.0.0";
@@ -42,7 +43,9 @@ glob LOOPBACK_WS: str = os.environ.get(
     f"ws://127.0.0.1:{os.environ.get('PORT', '8000')}/ws/function/jasketch_relay"
 );
 
-glob REQUEST_TIMEOUT: float = 40.0;
+# Comfortably inside a load balancer's idle timeout: a request that blocks
+# past it comes back as a 502 with no explanation of what went wrong.
+glob REQUEST_TIMEOUT: float = 25.0;
 glob CONNECT_WAIT_SECONDS: float = 15.0;
 
 glob _lock = threading.Lock();
@@ -261,6 +264,22 @@ def:pub mcp_rpc(
                 "content": [{"type": "text", "text": json.dumps({
                     "error": "session_id is required. Open JaSketch, use the "
                              "'Connect an AI assistant' panel, and pass the id it shows."
+                })}]
+            });
+        }
+        if not canvas_is_online(session_id) {
+            live: list[str] = online_canvases();
+            hint: str = (
+                f" Canvases currently connected: {', '.join(live)}."
+                if live
+                else " No canvas is connected right now."
+            );
+            return _ok(id, {
+                "isError": True,
+                "content": [{"type": "text", "text": json.dumps({
+                    "error": f"No canvas is connected with session id '{session_id}'.{hint} "
+                             f"Open JaSketch and copy the id from the 'AI Assistant' tab "
+                             f"of the share dialog -- it changes when the tab is closed."
                 })}]
             });
         }

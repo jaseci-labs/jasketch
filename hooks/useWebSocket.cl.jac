@@ -595,6 +595,9 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             # tell people to read it out of sessionStorage -- which returned null
             # on any tab that had not yet drawn or joined a room.
             console.log("[JaSketch] Relay connected at " + url + " (session " + getSessionId() + ")");
+            # Announce this canvas so callers can be told "that tab is gone"
+            # immediately, instead of waiting out a request timeout.
+            relaySend({"kind": "hello", "session_id": getSessionId()});
 
             # Auto-rejoin: check roomStateRef first (normal reconnect), then sessionStorage
             # (handles host refresh where React state reset before onopen fires)
