@@ -155,6 +155,39 @@ def:pub useElements() -> dict {
         pushHistory(_live());
     }
 
+    """Drop bindings that point at elements which no longer exist.
+
+    An arrow bound to a deleted shape kept a startBinding or endBinding naming a
+    ghost. Nothing on screen showed it, but the connector was still nominally
+    attached to something that had gone."""
+    def _drop_stale_bindings(pool: list, removed: dict) -> list {
+        out = [];
+        bi = 0;
+        while bi < len(pool) {
+            item = pool[bi];
+            if item and (item.type == "line" or item.type == "arrow") {
+                startGone = item.startBinding and removed[item.startBinding.elementId];
+                endGone = item.endBinding and removed[item.endBinding.elementId];
+                if startGone or endGone {
+                    fixed = {**item};
+                    if startGone {
+                        fixed.startBinding = None;
+                    }
+                    if endGone {
+                        fixed.endBinding = None;
+                    }
+                    out.append(fixed);
+                } else {
+                    out.append(item);
+                }
+            } else {
+                out.append(item);
+            }
+            bi = bi + 1;
+        }
+        return out;
+    }
+
     def removeElement(id: str) -> None {
         newElements = [];
         ri = 0;
@@ -165,7 +198,9 @@ def:pub useElements() -> dict {
             }
             ri = ri + 1;
         }
-        setElementsWithHistory(newElements);
+        gone = {};
+        gone[id] = True;
+        setElementsWithHistory(_drop_stale_bindings(newElements, gone));
     }
 
     def removeMultipleElements(ids: list) -> None {
@@ -184,7 +219,7 @@ def:pub useElements() -> dict {
             }
             rmi = rmi + 1;
         }
-        setElementsWithHistory(newElements);
+        setElementsWithHistory(_drop_stale_bindings(newElements, idSet));
     }
 
     def clearElements() -> None {

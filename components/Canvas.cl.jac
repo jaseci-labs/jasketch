@@ -2447,6 +2447,15 @@ def:pub Canvas(
             };
         }
 
+        # A click rather than a drag leaves a shape with no size. Keeping it
+        # littered the canvas with invisible elements that could still be
+        # selected, counted and exported.
+        if newElement and newElement.width != None and newElement.width != undefined {
+            if Math.abs(newElement.width) < 3 and Math.abs(newElement.height) < 3 {
+                newElement = None;
+            }
+        }
+
         if newElement {
             # Drawn bottom-up or right-to-left? Store it the right way round.
             newElement = normalize_box(newElement);
