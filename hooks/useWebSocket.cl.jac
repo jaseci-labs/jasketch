@@ -590,7 +590,11 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
 
         ws.onopen = lambda {
             connectedRef.current = True;
-            console.log("[JaSketch] Relay connected at " + url);
+            # Mint the tab's session id NOW, not on first send. It is how the MCP
+            # bridge addresses this canvas (JASKETCH_SESSION_ID), and the docs
+            # tell people to read it out of sessionStorage -- which returned null
+            # on any tab that had not yet drawn or joined a room.
+            console.log("[JaSketch] Relay connected at " + url + " (session " + getSessionId() + ")");
 
             # Auto-rejoin: check roomStateRef first (normal reconnect), then sessionStorage
             # (handles host refresh where React state reset before onopen fires)
