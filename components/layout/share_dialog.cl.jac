@@ -184,7 +184,7 @@ def:pub ShareDialog(
             />
             <button
                 onClick={lambda { handle_copy_link(static_link); }}
-                className={"w-full font-medium py-2 rounded-md transition " + (copied and "bg-green-500 hover:bg-green-600 text-white" or "bg-gray-200 hover:bg-gray-300 text-gray-800")}
+                className={"w-full font-medium py-2 rounded-md transition " + ("bg-green-500 hover:bg-green-600 text-white" if copied else "bg-gray-200 hover:bg-gray-300 text-gray-800")}
             >
                 {copied and "Copied!" or "Copy Link"}
             </button>
@@ -224,7 +224,7 @@ def:pub ShareDialog(
             />
             <button
                 onClick={lambda { handle_copy_link(collab_link); }}
-                className={"w-full font-medium py-2 rounded-md transition " + (copied and "bg-green-500 hover:bg-green-600 text-white" or "bg-gray-200 hover:bg-gray-300 text-gray-800")}
+                className={"w-full font-medium py-2 rounded-md transition " + ("bg-green-500 hover:bg-green-600 text-white" if copied else "bg-gray-200 hover:bg-gray-300 text-gray-800")}
             >
                 {copied and "Copied!" or "Copy Link"}
             </button>
@@ -261,6 +261,56 @@ def:pub ShareDialog(
         </div>;
     }
 
+    # ── AI assistant panel ────────────────────────────────────────────────────
+    # The session id used to be reachable only from the devtools console, which
+    # is not a step anyone should have to take to connect an assistant.
+    mcp_session = sessionStorage.getItem("jasketch_session_id") or "";
+    mcp_url = window.location.origin + "/mcp";
+    mcp_command = "claude mcp add --transport http jasketch " + mcp_url;
+
+    assistant_content = <div className="space-y-4">
+        <p className="text-sm text-gray-600">
+            {"Let Claude (or any MCP client) draw on this canvas. Nothing to install."}
+        </p>
+
+        <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{"1. Add the server"}</label>
+            <input
+                type="text"
+                value={mcp_command}
+                readOnly={True}
+                className="w-full px-3 py-2 border rounded-md bg-gray-50 font-mono text-xs"
+            />
+            <button
+                onClick={lambda { handle_copy_link(mcp_command); }}
+                className={"mt-2 w-full font-medium py-2 rounded-md transition " + ("bg-green-500 hover:bg-green-600 text-white" if copied else "bg-gray-200 hover:bg-gray-300 text-gray-800")}
+            >
+                {copied and "Copied!" or "Copy command"}
+            </button>
+        </div>
+
+        <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+                {"2. Tell it which canvas -- this tab's id"}
+            </label>
+            <input
+                type="text"
+                value={mcp_session}
+                readOnly={True}
+                className="w-full px-3 py-2 border rounded-md bg-gray-50 font-mono text-xs"
+            />
+            <button
+                onClick={lambda { handle_copy_link(mcp_session); }}
+                className="mt-2 w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 rounded-md transition"
+            >
+                {"Copy session id"}
+            </button>
+            <p className="text-xs text-gray-500 mt-2">
+                {"Paste it when the assistant asks which canvas to draw on. It is per tab, and resets if you close this one."}
+            </p>
+        </div>
+    </div>;
+
     # Pre-compute active tab panel
     tab_content = None;
     if active_tab == "static" {
@@ -272,6 +322,8 @@ def:pub ShareDialog(
         </div>;
     } elif active_tab == "collab" {
         tab_content = collab_content;
+    } elif active_tab == "assistant" {
+        tab_content = assistant_content;
     }
 
     return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -295,15 +347,21 @@ def:pub ShareDialog(
             <div className="flex border-b px-6 mt-4">
                 <button
                     onClick={lambda { active_tab = "static"; }}
-                    className={"pb-3 px-4 border-b-2 transition " + (active_tab == "static" and "border-blue-500 text-blue-600 font-medium" or "border-transparent text-gray-600 hover:text-gray-900")}
+                    className={"pb-3 px-4 border-b-2 transition " + ("border-blue-500 text-blue-600 font-medium" if active_tab == "static" else "border-transparent text-gray-600 hover:text-gray-900")}
                 >
                     {"Read-only Share"}
                 </button>
                 <button
                     onClick={lambda { active_tab = "collab"; }}
-                    className={"pb-3 px-4 border-b-2 transition " + (active_tab == "collab" and "border-blue-500 text-blue-600 font-medium" or "border-transparent text-gray-600 hover:text-gray-900")}
+                    className={"pb-3 px-4 border-b-2 transition " + ("border-blue-500 text-blue-600 font-medium" if active_tab == "collab" else "border-transparent text-gray-600 hover:text-gray-900")}
                 >
                     {"Live Collaboration"}
+                </button>
+                <button
+                    onClick={lambda { active_tab = "assistant"; }}
+                    className={"pb-3 px-4 border-b-2 transition " + ("border-blue-500 text-blue-600 font-medium" if active_tab == "assistant" else "border-transparent text-gray-600 hover:text-gray-900")}
+                >
+                    {"AI Assistant"}
                 </button>
             </div>
 

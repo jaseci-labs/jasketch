@@ -5,6 +5,7 @@
 import from services.sharing { create_share, read_share, ShareRef, SharePayload }
 import from agent.chat { jasketch_chat, jasketch_chat_confirm }
 import from infrastructure.relay { jasketch_relay }
+import from infrastructure.mcp_http { mcp_rpc }
 
 cl {
     # Client-side imports

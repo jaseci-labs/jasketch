@@ -123,37 +123,41 @@ needs `jac` installed is the one running `jac start --scale`.
 
 ## MCP Server (AI Integration)
 
-`mcp_server/` lets an assistant like Claude draw on a canvas you have open. It is
-published to PyPI from its own `jac.toml`, so installing it needs no jac
-toolchain: `jac build --as wheel` transpiles the Jac to Python and vendors the
-runtime modules it touches.
+Let Claude -- or any MCP client -- draw on a canvas you have open. **Nothing to
+install.**
 
 ```bash
-claude mcp add --scope user jasketch -- uvx jasketch-mcp-server@latest
+claude mcp add --transport http jasketch https://jasketch.jaseci.org/mcp
 ```
 
-### Usage
+Then open JaSketch, click the share button, and pick the **AI Assistant** tab: it
+shows that exact command and this tab's session id, both with copy buttons. Paste
+the session id when the assistant asks which canvas to draw on -- one hosted
+server serves everyone, so every tool call names its target tab.
 
-1. Open JaSketch in a browser ([jasketch.jaseci.org](https://jasketch.jaseci.org/))
-2. Copy that tab's session id - `sessionStorage.getItem('jasketch_session_id')` in
-   the devtools console - and set `JASKETCH_SESSION_ID` for the bridge. The relay
-   is a broadcast endpoint with no connection registry, so the target tab has to
-   be named:
+It is an endpoint of the app itself (`infrastructure/mcp_http.jac`), not a
+separate deployment. `@restspec(envelope=False)` is what makes that work: MCP
+clients need bare JSON-RPC, and every other endpoint here wraps its result in
+`{ok, data, ...}`.
 
-   ```bash
-   claude mcp add --scope user jasketch \
-     --env JASKETCH_SESSION_ID=<the tab's id> \
-     -- uvx jasketch-mcp-server@latest
-   ```
+### Running it locally instead
 
-   Deployments behind the microservice gateway also need the service prefix on
-   the relay URL, because the gateway does not route `/ws` at the root
-   (jaseci-labs/jac#8772):
+`mcp_server/` still builds the stdio server, published to PyPI from its own
+`jac.toml`. `jac build --as wheel` transpiles the Jac to Python and vendors the
+runtime it touches, so the wheel needs no jac toolchain:
 
-   ```
-   JASKETCH_RELAY_URL=wss://<host>/jasketch/ws/function/jasketch_relay
-   ```
-3. Ask Claude to draw - e.g. "draw a flowchart showing user authentication"
+```bash
+claude mcp add --scope user jasketch \
+  --env JASKETCH_SESSION_ID=<the tab's id> \
+  -- uvx jasketch-mcp-server@latest
+```
+
+Behind the microservice gateway it also needs the service prefix on the relay
+URL, because the gateway does not route `/ws` at the root (jaseci-labs/jac#8772):
+
+```
+JASKETCH_RELAY_URL=wss://<host>/jasketch/ws/function/jasketch_relay
+```
 
 ### Available Tools
 
@@ -161,23 +165,21 @@ claude mcp add --scope user jasketch -- uvx jasketch-mcp-server@latest
 |------|-------------|
 | `create_element` | Create a single element (rectangle, circle, diamond, line, arrow, text, freehand) |
 | `create_elements` | Batch create multiple elements efficiently |
-| `query_elements` | Query elements on canvas, optionally filter by type or index |
-| `update_element` | Update properties of an existing element by index |
+| `draw_labeled_shape` | Auto-sized shape with a centered label |
+| `draw_connector` | Smart arrow/line between two shapes |
+| `add_title` | Place a title on the canvas |
+| `query_elements` | Query elements, optionally filtered by type or index |
+| `update_element` | Update properties of an existing element |
 | `delete_element` | Delete element(s) by index |
-| `clear_canvas` | Clear all elements from the canvas |
-| `get_viewport` | Get zoom level, pan offset, and visible canvas area |
-| `get_bounding_box` | Get bounding box of all elements (useful for layout planning) |
-| `get_canvas_snapshot` | Get a PNG screenshot of the canvas as base64 |
+| `clear_canvas` | Clear all elements |
+| `render_elements` | Replace the canvas with a full element array |
+| `get_viewport` | Zoom level, pan offset, visible area |
+| `get_bounding_box` | Bounding box of all elements |
+| `get_canvas_elements` | All elements, defaults stripped |
+| `get_drawing_guide` | Element schemas, layout rules and colour palette |
+| `get_canvas_snapshot` | PNG screenshot of the canvas as base64 |
 
-### Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `JASKETCH_RELAY_URL` | `wss://jasketch.jaseci.org/ws/function/jasketch_relay` | The app's relay endpoint |
-| `JASKETCH_SESSION_ID` | - | Which browser tab to draw on (required) |
-| `JASKETCH_MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` or `streamable-http` |
-| `JASKETCH_MCP_PORT` | `3003` | HTTP port (only used when transport is `streamable-http`) |
-| `JASKETCH_MCP_HOST` | `0.0.0.0` | HTTP bind address (only used when transport is `streamable-http`) |
+Every tool takes a `session_id` naming the canvas to act on.
 
 ## Tech
 
