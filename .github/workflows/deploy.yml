@@ -27,16 +27,13 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Deploying on jac $VERSION"
 
+      # Only the DRIVER needs this. The pods get their own copy of the pinned
+      # release, shipped to them on the bundle PVC (see the deploy step).
       - name: Install jac
         run: |
-          gh release download "v${{ steps.jac.outputs.version }}" \
-            --repo jaseci-labs/jac \
-            --pattern "jac-${{ steps.jac.outputs.version }}-linux-x86_64" \
-            --output "$RUNNER_TEMP/jac"
-          chmod +x "$RUNNER_TEMP/jac"
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh \
+            | bash -s -- --version "${{ steps.jac.outputs.version }}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4.2.0

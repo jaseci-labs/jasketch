@@ -26,7 +26,10 @@ Everything ships in the `jac` binary: there is no virtualenv to make and no
 
 ```bash
 # 1. Get the toolchain this project is pinned to (see [project] jac-version).
-curl -fsSL https://docs.jaseci.org/install.sh | bash
+#    The installer drops a self-contained binary in ~/.local/bin; it bundles its
+#    own runtime, so there is no system Python or pip involved.
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh \
+  | bash -s -- --version 0.34.14
 
 # 2. Resolve dependencies (PyPI + npm) into .jac/
 jac install
@@ -34,6 +37,9 @@ jac install
 # 3. Run it
 jac start
 ```
+
+Then open http://localhost:8000. The first start builds the client bundle, which
+takes a minute; after that it is seconds.
 
 `jac start --dev` adds hot module reload for client code. Server modules and
 `glob`s evaluate once at boot, so those still need a restart.
@@ -103,6 +109,15 @@ Multi-replica deployments need `MONGODB_URI` (SQLite does not survive more than
 one replica) and `[scale.websocket] backplane = "redis"` - without the Redis
 backplane a room broadcast only reaches clients that share a worker with the
 sender.
+
+**How jac gets into the pods.** You do not install it there, and there is no
+image to build. `[project] jac-version` is resolved against published
+`jaseci-labs/jaseci` releases, that exact binary is downloaded by whoever runs
+the deploy, and it is shipped to the cluster on the bundle PVC alongside your
+source. Pods boot a stock base image and run it from there. A pin that matches no
+published release aborts the deploy rather than quietly falling back to latest, so
+the version CI tested on is the version production runs. The only machine that
+needs `jac` installed is the one running `jac start --scale`.
 
 ## MCP Server (AI Integration)
 

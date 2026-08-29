@@ -27,14 +27,12 @@ jobs:
 
       - name: Install jac
         run: |
-          gh release download "v${{ steps.jac.outputs.version }}" \
-            --repo jaseci-labs/jac \
-            --pattern "jac-${{ steps.jac.outputs.version }}-linux-x86_64" \
-            --output "$RUNNER_TEMP/jac"
-          chmod +x "$RUNNER_TEMP/jac"
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh \
+            | bash -s -- --version "${{ steps.jac.outputs.version }}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # The e2e fixture starts the server with this exact binary, so a dev
+          # build on PATH can never silently take over the run.
+          echo "JAC_BIN=$HOME/.local/bin/jac" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: jac install --dev
@@ -51,8 +49,6 @@ jobs:
       - name: Run E2E tests
         # The fixture starts the server with this same binary (see conftest).
         run: jac -m pytest tests/e2e/ -v --timeout=300
-        env:
-          JAC_BIN: ${{ runner.temp }}/jac
 
       - name: Upload server log
         if: failure()
