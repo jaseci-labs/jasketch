@@ -1741,3 +1741,163 @@ class TestLabelFontSize:
             f"a too-short legacy shape should heal on open, height is {el['height']}"
         )
         assert el.get("shapeText"), "the label itself must survive the repair"
+
+
+class TestGeometryIsNormalised:
+    """A shape dragged out bottom-up or right-to-left used to store a negative
+    size, which left its selection outline sitting away from the shape."""
+
+    @pytest.mark.parametrize(
+        "name,x1,y1,x2,y2",
+        [
+            ("top-left to bottom-right", 400, 200, 550, 300),
+            ("bottom-right to top-left", 550, 300, 400, 200),
+            ("top-right to bottom-left", 550, 200, 400, 300),
+            ("bottom-left to top-right", 400, 300, 550, 200),
+        ],
+    )
+    def test_drawn_in_any_direction_stores_a_positive_size(
+        self, app: Page, name: str, x1: int, y1: int, x2: int, y2: int
+    ):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, x1, y1, x2, y2)
+        wait_for_elements(app, 1)
+        el = get_elements(app)[0]
+        assert el["width"] > 0 and el["height"] > 0, (
+            f"{name} stored {el['width']}x{el['height']}"
+        )
+
+
+class TestStylePanelFollowsEverySelection:
+    """The panel keys off a primary element. Every path that builds a selection
+    has to set one, or the controls silently vanish."""
+
+    @staticmethod
+    def _swatches(page: Page) -> int:
+        return page.evaluate(
+            """() => [...document.querySelectorAll('button')]
+                 .filter(b => /^#/.test(b.getAttribute('title') || '')).length"""
+        )
+
+    def test_rubber_band_selection_keeps_the_style_panel(self, app: Page):
+        clear_canvas(app)
+        for x in (300, 500):
+            press_key(app, "Escape")
+            press_key(app, "5")
+            drag_canvas(app, x, 250, x + 120, 350)
+        wait_for_elements(app, 2)
+        press_key(app, "Escape")
+        drag_canvas(app, 250, 200, 700, 420)   # rubber-band around both
+        assert self._swatches(app) > 0, "box-selecting two shapes hid the style panel"
+
+    def test_select_all_keeps_the_style_panel(self, app: Page):
+        clear_canvas(app)
+        for x in (300, 500):
+            press_key(app, "Escape")
+            press_key(app, "5")
+            drag_canvas(app, x, 250, x + 120, 350)
+        wait_for_elements(app, 2)
+        press_key(app, "Escape")
+        press_key(app, "Control+a")
+        assert self._swatches(app) > 0, "Ctrl+A hid the style panel"
+
+
+class TestMenuDropdown:
+    def test_closes_on_an_outside_click(self, app: Page):
+        app.locator("button[title='Menu']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        assert app.get_by_text("Keyboard shortcuts").is_visible()
+        get_canvas(app).click(position={"x": 700, "y": 500}, force=True)
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        assert not app.get_by_text("Keyboard shortcuts").is_visible(), (
+            "the menu stayed open over the canvas after clicking away"
+        )
+
+    def test_closes_on_escape(self, app: Page):
+        app.locator("button[title='Menu']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        press_key(app, "Escape")
+        app.wait_for_timeout(ACTION_DELAY)
+        assert not app.get_by_text("Keyboard shortcuts").is_visible()
+
+
+class TestLabelEditorWraps:
+    """While typing, the label used to run off the side of the shape and get
+    clipped -- so you could not read what you were writing."""
+
+    def test_editor_wraps_instead_of_clipping(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 300, 250, 430, 340)
+        wait_for_elements(app, 1)
+        press_key(app, "Escape")
+        double_click_canvas(app, 365, 295)
+        app.keyboard.type("erfjhsdkjf idisoncsd skdvcnksdjvn ksjdvnksjdnv", delay=8)
+        app.wait_for_timeout(ACTION_DELAY)
+        editor = app.locator("textarea").last
+        metrics = editor.evaluate(
+            "n => ({sw: n.scrollWidth, cw: n.clientWidth, sh: n.scrollHeight, ch: n.clientHeight})"
+        )
+        assert metrics["sw"] <= metrics["cw"] + 1, "the label editor clipped horizontally"
+        assert metrics["sh"] <= metrics["ch"] + 1, "the label editor clipped vertically"
+        press_key(app, "Escape")
+
+    def test_shape_grows_while_the_label_is_typed(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 300, 250, 430, 340)
+        wait_for_elements(app, 1)
+        h0 = abs(get_elements(app)[0]["height"])
+        press_key(app, "Escape")
+        double_click_canvas(app, 365, 295)
+        app.keyboard.type("a label long enough that it has to wrap several times over", delay=8)
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        h1 = abs(get_elements(app)[0]["height"])
+        assert h1 > h0, f"the box should grow as the label is typed, {h0} -> {h1}"
+        press_key(app, "Escape")
+
+
+class TestAlignmentSnapping:
+    """Dragging a shape close to a neighbour lines the two up exactly."""
+
+    def _two_stacked_boxes(self, page: Page):
+        clear_canvas(page)
+        press_key(page, "Escape")
+        press_key(page, "5")
+        drag_canvas(page, 300, 200, 450, 300)
+        press_key(page, "Escape")
+        press_key(page, "5")
+        drag_canvas(page, 300, 420, 450, 520)
+        wait_for_elements(page, 2)
+        press_key(page, "Escape")
+        return sorted(get_elements(page), key=lambda e: e["y"])
+
+    def test_a_near_miss_snaps_into_line(self, app: Page):
+        top, bottom = self._two_stacked_boxes(app)
+        assert abs(bottom["x"] - top["x"]) < 0.01
+        drag_canvas(app, 375, 470, 379, 470)   # 4px right: within the snap radius
+        moved = sorted(get_elements(app), key=lambda e: e["y"])[1]
+        assert abs(moved["x"] - top["x"]) < 0.6, (
+            f"a 4px near-miss should snap back into line, x is {moved['x']}"
+        )
+
+    def test_ctrl_suppresses_snapping(self, app: Page):
+        """There has to be a way to put a shape exactly where you want it."""
+        top, bottom = self._two_stacked_boxes(app)
+        start_x = bottom["x"]
+        box = get_canvas(app).bounding_box()
+        app.mouse.move(box["x"] + 375, box["y"] + 470)
+        app.mouse.down()
+        app.keyboard.down("Control")
+        app.mouse.move(box["x"] + 379, box["y"] + 470, steps=8)
+        app.mouse.up()
+        app.keyboard.up("Control")
+        app.wait_for_timeout(ACTION_DELAY)
+        moved = sorted(get_elements(app), key=lambda e: e["y"])[1]
+        assert abs(moved["x"] - (start_x + 4)) < 1.5, (
+            f"Ctrl should suppress the snap, x is {moved['x']} (wanted {start_x + 4})"
+        )

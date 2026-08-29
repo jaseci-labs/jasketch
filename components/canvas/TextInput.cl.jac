@@ -1,3 +1,5 @@
+import from react { useEffect }
+
 def:pub TextInput(
     textInput: any,
     textInputRef: any,
@@ -44,7 +46,38 @@ def:pub TextInput(
     if isShapeEdit {
         baseStyle.transform = "translate(-50%, -50%)";
         baseStyle.textAlign = "center";
+
+        # Wrap to the shape, exactly as the rendered label wraps. With
+        # white-space:pre the words ran off the side and overflow:hidden clipped
+        # them, so while typing a long label you could not see what you were
+        # writing -- the text only became visible once you committed it.
+        # 10px each side, matching SHAPE_TEXT_PADDING in services/canvas.
+        shapeEl = textInput.editingShapeElement;
+        if shapeEl and shapeEl.width {
+            innerW = (Math.abs(shapeEl.width) - 20) * zoom;
+            if innerW < 20 * zoom {
+                innerW = 20 * zoom;
+            }
+            baseStyle.width = innerW + "px";
+        }
+        baseStyle.whiteSpace = "pre-wrap";
+        baseStyle.wordBreak = "break-word";
+        baseStyle.overflow = "hidden";
     }
+
+    # Grow the box to its content on every keystroke, so a label that wraps onto
+    # a third line does not disappear under a fixed height.
+    def growToContent() -> None {
+        # Not `node`: that is an Object-Spatial keyword in Jac and will not parse
+        # as a variable name.
+        box = textInputRef.current;
+        if box and isShapeEdit {
+            box.style.height = "auto";
+            box.style.height = box.scrollHeight + "px";
+        }
+    }
+
+    useEffect(growToContent);
 
     return <textarea
         ref={textInputRef}
