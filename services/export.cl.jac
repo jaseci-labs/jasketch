@@ -187,15 +187,39 @@ def buildSvgString(elements: list, bounds: dict) -> str {
                 svgTCurLine = "";
                 svgTWi = 0;
                 while svgTWi < svgTWords.length {
-                    svgTTestLine = svgTCurLine;
-                    if svgTCurLine == "" {
-                        svgTTestLine = svgTWords[svgTWi];
-                    } else {
-                        svgTTestLine = svgTCurLine + " " + svgTWords[svgTWi];
+                    svgTWord = svgTWords[svgTWi];
+
+                    # A word wider than the whole line has to be broken, the way
+                    # the canvas renderer breaks it. Without this an exported
+                    # SVG shows the label hanging out of a shape that looks
+                    # perfectly fine on screen.
+                    if len(svgTWord) > svgTMaxChars {
+                        if svgTCurLine != "" {
+                            svgTWrapped.append(svgTCurLine);
+                            svgTCurLine = "";
+                        }
+                        svgTPiece = "";
+                        svgTCi = 0;
+                        while svgTCi < len(svgTWord) {
+                            if svgTPiece != "" and len(svgTPiece) + 1 > svgTMaxChars {
+                                svgTWrapped.append(svgTPiece);
+                                svgTPiece = "";
+                            }
+                            svgTPiece = svgTPiece + svgTWord[svgTCi];
+                            svgTCi = svgTCi + 1;
+                        }
+                        svgTCurLine = svgTPiece;
+                        svgTWi = svgTWi + 1;
+                        continue;
+                    }
+
+                    svgTTestLine = svgTWord;
+                    if svgTCurLine != "" {
+                        svgTTestLine = svgTCurLine + " " + svgTWord;
                     }
                     if len(svgTTestLine) > svgTMaxChars and svgTCurLine != "" {
                         svgTWrapped.append(svgTCurLine);
-                        svgTCurLine = svgTWords[svgTWi];
+                        svgTCurLine = svgTWord;
                     } else {
                         svgTCurLine = svgTTestLine;
                     }

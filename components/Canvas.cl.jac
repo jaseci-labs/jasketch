@@ -6,8 +6,8 @@ import from "..hooks.useSelection" { useSelection }
 import from "..hooks.useViewport" { useViewport }
 import from "..hooks.useTextInput" { useTextInput }
 import from "..hooks.useWebSocket" { useWebSocket }
-import from "..services.geometry" { getMousePosition, findNearestConnectionPoint, find_bound_line_updates_for_shape, get_elbow_full_points, move_elbow_segment }
-import from "..services.canvas" { drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
+import from "..services.geometry" { constrain_drag_point, shift_element, getMousePosition, findNearestConnectionPoint, find_bound_line_updates_for_shape, get_elbow_full_points, move_elbow_segment }
+import from "..services.canvas" { shape_text_min_height, drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
 import from "..services.collision" { getResizeHandleAtPoint, getBendHandleAtPoint, get_rotation_handle_at_point, getLineEndpointAtPoint, get_elbow_segment_at_point }
 import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, copySelectionAsPNG, copyCanvasAsPNG, copyCanvasAsSVG, saveAsJaSketch, loadFromJaSketch }
 import from "..constants.tools" { TOOL_SHORTCUTS }
@@ -33,7 +33,9 @@ def:pub Canvas(
     onSelectionChange: Callable[[any], None],
     onToolChange: Callable[[str], None],
     onToggleShortcuts: Callable[[], None],
+    onToolLockChange: Callable[[bool], None],
     showShortcuts: bool = False,
+    toolLocked: bool = False,
     roomState: dict = {},
     currentTool: str = "select",
     currentColor: str = "#000000",
@@ -53,6 +55,11 @@ def:pub Canvas(
     viewportHook = useViewport();
     textInputHook = useTextInput();
     wsHook = useWebSocket(elementsHook, viewportHook, canvasHook.canvasRef, canvasHook, roomState, onSessionEnded);
+    # The keydown listener is registered once, so it would capture the value of
+    # toolLocked from the first render forever.
+    toolLockedRef = useRef(toolLocked);
+    toolLockedRef.current = toolLocked;
+
     wsHookRef = useRef(wsHook);
     wsHookRef.current = wsHook;
     # Expose sendEndSession to parent via ref
@@ -164,7 +171,7 @@ def:pub Canvas(
                         elementsHook.addElement(imgElement);
                         selectionHook.setSelectedElement({"element": imgElement, "id": imgElement.id});
                         if onToolChange {
-                            onToolChange("select");
+                            if not toolLockedRef.current { onToolChange("select"); }
                         }
                     };
                     imgObj.src = loadEvt.target.result;
@@ -216,6 +223,36 @@ def:pub Canvas(
                     drawingStateRef.current.setStartPoint(None);
                 }
             }
+            # Shift+1 frames everything -- the standard zoom-to-fit chord.
+            if not textInputHook.textInput and e.shiftKey and (e.key == "!" or e.key == "1") {
+                fitToContent();
+                e.preventDefault();
+            }
+
+            # Q locks the active tool, matching every other whiteboard.
+            if not textInputHook.textInput and (e.key == "q" or e.key == "Q")
+                and not e.ctrlKey and not e.metaKey and not e.altKey {
+                onToolLockChange(not toolLockedRef.current);
+                e.preventDefault();
+            }
+
+            # Arrow keys nudge the selection: 1px for precision, 10px with Shift
+            # for moving something across without reaching for the mouse.
+            if not textInputHook.textInput and e.key.startswith("Arrow") {
+                nudge_step = 10 if e.shiftKey else 1;
+                nudge_dx = 0;
+                nudge_dy = 0;
+                if e.key == "ArrowLeft"  { nudge_dx = -nudge_step; }
+                if e.key == "ArrowRight" { nudge_dx = nudge_step; }
+                if e.key == "ArrowUp"    { nudge_dy = -nudge_step; }
+                if e.key == "ArrowDown"  { nudge_dy = nudge_step; }
+                if nudge_dx != 0 or nudge_dy != 0 {
+                    if nudgeSelection(nudge_dx, nudge_dy) {
+                        e.preventDefault();
+                    }
+                }
+            }
+
             if not textInputHook.textInput and (e.key == "Delete" or e.key == "Backspace") {
                 deleteSelected();
                 e.preventDefault();
@@ -331,28 +368,11 @@ def:pub Canvas(
             }
             if not textInputHook.textInput and (e.key == "<" or e.key == ",") and (e.ctrlKey or e.metaKey) and e.shiftKey {
                 e.preventDefault();
-                curSel = selectedElementRef.current;
-                if curSel and curSel.element.type == "text" {
-                    element = curSel.element;
-                    newSize = element.fontSize or 16;
-                    newSize = newSize - 2;
-                    if newSize < 8 {
-                        newSize = 8;
-                    }
-                    elementsHook.updateElement(element.id, {**element, "fontSize": newSize});
-                    selectionHookRef.current.setSelectedElement({"element": {**element, "fontSize": newSize}, "id": element.id});
-                }
+                bumpFontSize(-2);
             }
             if not textInputHook.textInput and (e.key == ">" or e.key == ".") and (e.ctrlKey or e.metaKey) and e.shiftKey {
                 e.preventDefault();
-                curSel = selectedElementRef.current;
-                if curSel and curSel.element.type == "text" {
-                    element = curSel.element;
-                    newSize = element.fontSize or 16;
-                    newSize = newSize + 2;
-                    elementsHook.updateElement(element.id, {**element, "fontSize": newSize});
-                    selectionHookRef.current.setSelectedElement({"element": {**element, "fontSize": newSize}, "id": element.id});
-                }
+                bumpFontSize(2);
             }
             if not textInputHook.textInput and e.key == "?" {
                 e.preventDefault();
@@ -423,23 +443,86 @@ def:pub Canvas(
         }
         if addElementRef {
             addElementRef.current = lambda (element: any) {
-                elementsHook.addElement(element);
+                # Elements arriving from the MCP tools or the agent never went
+                # through the editor, so nothing has checked that a labelled
+                # shape is tall enough to hold its label. Same containment as
+                # the UI paths, applied at the boundary.
+                elementsHook.addElement(fit_shape_to_label(element));
             };
         }
         if updateElementRef {
             updateElementRef.current = lambda (id: any, changes: any) {
-                fi = 0;
-                foundEl = None;
-                while fi < elementsHook.elements.length {
-                    if elementsHook.elements[fi] and elementsHook.elements[fi].id == id {
-                        foundEl = elementsHook.elements[fi];
+                # A style change applies to EVERY selected shape, not just the
+                # one the sidebar happens to hold. The panel has a single id to
+                # hand back, so without this a user who selects six boxes and
+                # picks a colour watches exactly one of them change, with
+                # nothing on screen explaining why the rest were ignored.
+                styleTargets = [id];
+                # Read the selection through the ref, not the closure: this
+                # lambda is installed by an effect that only re-runs when the
+                # ELEMENT list changes, so selecting shapes does not refresh it
+                # and the captured selection would still be the empty one from
+                # before Ctrl+A.
+                multiSel = selectedElementsRef.current;
+                if multiSel and multiSel.length > 1 {
+                    inSel = False;
+                    mi = 0;
+                    while mi < multiSel.length {
+                        if multiSel[mi] and multiSel[mi].id == id { inSel = True; }
+                        mi = mi + 1;
                     }
-                    fi = fi + 1;
+                    # Only widen when the sidebar's element really is part of the
+                    # selection; otherwise this is some other caller's update.
+                    if inSel {
+                        styleTargets = [];
+                        mi = 0;
+                        while mi < multiSel.length {
+                            if multiSel[mi] and multiSel[mi].id {
+                                styleTargets.append(multiSel[mi].id);
+                            }
+                            mi = mi + 1;
+                        }
+                    }
                 }
-                if foundEl {
-                    newElement = {**foundEl, **changes};
-                    elementsHook.updateElement(id, newElement);
-                    selectionHook.setSelectedElement({"element": newElement, "id": id});
+
+                styleBatch = [];
+                stillSelected = [];
+                primaryEl = None;
+                ti = 0;
+                while ti < styleTargets.length {
+                    wantId = styleTargets[ti];
+                    liveEls = (elementsHook.elementsRef and elementsHook.elementsRef.current)
+                        or elementsHook.elements;
+                    fi = 0;
+                    foundEl = None;
+                    while fi < liveEls.length {
+                        if liveEls[fi] and liveEls[fi].id == wantId {
+                            foundEl = liveEls[fi];
+                        }
+                        fi = fi + 1;
+                    }
+                    if foundEl {
+                        # A bigger label needs a bigger box, so restyling can
+                        # change geometry too.
+                        newElement = fit_shape_to_label({**foundEl, **changes});
+                        styleBatch.append({"id": wantId, "element": newElement});
+                        stillSelected.append({"element": newElement, "id": wantId});
+                        if wantId == id { primaryEl = newElement; }
+                    }
+                    ti = ti + 1;
+                }
+                if styleBatch.length == 0 {
+                    return;
+                }
+                # One write for the whole selection: N separate updateElement
+                # calls would each rebuild from the same list and only the last
+                # would survive.
+                elementsHook.updateMultipleElements(styleBatch);
+                if primaryEl {
+                    selectionHook.setSelectedElement({"element": primaryEl, "id": id});
+                }
+                if stillSelected.length > 1 {
+                    selectionHook.setSelectedElements(stillSelected);
                 }
             };
         }
@@ -464,7 +547,13 @@ def:pub Canvas(
         }
         if setElementsRef {
             setElementsRef.current = lambda (elements: any) {
-                elementsHook.setElements(elements);
+                fitted = [];
+                si = 0;
+                while si < elements.length {
+                    fitted.append(fit_shape_to_label(elements[si]));
+                    si = si + 1;
+                }
+                elementsHook.setElements(fitted);
                 selectionHook.clearSelection();
             };
         }
@@ -475,7 +564,7 @@ def:pub Canvas(
             if textInputHook.textInput {
                 handleTextSubmit();
                 if onToolChange {
-                    onToolChange("select");
+                    if not toolLockedRef.current { onToolChange("select"); }
                 }
                 return;
             }
@@ -570,6 +659,7 @@ def:pub Canvas(
                 updatedShape.shapeTextFontSize = None;
                 updatedShape.shapeTextFontFamily = None;
             }
+            updatedShape = fit_shape_to_label(updatedShape);
             elementsHook.updateElement(shapeId, updatedShape);
             selectionHook.setSelectedElement({"element": updatedShape, "id": shapeId});
         } elif textInputHook.hasContent() {
@@ -589,7 +679,7 @@ def:pub Canvas(
         }
         textInputHook.cancelTextInput();
         if onToolChange {
-            onToolChange("select");
+            if not toolLockedRef.current { onToolChange("select"); }
         }
     }
 
@@ -617,6 +707,188 @@ def:pub Canvas(
             elementsHook.removeElement(curSingle.id);
             selectionHook.clearSelection();
         }
+    }
+
+    """Grow a shape so its label fits inside it, and return the adjusted copy.
+
+    The label wraps to the shape's width, so a shape can always be made too
+    short for its own text. Excalidraw grows the container instead of letting
+    the words escape it, and so do we: a label rendered outside its own box
+    looks like a rendering fault, and nothing in the UI tells the user that
+    making the box taller would fix it."""
+    def fit_shape_to_label(el: any) -> any {
+        if not el or not el.shapeText {
+            return el;
+        }
+        fit_canvas = canvasRef.current;
+        if not fit_canvas {
+            return el;
+        }
+        needed = shape_text_min_height(fit_canvas.getContext("2d"), el);
+        if needed <= 0 {
+            return el;
+        }
+        # Height can be negative when the shape was drawn bottom-up; grow it
+        # along whichever direction it already runs so it does not flip.
+        if Math.abs(el.height) >= needed {
+            return el;
+        }
+        grown = {**el};
+        grown.height = needed if el.height >= 0 else -needed;
+        return grown;
+    }
+
+    # One normalisation pass on mount, so a drawing SAVED before shapes learned
+    # to hold their labels heals itself on open rather than staying broken
+    # forever. Idempotent: a drawing that is already correct is left untouched
+    # and nothing is written.
+    can with entry {
+        heal_canvas = canvasRef.current;
+        if heal_canvas {
+            heal_src = (elementsHook.elementsRef and elementsHook.elementsRef.current)
+                or elementsHook.elements;
+            heal_out = [];
+            heal_changed = False;
+            hi = 0;
+            while hi < heal_src.length {
+                heal_el = heal_src[hi];
+                heal_fit = fit_shape_to_label(heal_el);
+                if heal_fit != heal_el {
+                    heal_changed = True;
+                }
+                heal_out.append(heal_fit);
+                hi = hi + 1;
+            }
+            if heal_changed {
+                elementsHook.setElementsReplaceAll(heal_out);
+            }
+        }
+    }
+
+    """Resize the selected element's text by `delta` points.
+
+    A label living inside a shape is stored as shapeText/shapeTextFontSize, not
+    as a text element, so keying off type == "text" alone silently ignored every
+    labelled box -- while the help dialog went on advertising the shortcut."""
+    def bumpFontSize(delta: float) -> None {
+        curSel = selectedElementRef.current;
+        if not curSel or not curSel.element {
+            return;
+        }
+        element = curSel.element;
+        is_label = element.type != "text";
+        if is_label and not element.shapeText {
+            return;
+        }
+        current = (element.shapeTextFontSize or 16) if is_label else (element.fontSize or 16);
+        newSize = current + delta;
+        if newSize < 8 {
+            newSize = 8;
+        }
+        if newSize > 120 {
+            newSize = 120;
+        }
+        # Written out per field rather than with a computed key: a dict literal
+        # keyed by a variable does not survive the client compile, and fails
+        # silently -- the update is applied to a key nothing ever reads.
+        updated = {**element};
+        if is_label {
+            updated.shapeTextFontSize = newSize;
+        } else {
+            updated.fontSize = newSize;
+        }
+        # A bigger label needs a bigger box.
+        updated = fit_shape_to_label(updated);
+        elementsHook.updateElement(element.id, updated);
+        selectionHookRef.current.setSelectedElement({"element": updated, "id": element.id});
+    }
+
+    """Move the selection by (dx, dy) world units. False when nothing is selected.
+
+    Arrows are the fine-adjustment tool: nothing else lets you move a shape by
+    exactly one unit, and reaching for the mouse to fix a 2px misalignment is
+    the kind of friction that makes a canvas feel unfinished."""
+    def nudgeSelection(dx: float, dy: float) -> bool {
+        nudge_multi = selectedElementsRef.current;
+        nudge_single = selectedElementRef.current;
+
+        # Re-read each element from the live list rather than trusting the
+        # selection snapshot: holding an arrow key fires many keydowns before
+        # React re-renders, and shifting the same stale copy each time makes
+        # every repeat land in exactly the same place.
+        live = (elementsHook.elementsRef and elementsHook.elementsRef.current) or elementsHook.elements;
+        def current_by_id(want_id: str) -> any {
+            for cand in live {
+                if cand and cand.id == want_id {
+                    return cand;
+                }
+            }
+            return None;
+        }
+
+        if nudge_multi and len(nudge_multi) > 0 {
+            # One batched write, not one per element: each updateElement rebuilds
+            # the list from the CURRENT render's `elements`, so N calls in a
+            # single keydown would leave only the last one's change standing.
+            batch = [];
+            ni = 0;
+            while ni < len(nudge_multi) {
+                nel = current_by_id(nudge_multi[ni].id);
+                if nel {
+                    batch.append({"id": nel.id, "element": shift_element(nel, dx, dy)});
+                }
+                ni = ni + 1;
+            }
+            if len(batch) == 0 {
+                return False;
+            }
+            elementsHook.updateMultipleElements(batch);
+            return True;
+        }
+        if nudge_single and nudge_single.element {
+            nsel = current_by_id(nudge_single.id) or nudge_single.element;
+            moved = shift_element(nsel, dx, dy);
+            # The shape AND the arrows bound to it go out as one write, for the
+            # same reason as above: two updateElement calls in a single keydown
+            # both rebuild from the same list, so the second discards the first
+            # and the arrow would be left behind by its own shape.
+            single_batch = [{"id": nsel.id, "element": moved}];
+            for bound in find_bound_line_updates_for_shape(moved, live) {
+                single_batch.append({"id": bound.id, "element": bound.element});
+            }
+            elementsHook.updateMultipleElements(single_batch);
+            selectionHook.setSelectedElement({"element": moved, "id": nsel.id});
+            return True;
+        }
+        return False;
+    }
+
+    """Frame everything on the canvas."""
+    def fitToContent() -> None {
+        fit_els = elementsHook.elements;
+        if not fit_els or len(fit_els) == 0 {
+            return;
+        }
+        fit_canvas = canvasRef.current;
+        if not fit_canvas {
+            return;
+        }
+        fit_ctx = fit_canvas.getContext("2d");
+        fit_minx = None; fit_miny = None; fit_maxx = None; fit_maxy = None;
+        for fel in fit_els {
+            fb = getElementBounds(fit_ctx, fel);
+            if not fb { continue; }
+            if fit_minx == None or fb.x < fit_minx { fit_minx = fb.x; }
+            if fit_miny == None or fb.y < fit_miny { fit_miny = fb.y; }
+            if fit_maxx == None or fb.x + fb.width > fit_maxx { fit_maxx = fb.x + fb.width; }
+            if fit_maxy == None or fb.y + fb.height > fit_maxy { fit_maxy = fb.y + fb.height; }
+        }
+        if fit_minx == None { return; }
+        fit_rect = fit_canvas.getBoundingClientRect();
+        viewportHook.zoomToFit(
+            {"x": fit_minx, "y": fit_miny, "width": fit_maxx - fit_minx, "height": fit_maxy - fit_miny},
+            fit_rect.width, fit_rect.height
+        );
     }
 
     def handleContextMenu(e: MouseEvent) -> None {
@@ -1191,7 +1463,7 @@ def:pub Canvas(
                 drawingState.setStartPoint(None);
                 selectionHook.setSelectedElement({"element": lineElement, "id": lineElement.id});
                 if onToolChange {
-                    onToolChange("select");
+                    if not toolLockedRef.current { onToolChange("select"); }
                 }
             } else {
                 startSnap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
@@ -1331,6 +1603,28 @@ def:pub Canvas(
             deltaY = pos.y - selectionHook.dragStartPos.y;
             newElement = {**origEl};
 
+            # Shift on a CORNER handle locks the aspect ratio, so a square stays
+            # square and a circle stays round while it is resized. This mirrors
+            # the way Shift already constrains a shape while it is being drawn;
+            # without it the two gestures disagree about what Shift means.
+            # Width leads and height follows, so the pointer never fights the
+            # shape along one axis.
+            is_corner_handle = handle == "se" or handle == "sw" or handle == "ne" or handle == "nw";
+            is_box_shape = origEl.type == "rectangle" or origEl.type == "circle"
+                or origEl.type == "image" or origEl.type == "diamond";
+            if e.shiftKey and is_corner_handle and is_box_shape and origEl.height {
+                lock_ratio = origEl.width / origEl.height;
+                if lock_ratio {
+                    locked_w = (origEl.width + deltaX)
+                        if (handle == "se" or handle == "ne")
+                        else (origEl.width - deltaX);
+                    locked_h = locked_w / lock_ratio;
+                    deltaY = (locked_h - origEl.height)
+                        if (handle == "se" or handle == "sw")
+                        else (origEl.height - locked_h);
+                }
+            }
+
             if origEl.type == "rectangle" or origEl.type == "circle" or origEl.type == "image" or origEl.type == "diamond" {
                 if handle == "se" {
                     newElement.width = origEl.width + deltaX;
@@ -1359,6 +1653,12 @@ def:pub Canvas(
                     newElement.x = origEl.x + deltaX;
                     newElement.width = origEl.width - deltaX;
                 }
+                # A labelled shape cannot be dragged smaller than its own text.
+                # The label re-wraps to the new width, so shrinking the width
+                # makes the text TALLER -- without this the words spill out of
+                # the box entirely and the diagram falls apart in the user's
+                # hands with no way to undo it except undo.
+                newElement = fit_shape_to_label(newElement);
             } elif origEl.type == "line" or origEl.type == "arrow" {
                 if handle == "nw" or handle == "w" or handle == "sw" {
                     newElement.x1 = origEl.x1 + deltaX;
@@ -1688,6 +1988,11 @@ def:pub Canvas(
 
             # For line/arrow, show connection points and snap endpoint (only while actively drawing)
             previewEnd = pos;
+            # Shift constrains the shape being previewed, so what you see while
+            # dragging is what you get on release.
+            if e.shiftKey and drawingState.startPoint and currentTool in ["rectangle", "diamond", "circle", "line", "arrow"] {
+                previewEnd = constrain_drag_point(drawingState.startPoint, pos, currentTool);
+            }
             if currentTool == "line" or currentTool == "arrow" {
                 # Draw connection points on all shapes when line/arrow tool is active
                 ei = 0;
@@ -1807,6 +2112,13 @@ def:pub Canvas(
                 dragEndPos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
                 dragDist = Math.sqrt(Math.pow(dragEndPos.x - drawingState.startPoint.x, 2) + Math.pow(dragEndPos.y - drawingState.startPoint.y, 2));
                 if dragDist > 5 {
+                    # Constrain BEFORE snapping: Shift decides the angle, and the
+                    # search for a shape to bind to then starts from the endpoint
+                    # the user actually sees. Snapping first would let a nearby
+                    # shape drag the line back off its 45 and undo the gesture.
+                    if e.shiftKey {
+                        dragEndPos = constrain_drag_point(drawingState.startPoint, dragEndPos, currentTool);
+                    }
                     dragEndBinding = None;
                     dragEndSnap = findNearestConnectionPoint(dragEndPos, elementsHook.elements, 20.0);
                     if dragEndSnap {
@@ -1833,7 +2145,7 @@ def:pub Canvas(
                     drawingState.setStartPoint(None);
                     selectionHook.setSelectedElement({"element": dragLineEl, "id": dragLineEl.id});
                     if onToolChange {
-                        onToolChange("select");
+                        if not toolLockedRef.current { onToolChange("select"); }
                     }
                 }
             }
@@ -1842,6 +2154,11 @@ def:pub Canvas(
 
         drawingState.setIsDrawing(False);
         pos = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
+        # Same Shift constraint the preview used, so release matches the preview.
+        if e.shiftKey and drawingState.isDrawing and drawingState.startPoint
+            and currentTool in ["rectangle", "diamond", "circle", "line", "arrow"] {
+            pos = constrain_drag_point(drawingState.startPoint, pos, currentTool);
+        }
 
         newElement = None;
 
@@ -1910,7 +2227,7 @@ def:pub Canvas(
                 selectionHook.setSelectedElement({"element": newElement, "id": newElement.id});
             }
             if onToolChange and currentTool != "freehand" {
-                onToolChange("select");
+                if not toolLockedRef.current { onToolChange("select"); }
             }
         }
     }
@@ -2007,7 +2324,30 @@ def:pub Canvas(
                 onSelectAll={handleSelectAll}
             />
 
-            <div className="absolute bottom-4 left-4 flex items-center bg-white/90 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-lg z-40 select-none">
+            <div className="absolute bottom-4 left-4 flex items-center gap-2 z-40 select-none">
+              <div className="flex items-center bg-white/90 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-lg">
+                <button
+                    title="Undo (Ctrl+Z)"
+                    aria-label="Undo"
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-l-xl transition-colors"
+                    onClick={lambda { elementsHook.undo(); selectionHook.clearSelection(); }}
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-3" />
+                    </svg>
+                </button>
+                <button
+                    title="Redo (Ctrl+Shift+Z)"
+                    aria-label="Redo"
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-r-xl transition-colors"
+                    onClick={lambda { elementsHook.redo(); selectionHook.clearSelection(); }}
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m15 14 5-5-5-5" /><path d="M20 9H10a6 6 0 0 0 0 12h3" />
+                    </svg>
+                </button>
+              </div>
+              <div className="flex items-center bg-white/90 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-lg">
                 <button
                     className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-l-xl text-base font-medium transition-colors"
                     onClick={lambda {
@@ -2026,7 +2366,7 @@ def:pub Canvas(
                     }}
                 >{str(Math.round(viewportHook.zoom * 100)) + "%"}</button>
                 <button
-                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-r-xl text-base font-medium transition-colors"
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 text-base font-medium transition-colors"
                     onClick={lambda {
                         ziCanvas = canvasRef.current;
                         if ziCanvas {
@@ -2035,6 +2375,18 @@ def:pub Canvas(
                         }
                     }}
                 >+</button>
+                <button
+                    title="Zoom to fit (Shift+1)"
+                    aria-label="Zoom to fit"
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-r-xl border-l border-gray-200/80 transition-colors"
+                    onClick={lambda { fitToContent(); }}
+                >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 8V5a2 2 0 0 1 2-2h3" /><path d="M16 3h3a2 2 0 0 1 2 2v3" />
+                        <path d="M21 16v3a2 2 0 0 1-2 2h-3" /><path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+                    </svg>
+                </button>
+              </div>
             </div>
 
             {toastMessage and <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm z-50 pointer-events-none animate-fade-in">

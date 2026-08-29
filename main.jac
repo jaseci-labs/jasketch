@@ -41,6 +41,10 @@ cl {
         # Keyboard shortcuts help state
         has showShortcuts: bool = False;
 
+        # Tool lock: keep the drawing tool selected after each shape. Lives here
+        # because both the toolbar toggle and the canvas's Q shortcut set it.
+        has toolLocked: bool = False;
+
         # Share dialog state
         has shareDialogOpen: bool = False;
 
@@ -173,6 +177,8 @@ cl {
                 isHost={isHost}
                 participantListOpen={participantListOpen}
                 onParticipantListToggle={lambda { participantListOpen = not participantListOpen; }}
+                onToggleToolLock={lambda { toolLocked = not toolLocked; }}
+                toolLocked={toolLocked}
             />
 
             <div className="flex-1 overflow-hidden relative">
@@ -233,6 +239,8 @@ cl {
                         }}
                         onSelectionChange={lambda (sel: any) { selectedElement = sel; }}
                         onToolChange={lambda (tool: any) { currentTool = tool; }}
+                        toolLocked={toolLocked}
+                        onToolLockChange={lambda (v: bool) { toolLocked = v; }}
                         showShortcuts={showShortcuts}
                         onToggleShortcuts={lambda { showShortcuts = not showShortcuts; }}
                     />

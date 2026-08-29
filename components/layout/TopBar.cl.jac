@@ -62,11 +62,13 @@ def:pub TopBar(
     onShare: Callable[[], None],
     onCollab: Callable[[], None],
     onParticipantListToggle: Callable[[], None],
+    onToggleToolLock: Callable[[], None],
     currentTool: str = "select",
     roomState: dict = {},
     participants: dict = {},
     isHost: bool = False,
-    participantListOpen: bool = False
+    participantListOpen: bool = False,
+    toolLocked: bool = False
 ) -> JsxElement {
     fileInputRef = useRef(None);
     jasketchFileInputRef = useRef(None);
@@ -205,6 +207,19 @@ def:pub TopBar(
                     </button>
                     for toolId in toolIds
                 ]}
+                <div className="w-px h-5 bg-gray-200 mx-0.5"></div>
+                <button
+                    onClick={lambda { onToggleToolLock(); }}
+                    title={("Tool stays selected -- click to unlock (Q)" if toolLocked else "Keep the tool selected after drawing (Q)")}
+                    aria-pressed={toolLocked}
+                    className={"relative w-9 h-9 rounded-md flex flex-col items-center justify-center transition-all duration-150 " + ("bg-white text-orange-600 shadow-sm" if toolLocked else "text-gray-400 hover:bg-white/60 hover:text-gray-600")}
+                >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="4" y="11" width="16" height="10" rx="2" />
+                        {(<path d="M8 11V7a4 4 0 0 1 8 0v4" /> if toolLocked else <path d="M8 11V7a4 4 0 0 1 7.5-2" />)}
+                    </svg>
+                    <span className={"text-[7px] leading-none font-medium mt-px " + ("text-orange-400" if toolLocked else "text-gray-300")}>{"q"}</span>
+                </button>
             </div>
 
             <div className="min-w-[150px] flex items-center justify-end gap-1 relative">

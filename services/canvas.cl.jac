@@ -128,16 +128,42 @@ def wrapTextLines(ctx: any, text: str, maxWidth: float) -> list {
         currentLine = "";
         wrj = 0;
         while wrj < len(words) {
-            testLine = currentLine;
-            if currentLine == "" {
-                testLine = words[wrj];
-            } else {
-                testLine = currentLine + " " + words[wrj];
+            word = words[wrj];
+
+            # A word longer than the whole line can never fit by moving it to a
+            # line of its own, so break it across lines. Without this the word
+            # simply hangs out of both sides of the shape, which is what a
+            # narrow box with a long label used to look like.
+            if ctx.measureText(word).width > maxWidth {
+                if currentLine != "" {
+                    wrapped.append(currentLine);
+                    currentLine = "";
+                }
+                piece = "";
+                ci = 0;
+                while ci < len(word) {
+                    ch = word[ci];
+                    if piece != "" and ctx.measureText(piece + ch).width > maxWidth {
+                        wrapped.append(piece);
+                        piece = ch;
+                    } else {
+                        piece = piece + ch;
+                    }
+                    ci = ci + 1;
+                }
+                currentLine = piece;
+                wrj = wrj + 1;
+                continue;
+            }
+
+            testLine = word;
+            if currentLine != "" {
+                testLine = currentLine + " " + word;
             }
             testWidth = ctx.measureText(testLine).width;
             if testWidth > maxWidth and currentLine != "" {
                 wrapped.append(currentLine);
-                currentLine = words[wrj];
+                currentLine = word;
             } else {
                 currentLine = testLine;
             }
@@ -150,6 +176,37 @@ def wrapTextLines(ctx: any, text: str, maxWidth: float) -> list {
     }
     return wrapped;
 }
+
+# Breathing room between a label and the edge of the shape holding it. Shared by
+# the renderer and by shape_text_min_height so the two cannot drift apart.
+glob SHAPE_TEXT_PADDING: float = 10.0;
+
+
+"""The smallest height this shape can be without its label spilling out.
+
+A label wraps to the shape's WIDTH, so a narrower shape needs a taller one to
+hold the same words. Callers use this to grow a shape rather than let the text
+escape it: a label that renders outside its own box makes a diagram look
+broken, and the user has no way to put it back."""
+def:pub shape_text_min_height(ctx: any, element: any) -> float {
+    label = element["shapeText"] or "";
+    if not label {
+        return 0.0;
+    }
+    fontSize = element["shapeTextFontSize"] or 16;
+    fontFamily = element["shapeTextFontFamily"] or "Virgil";
+    ctx.save();
+    # Must match drawShapeText exactly, or the measurement is of a different font.
+    ctx.font = fontSize + "px " + fontFamily;
+    maxWidth = Math.abs(element["width"]) - SHAPE_TEXT_PADDING * 2;
+    if maxWidth < 20 {
+        maxWidth = 20;
+    }
+    lines = wrapTextLines(ctx, label, maxWidth);
+    ctx.restore();
+    return len(lines) * fontSize * 1.2 + SHAPE_TEXT_PADDING * 2;
+}
+
 
 def drawShapeText(ctx: any, element: dict) -> None {
     if not element["shapeText"] {
@@ -170,7 +227,7 @@ def drawShapeText(ctx: any, element: dict) -> None {
     # Calculate shape center and available width (with padding)
     stCx = element["x"] + element["width"] / 2;
     stCy = element["y"] + element["height"] / 2;
-    stMaxWidth = Math.abs(element["width"]) - 20;
+    stMaxWidth = Math.abs(element["width"]) - SHAPE_TEXT_PADDING * 2;
     if stMaxWidth < 20 {
         stMaxWidth = 20;
     }
