@@ -68,12 +68,14 @@ description = "A collaborative whiteboard with an AI drawing agent, built in Jac
 icon = ".assets/icon.png"
 author = "Jaseci"
 
-# Injected into the pods as a Kubernetes Secret, resolved from the deploy
-# environment. Mongo and Redis already run in the `jasketch` namespace (the
-# mongodb-connection / redis-connection secrets the old deployment used); this
-# deploy connects to them rather than provisioning its own, so nothing is lost
-# in the cutover. Unset locally -> SQLite under .jac/data and an in-process
-# websocket backplane, which is what you want for one process.
+# Both are EMPTY by default and normally stay that way: mongodb_enabled and
+# redis_enabled default to true, so the deploy provisions its own MongoDB and
+# Redis in the target namespace and wires the pods to them. Set these only to
+# attach to a database that already exists somewhere else (Atlas, an existing
+# StatefulSet); they are injected into the pods as a Kubernetes Secret.
+#
+# Unset locally -> SQLite under .jac/data and an in-process websocket
+# backplane, which is what a single `jac start` wants.
 [scale.secrets]
 MONGODB_URI = "${MONGODB_URI:-}"
 REDIS_URL = "${REDIS_URL:-}"
