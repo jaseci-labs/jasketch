@@ -59,6 +59,13 @@ def:pub TextInput(
                 innerW = 20 * zoom;
             }
             baseStyle.width = innerW + "px";
+        } elif shapeEl and shapeEl.x1 != None and shapeEl.x1 != undefined {
+            # A connector has no width; wrap to a share of its length, matching
+            # drawLineLabel so the editor and the result agree.
+            span = Math.sqrt(
+                Math.pow(shapeEl.x2 - shapeEl.x1, 2) + Math.pow(shapeEl.y2 - shapeEl.y1, 2)
+            );
+            baseStyle.width = Math.max(80.0, span * 0.8) * zoom + "px";
         }
         baseStyle.whiteSpace = "pre-wrap";
         baseStyle.wordBreak = "break-word";

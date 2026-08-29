@@ -167,7 +167,7 @@ def ChatMessage(
         </div>;
     }
     if msg.role == "tool" {
-        statusClass = msg.status == "running" and "bg-blue-50 text-blue-500" or "bg-green-50 text-green-600";
+        statusClass = msg.status == "running" and "bg-orange-50 text-orange-600" or "bg-emerald-50 text-emerald-600";
         return <div className="flex justify-center">
             <div className={"chat-msg-tool px-2.5 py-1 rounded-full text-[10px] font-medium " + statusClass}>
                 {msg.status == "running" and "... " or ""}{msg.content}

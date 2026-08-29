@@ -640,6 +640,30 @@ def:pub Canvas(
                     }
                 }
             }, 10);
+        } elif elementInfo and (elementInfo.element.type == "line" or elementInfo.element.type == "arrow") {
+            # A label on the connector itself. In a flowchart most of the
+            # meaning lives on the arrows ("yes", "no", "on failure"), and
+            # without this the only way to write it was a floating text element
+            # that did not travel with the arrow.
+            lineEl = elementInfo.element;
+            labelX = (lineEl.x1 + lineEl.x2) / 2;
+            labelY = (lineEl.y1 + lineEl.y2) / 2;
+            # A curved connector reads from its bend, not the straight midpoint.
+            if lineEl.bendX != None and lineEl.bendX != undefined {
+                labelX = lineEl.bendX;
+                labelY = lineEl.bendY;
+            }
+            existingLineText = lineEl.shapeText or "";
+            textInputHook.startTextInput(labelX, labelY, existingLineText, elementInfo.id, lineEl);
+            selectionHook.clearSelection();
+            setTimeout(lambda {
+                if textInputRef.current {
+                    textInputRef.current.focus();
+                    if existingLineText != "" {
+                        textInputRef.current.select();
+                    }
+                }
+            }, 10);
         } elif not elementInfo {
             # Double-click on empty canvas -> start text input
             selectionHook.clearSelection();
@@ -733,6 +757,13 @@ def:pub Canvas(
     making the box taller would fix it."""
     def fit_shape_to_label(el: any) -> any {
         if not el or not el.shapeText {
+            return el;
+        }
+        # Boxes only. A line or arrow carries a label too, but it has no width
+        # or height to grow -- without this guard the arithmetic below runs on
+        # undefined and writes a NaN height onto the line.
+        kind = el.type or "";
+        if kind != "rectangle" and kind != "circle" and kind != "diamond" and kind != "image" {
             return el;
         }
         fit_canvas = canvasRef.current;
@@ -2385,6 +2416,43 @@ def:pub Canvas(
                 if not toolLockedRef.current { onToolChange("select"); }
             }
         }
+    }
+
+    # A gesture belongs to the pointer, not to the element it started on.
+    #
+    # Mouse events are bound to the canvas, so the moment the pointer crossed
+    # onto the sidebar mid-drag the moves stopped arriving and the release was
+    # never seen at all -- the shape froze part-way and the drag stayed
+    # half-open. While a gesture is in flight these listeners follow the pointer
+    # anywhere on the page, and they stand down again the moment it ends.
+    gestureActive = selectionHook.isDragging or selectionHook.isResizing
+        or selectionHook.isBoxSelecting or viewportHook.isPanning
+        or drawingState.isDrawing or isRotating or isDraggingBend
+        or isDraggingVertex or isDraggingElbowSegment;
+
+    can with gestureActive entry {
+        def forwardMove(ev: any) -> None {
+            # The canvas already handles what happens over itself; this is only
+            # for the part of the gesture that strays off it.
+            if ev.target != canvasRef.current {
+                handleMouseMove(ev);
+            }
+        }
+        def forwardUp(ev: any) -> None {
+            if ev.target != canvasRef.current {
+                handleMouseUp(ev);
+            }
+        }
+        if gestureActive {
+            window.addEventListener("mousemove", forwardMove);
+            window.addEventListener("mouseup", forwardUp);
+        }
+        # Always hand back a cleanup, on both branches: returning null on one of
+        # them makes React try to CALL null when the effect is torn down.
+        return lambda {
+            window.removeEventListener("mousemove", forwardMove);
+            window.removeEventListener("mouseup", forwardUp);
+        };
     }
 
     def handleMouseLeave() -> None {
