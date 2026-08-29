@@ -63,7 +63,7 @@ def:pub drawElement(ctx: any, element: dict, onImageLoad: any) -> None {
 
 def:pub drawImageElement(ctx: any, element: dict, onImageLoad: any) -> None {
     if not element["imageObj"] or not element["imageObj"].src {
-        img = Reflect.construct(Image, []);
+        img = new(Image);
         img.onload = lambda {
             # Image finished loading — request a canvas redraw
             if onImageLoad {

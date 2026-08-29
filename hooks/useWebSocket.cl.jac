@@ -565,7 +565,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
 
     def connect() -> None {
         url = getRelayUrl();
-        ws = Reflect.construct(WebSocket, [url]);
+        ws = new(WebSocket, url);
 
         ws.onopen = lambda {
             connectedRef.current = True;

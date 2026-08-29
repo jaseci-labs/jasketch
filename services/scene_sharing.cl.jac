@@ -4,9 +4,10 @@ Client-side AES-GCM 128-bit encryption for scene snapshots.
 All keys live in URL hash only — server never sees them.
 """
 
+sv import from .sharing { create_share, read_share, ShareRef, SharePayload }
+
 glob SHARE_KEY_LENGTH: int = 128;    # AES-GCM 128-bit
 glob SHARE_IV_LENGTH: int = 12;      # bytes
-glob SHARE_API_DEV_PORT: str = "8000";
 
 """Check if Web Crypto API is available (requires HTTPS or localhost)."""
 def:pub check_crypto_available() -> bool {
@@ -15,16 +16,6 @@ def:pub check_crypto_available() -> bool {
     } except Exception {
         return False;
     }
-}
-
-"""Get base URL for share API calls."""
-def:pub get_share_api_base() -> str {
-    origin = window.location.origin;
-    # In dev, API might be on different port; in prod, same origin
-    if origin.includes("localhost") or origin.includes("127.0.0.1") {
-        return f"{window.location.protocol}//{window.location.hostname}:{SHARE_API_DEV_PORT}";
-    }
-    return origin;
 }
 
 """Generate random AES-GCM 128-bit key, return as base64url."""
@@ -37,7 +28,7 @@ async def:pub generate_encryption_key() -> str {
         );
 
         raw_key: any = await window.crypto.subtle.exportKey("raw", key);
-        key_bytes = Array.from(Reflect.construct(Uint8Array, [raw_key]));
+        key_bytes = Array.from(new(Uint8Array, raw_key));
         key_b64 = btoa(String.fromCharCode.apply(None, key_bytes));
         # base64 -> base64url
         return key_b64.replace(RegExp("\\+", "g"), "-").replace(RegExp("\\/", "g"), "_").replace(RegExp("=", "g"), "");
@@ -54,7 +45,7 @@ async def:pub encrypt_scene(elements: list, key_b64: str) -> str {
         key_b64_padded = key_b64 + ("=" * (4 - (len(key_b64) % 4)));
         key_b64_std = key_b64_padded.replace("-", "+").replace("_", "/");
         key_bytes_b64 = atob(key_b64_std);
-        key_bytes = Reflect.construct(Uint8Array, [len(key_bytes_b64)]);
+        key_bytes = new(Uint8Array, len(key_bytes_b64));
         i = 0;
         while i < len(key_bytes_b64) {
             key_bytes[i] = key_bytes_b64.charCodeAt(i);
@@ -70,11 +61,11 @@ async def:pub encrypt_scene(elements: list, key_b64: str) -> str {
         );
 
         # Generate random IV
-        iv = window.crypto.getRandomValues(Reflect.construct(Uint8Array, [SHARE_IV_LENGTH]));
+        iv = window.crypto.getRandomValues(new(Uint8Array, SHARE_IV_LENGTH));
 
         # Serialize and encode plaintext
         json_str = JSON.stringify(elements);
-        plaintext = Reflect.construct(TextEncoder, []).encode(json_str);
+        plaintext = new(TextEncoder).encode(json_str);
 
         # Encrypt
         ciphertext: any = await window.crypto.subtle.encrypt(
@@ -84,9 +75,9 @@ async def:pub encrypt_scene(elements: list, key_b64: str) -> str {
         );
 
         # Combine iv || ciphertext
-        combined = Reflect.construct(Uint8Array, [iv.length + ciphertext.byteLength]);
-        combined.set(Reflect.construct(Uint8Array, [iv]), 0);
-        combined.set(Reflect.construct(Uint8Array, [ciphertext]), iv.length);
+        combined = new(Uint8Array, iv.length + ciphertext.byteLength);
+        combined.set(new(Uint8Array, iv), 0);
+        combined.set(new(Uint8Array, ciphertext), iv.length);
 
         # Convert to base64url
         combined_b64 = btoa(String.fromCharCode.apply(None, Array.from(combined)));
@@ -104,7 +95,7 @@ async def:pub decrypt_scene(ciphertext_b64url: str, key_b64: str) -> list {
         key_b64_padded = key_b64 + ("=" * (4 - (len(key_b64) % 4)));
         key_b64_std = key_b64_padded.replace("-", "+").replace("_", "/");
         key_bytes_b64 = atob(key_b64_std);
-        key_bytes = Reflect.construct(Uint8Array, [len(key_bytes_b64)]);
+        key_bytes = new(Uint8Array, len(key_bytes_b64));
         ki = 0;
         while ki < len(key_bytes_b64) {
             key_bytes[ki] = key_bytes_b64.charCodeAt(ki);
@@ -126,7 +117,7 @@ async def:pub decrypt_scene(ciphertext_b64url: str, key_b64: str) -> list {
             ciphertext_b64_std = ciphertext_b64_std + ("=" * padding_len);
         }
         combined_str = atob(ciphertext_b64_std);
-        combined_bytes = Reflect.construct(Uint8Array, [len(combined_str)]);
+        combined_bytes = new(Uint8Array, len(combined_str));
         ci = 0;
         while ci < len(combined_str) {
             combined_bytes[ci] = combined_str.charCodeAt(ci);
@@ -144,7 +135,7 @@ async def:pub decrypt_scene(ciphertext_b64url: str, key_b64: str) -> list {
             ciphertext
         );
 
-        plaintext_str = Reflect.construct(TextDecoder, []).decode(plaintext_buffer);
+        plaintext_str = new(TextDecoder).decode(plaintext_buffer);
         elements = JSON.parse(plaintext_str);
         return elements;
     } except Exception as e {
@@ -153,7 +144,7 @@ async def:pub decrypt_scene(ciphertext_b64url: str, key_b64: str) -> list {
     }
 }
 
-"""Encrypt scene, POST to /api/share, return {share_id, key}."""
+"""Encrypt the scene client-side and store the ciphertext; returns {share_id, key}."""
 async def:pub export_to_share_backend(elements: list) -> dict {
     try {
         # Generate encryption key
@@ -168,40 +159,25 @@ async def:pub export_to_share_backend(elements: list) -> dict {
             return {"error": "Failed to encrypt scene"};
         }
 
-        # POST to share API
-        api_base = get_share_api_base();
-        response: any = await fetch(f"{api_base}/api/share", {
-            "method": "POST",
-            "headers": {"Content-Type": "application/json"},
-            "body": JSON.stringify({"ciphertext": ciphertext})
-        });
-
-        if not response.ok {
-            return {"error": f"API error: {response.status}"};
+        ref: ShareRef = await create_share(ciphertext);
+        if ref.error {
+            return {"error": ref.error};
         }
-
-        data: any = await response.json();
-        return {"share_id": data["share_id"] or "", "key": key};
+        return {"share_id": ref.share_id, "key": key};
     } except Exception as e {
         console.error("Failed to export to share backend:", e);
         return {"error": str(e)};
     }
 }
 
-"""Fetch encrypted scene from /api/share/{share_id}, decrypt, return {ok, elements, error}."""
+"""Load a stored scene by id and decrypt it locally; returns {ok, elements, error}."""
 async def:pub import_from_share_backend(share_id: str, key: str) -> dict {
     try {
-        api_base = get_share_api_base();
-        response: any = await fetch(f"{api_base}/api/share/{share_id}");
-
-        if not response.ok {
-            msg = "Share not found or expired" if response.status == 404 else f"Failed to load share (error {response.status})";
-            console.error(f"Failed to fetch share: {response.status}");
-            return {"ok": False, "elements": [], "error": msg};
+        payload: SharePayload = await read_share(share_id);
+        if payload.error {
+            return {"ok": False, "elements": [], "error": payload.error};
         }
-
-        data: any = await response.json();
-        ciphertext = data["ciphertext"] or "";
+        ciphertext = payload.ciphertext;
         if not ciphertext {
             return {"ok": False, "elements": [], "error": "Share data is empty or corrupted"};
         }

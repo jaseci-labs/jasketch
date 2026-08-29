@@ -3,13 +3,12 @@
 import from typing { Any }
 import os;
 import from infrastructure.relay { start_relay_server }
-import from infrastructure.share_server { initialize_share_server }
+# Endpoint registration: a def:pub only reaches /function/<name> if the entry
+# module names it (jaseci-labs/jac#7695), so these imports are load-bearing.
+import from services.sharing { create_share, read_share, ShareRef, SharePayload }
 
 # Start relay by default unless explicitly disabled via JASKETCH_START_RELAY (helps avoid port conflicts when turned off in multi-process/reload scenarios)
 glob _relay_started: Any = start_relay_server() if os.environ.get("JASKETCH_START_RELAY", "true").lower() == "true" else None;
-
-# Initialize share server for encrypted scene storage
-glob _share_server_ready: Any = initialize_share_server();
 
 # Load and initialize agent
 import from agent.server { _boot }

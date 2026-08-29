@@ -142,9 +142,9 @@ def:pub TopBar(
         files = e.target.files;
         if len(files) > 0 {
             file = files[0];
-            reader = Reflect.construct(FileReader, []);
+            reader = new(FileReader);
             reader.onload = lambda (event: any) {
-                img = Reflect.construct(Image, []);
+                img = new(Image);
                 img.onload = lambda {
                     onImageLoad({
                         "type": "image",

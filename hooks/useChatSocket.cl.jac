@@ -69,7 +69,7 @@ def:pub useChatSocket() -> dict {
 
     def connect() -> None {
         url = getChatUrl();
-        ws = Reflect.construct(WebSocket, [url]);
+        ws = new(WebSocket, url);
 
         ws.onopen = lambda {
             connectedRef.current = True;

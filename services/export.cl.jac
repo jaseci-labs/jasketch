@@ -236,7 +236,7 @@ def:pub copySelectionAsPNG(selectedElements: list, canvasRef: any, onDone: any) 
     offscreen = renderToOffscreenCanvas(elements, bounds, dpr);
 
     offscreen.toBlob(lambda (blob: any) {
-        item = Reflect.construct(ClipboardItem, [{"image/png": blob}]);
+        item = new(ClipboardItem, {"image/png": blob});
         navigator.clipboard.write([item]).then(lambda {
             if onDone { onDone(); }
         });
@@ -254,7 +254,7 @@ def:pub copyCanvasAsPNG(allElements: list, canvasRef: any, onDone: any) -> None 
     offscreen = renderToOffscreenCanvas(allElements, bounds, dpr);
 
     offscreen.toBlob(lambda (blob: any) {
-        item = Reflect.construct(ClipboardItem, [{"image/png": blob}]);
+        item = new(ClipboardItem, {"image/png": blob});
         navigator.clipboard.write([item]).then(lambda {
             if onDone { onDone(); }
         }).catch(lambda (err: any) {
@@ -274,8 +274,8 @@ def:pub copyCanvasAsSVG(allElements: list, canvasRef: any, onDone: any) -> None 
     bounds = getSelectedElementsBounds(srcCtx, allElements);
     svgText = buildSvgString(allElements, bounds);
 
-    svgBlob = Reflect.construct(Blob, [[svgText], {"type": "text/plain"}]);
-    navigator.clipboard.write([Reflect.construct(ClipboardItem, [{"text/plain": svgBlob}])]).then(lambda {
+    svgBlob = new(Blob, [svgText], {"type": "text/plain"});
+    navigator.clipboard.write([new(ClipboardItem, {"text/plain": svgBlob})]).then(lambda {
         if onDone { onDone(); }
     });
 }
@@ -307,7 +307,7 @@ def:pub exportSelectionAsSVG(selectedElements: list, canvasRef: any) -> None {
     bounds = getSelectedElementsBounds(srcCtx, elements);
     svgContent = buildSvgString(elements, bounds);
 
-    blob = Reflect.construct(Blob, [[svgContent], {"type": "image/svg+xml"}]);
+    blob = new(Blob, [svgContent], {"type": "image/svg+xml"});
     url = URL.createObjectURL(blob);
     downloadBlob(url, "jasketch-export.svg");
 }
@@ -521,13 +521,13 @@ def:pub saveAsJaSketch(elements: list, filename: str) -> None {
     };
 
     jsonStr = JSON.stringify(data, None, 2);
-    blob = Reflect.construct(Blob, [[jsonStr], {"type": "application/json"}]);
+    blob = new(Blob, [jsonStr], {"type": "application/json"});
     url = URL.createObjectURL(blob);
     downloadBlob(url, filename);
 }
 
 def:pub loadFromJaSketch(file: any, onLoad: any, onError: any) -> None {
-    reader = Reflect.construct(FileReader, []);
+    reader = new(FileReader);
     reader.onload = lambda (e: any) {
         parsed = JSON.parse(e.target.result);
         if not parsed or parsed.type != "jasketch" or not parsed.elements {

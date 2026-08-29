@@ -141,9 +141,9 @@ def:pub Canvas(
         imgInput.onchange = lambda (evt: any) {
             imgFile = evt.target.files[0];
             if imgFile {
-                imgReader = Reflect.construct(FileReader, []);
+                imgReader = new(FileReader);
                 imgReader.onload = lambda (loadEvt: any) {
-                    imgObj = Reflect.construct(Image, []);
+                    imgObj = new(Image);
                     imgObj.onload = lambda {
                         canvas = canvasRef.current;
                         centerX = 0;
@@ -918,9 +918,9 @@ def:pub Canvas(
                         if clipTypes[ti] == "image/png" or clipTypes[ti] == "image/jpeg" {
                             foundImage = True;
                             clipItem.getType(clipTypes[ti]).then(lambda (blob: any) {
-                                reader = Reflect.construct(FileReader, []);
+                                reader = new(FileReader);
                                 reader.onload = lambda (event: any) {
-                                    img = Reflect.construct(Image, []);
+                                    img = new(Image);
                                     img.onload = lambda {
                                         pasteImgElement = {
                                             "type": "image",

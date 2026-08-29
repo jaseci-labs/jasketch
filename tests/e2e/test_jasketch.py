@@ -13,9 +13,12 @@ Run:
     pytest tests/e2e/test_jasketch.py -v --headed
 """
 
+import re
+
 from playwright.sync_api import Page, expect
 
 ACTION_DELAY = 300  # ms between UI actions
+APP_READY_TIMEOUT = 60_000  # ms for a freshly opened page to render its canvas
 
 
 # -- Helpers -------------------------------------------------------------------
@@ -1145,3 +1148,64 @@ class TestShortcutHelp:
         app.wait_for_timeout(300)
         help_title_after = app.query_selector("text='Keyboard Shortcuts'")
         assert help_title_after is None, "Help modal should be closed after Escape"
+
+
+# -- Share link tests ----------------------------------------------------------
+
+
+class TestShareLink:
+    """The share round-trip: encrypt in the browser, store ciphertext server-side,
+    reopen the link in a fresh tab and get the same scene back.
+
+    Exercises services/sharing.jac (the def:pub endpoints + the SharedScene store
+    on root.shared) through the real UI, so a broken RPC contract or a lost blob
+    fails here rather than in production."""
+
+    def test_share_link_round_trips_the_scene(self, app: Page, base_url):
+        clear_canvas(app)
+        draw_shape(app, "Rectangle", S_X1, S_Y1, S_X2, S_Y2)
+        wait_for_elements(app, 1)
+        original = get_elements(app)
+
+        app.locator("button[title^='Shareable link']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        app.get_by_text("Generate Link", exact=True).click()
+
+        link_box = app.locator("input[readonly]").first
+        expect(link_box).to_have_value(re.compile(r"#json="), timeout=20_000)
+        share_url = link_box.input_value()
+        assert "#json=" in share_url, share_url
+
+        # A fresh context: no localStorage, so anything that renders must have
+        # come back from the server.
+        viewer = app.context.browser.new_context()
+        try:
+            page = viewer.new_page()
+            page.goto(share_url, wait_until="load")
+            page.locator("canvas").first.wait_for(state="visible", timeout=APP_READY_TIMEOUT)
+            page.wait_for_function(
+                """() => {
+                    const d = localStorage.getItem('jasketch_elements');
+                    return d && JSON.parse(d).length > 0;
+                }""",
+                timeout=20_000,
+            )
+            restored = page.evaluate(
+                "() => JSON.parse(localStorage.getItem('jasketch_elements'))"
+            )
+            assert len(restored) == len(original)
+            assert restored[0]["type"] == original[0]["type"]
+        finally:
+            viewer.close()
+
+    def test_unknown_share_id_reports_an_error(self, app: Page, base_url):
+        viewer = app.context.browser.new_context()
+        try:
+            page = viewer.new_page()
+            page.goto(f"{base_url}/#json=doesnotexist,badkey", wait_until="load")
+            page.locator("canvas").first.wait_for(state="visible", timeout=APP_READY_TIMEOUT)
+            expect(page.get_by_text("Share not found or expired")).to_be_visible(
+                timeout=20_000
+            )
+        finally:
+            viewer.close()
