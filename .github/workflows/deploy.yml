@@ -125,6 +125,9 @@ jobs:
             | bash -s -- --version "${{ steps.jac.outputs.version }}"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # AWS is only needed to REACH the cluster now. There is no image to build
+      # and no registry to push to, so the ECR permissions this role carried are
+      # no longer exercised.
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4.2.0
         with:
@@ -140,10 +143,13 @@ jobs:
       # instead of after a rollout.
       - name: Lint the deploy plan
         run: jac start --scale --dry-run
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'jasketch' }}
 
       - name: Deploy
         run: jac start --scale
         env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'jasketch' }}
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
 

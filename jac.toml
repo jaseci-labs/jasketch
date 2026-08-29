@@ -68,9 +68,15 @@ description = "A collaborative whiteboard with an AI drawing agent, built in Jac
 icon = ".assets/icon.png"
 author = "Jaseci"
 
-[client.pwa]
-theme_color = "#000000"
-background_color = "#ffffff"
+# Injected into the pods as a Kubernetes Secret, resolved from the deploy
+# environment. Mongo and Redis already run in the `jasketch` namespace (the
+# mongodb-connection / redis-connection secrets the old deployment used); this
+# deploy connects to them rather than provisioning its own, so nothing is lost
+# in the cutover. Unset locally -> SQLite under .jac/data and an in-process
+# websocket backplane, which is what you want for one process.
+[scale.secrets]
+MONGODB_URI = "${MONGODB_URI:-}"
+REDIS_URL = "${REDIS_URL:-}"
 
 # Room fan-out crosses workers only through a backplane. Left unset (or empty)
 # the in-process one is used, which is correct for a single-process `jac start`
@@ -81,7 +87,18 @@ background_color = "#ffffff"
 redis_url = "${REDIS_URL:-}"
 
 [scale.kubernetes]
-app_name = "jasketch"
+# `jasketch.jaseci.org` runs in the `jasketch` namespace of the SHARED
+# jaseci-cluster, so the default here is deliberately not that, and deliberately
+# not `default` either (which is what an unset namespace silently means, and
+# where a stray deploy would land among everyone else's work). CI and prod set
+# K8S_NAMESPACE explicitly.
+#
+# Do not reach for `${VAR:?message}` to force it: only `${VAR}` and
+# `${VAR:-default}` are interpolated here. The `:?` form is passed through
+# VERBATIM, so the namespace becomes the literal string `${K8S_NAMESPACE:?...}`
+# -- checked against 0.34.14, contrary to what `jac guide jac-config` says.
+namespace = "${K8S_NAMESPACE:-jasketch-dev}"
+app_name = "${K8S_APP_NAME:-jasketch}"
 container_port = 8000
 # The deploy ships source + the pinned jac binary to pods on a ReadWriteMany
 # bundle PVC. The usual cloud default StorageClass (EKS gp3 / ebs.csi) is
