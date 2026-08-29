@@ -89,8 +89,12 @@ author = "Jaseci"
 # installed: "RedisBackplane selected but `redis` is not installed", and every
 # websocket closes with 4503 subscribe_unavailable.
 [scale.database]
-backend = "mongo"   # data.mongo capability -> pymongo
-type = "redis"      # data.redis capability -> redis
+# `type` is the cache tier and pulls the data.redis capability (the redis client).
+# pymongo arrives via the provisioned MongoDB, so there is nothing to declare for
+# it -- and NOT via a `backend` key: [scale.database] takes only type,
+# mongodb_uri and redis_url. `backend = "mongo"` is silently ignored on 0.34.14
+# and warns on 0.37 ("unknown key ... defaults apply instead").
+type = "redis"
 
 [scale.kubernetes]
 # `jasketch.jaseci.org` runs in the `jasketch` namespace of the SHARED
