@@ -283,7 +283,7 @@ def:pub drawLineLabel(ctx: any, element: dict, background: str) -> None {
     llSpan = Math.sqrt(
         Math.pow(element["x2"] - element["x1"], 2) + Math.pow(element["y2"] - element["y1"], 2)
     );
-    llMaxWidth = Math.max(80.0, llSpan * 0.8);
+    llMaxWidth = Math.max(150.0, llSpan * 0.9);
     llLines = wrapTextLines(ctx, label, llMaxWidth);
     llLineHeight = llFontSize * 1.2;
 

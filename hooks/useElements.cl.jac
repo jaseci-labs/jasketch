@@ -57,6 +57,19 @@ def:pub useElements() -> dict {
         historyIndexRef.current = newHistory.length - 1;
     }
 
+    """The element list as it stands RIGHT NOW.
+
+    `elements` is React state and only changes at the next render, so two
+    mutations inside one tick both built on the same stale list and the second
+    silently discarded the first. Drawing quickly dropped shapes, nudging a
+    multi-selection moved one element, restyling recoloured one shape, and
+    bring-to-front cancelled itself out -- all the same bug wearing different
+    clothes. `elementsRef` is written synchronously in setElementsInternal, so
+    it is always current."""
+    def _live() -> list {
+        return elementsRef.current or elements;
+    }
+
     def setElementsWithHistory(newElements: list) -> None {
         pushHistory(newElements);
         setElementsInternal(newElements);
@@ -66,7 +79,7 @@ def:pub useElements() -> dict {
         if not element["id"] {
             element["id"] = crypto.randomUUID();
         }
-        newElements = elements + [element];
+        newElements = _live() + [element];
         setElementsWithHistory(newElements);
     }
 
@@ -78,14 +91,15 @@ def:pub useElements() -> dict {
             }
             ni = ni + 1;
         }
-        newElements = elements + newItems;
+        newElements = _live() + newItems;
         setElementsWithHistory(newElements);
     }
 
     def _findIndex(id: str) -> int {
         fi = 0;
-        while fi < len(elements) {
-            if elements[fi] and elements[fi].id == id {
+        scan = _live();
+        while fi < len(scan) {
+            if scan[fi] and scan[fi].id == id {
                 return fi;
             }
             fi = fi + 1;
@@ -96,7 +110,7 @@ def:pub useElements() -> dict {
     def updateElement(id: str, newElement: dict) -> None {
         idx = _findIndex(id);
         if idx >= 0 {
-            newElements = elements[:];
+            newElements = _live()[:];
             newElements[idx] = newElement;
             setElementsWithHistory(newElements);
         }
@@ -105,14 +119,14 @@ def:pub useElements() -> dict {
     def updateElementSilent(id: str, newElement: dict) -> None {
         idx = _findIndex(id);
         if idx >= 0 {
-            newElements = elements[:];
+            newElements = _live()[:];
             newElements[idx] = newElement;
             setElementsInternal(newElements);
         }
     }
 
     def updateMultipleElements(updates: list) -> None {
-        newElements = elements[:];
+        newElements = _live()[:];
         i = 0;
         while i < len(updates) {
             idx = _findIndex(updates[i].id);
@@ -125,7 +139,7 @@ def:pub useElements() -> dict {
     }
 
     def updateMultipleElementsSilent(updates: list) -> None {
-        newElements = elements[:];
+        newElements = _live()[:];
         i = 0;
         while i < len(updates) {
             idx = _findIndex(updates[i].id);
@@ -138,15 +152,16 @@ def:pub useElements() -> dict {
     }
 
     def commitToHistory() -> None {
-        pushHistory(elements);
+        pushHistory(_live());
     }
 
     def removeElement(id: str) -> None {
         newElements = [];
         ri = 0;
-        while ri < len(elements) {
-            if elements[ri] and elements[ri].id != id {
-                newElements.append(elements[ri]);
+        keep = _live();
+        while ri < len(keep) {
+            if keep[ri] and keep[ri].id != id {
+                newElements.append(keep[ri]);
             }
             ri = ri + 1;
         }
@@ -162,9 +177,10 @@ def:pub useElements() -> dict {
         }
         newElements = [];
         rmi = 0;
-        while rmi < len(elements) {
-            if elements[rmi] and not idSet[elements[rmi].id] {
-                newElements.append(elements[rmi]);
+        pool = _live();
+        while rmi < len(pool) {
+            if pool[rmi] and not idSet[pool[rmi].id] {
+                newElements.append(pool[rmi]);
             }
             rmi = rmi + 1;
         }

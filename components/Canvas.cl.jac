@@ -1147,41 +1147,83 @@ def:pub Canvas(
         contextMenu = None;
     }
 
-    def handleBringToFront() -> None {
-        if selectionHook.selectedElement {
-            selId = selectionHook.selectedElement.id;
-            element = selectionHook.selectedElement.element;
-            elementsHook.removeElement(selId);
-            elementsHook.addElement(element);
-            selectionHook.clearSelection();
+    """Move the selection to the very front or the very back of the stack.
+
+    ONE setElements call, not a remove followed by an add: both rebuild the list
+    from the CURRENT render, so that pair cancelled out and bring-to-front did
+    nothing at all. The selection is also kept -- clearing it meant you could not
+    layer twice in a row and lost your place after a single press."""
+    def _reorder_selection(to_front: bool) -> None {
+        picked = [];
+        multi = selectedElementsRef.current;
+        single = selectedElementRef.current;
+        if multi and multi.length > 1 {
+            mi = 0;
+            while mi < multi.length {
+                picked.append(multi[mi].id);
+                mi = mi + 1;
+            }
+        } elif single {
+            picked.append(single.id);
+        }
+        if len(picked) == 0 {
+            contextMenu = None;
+            return;
+        }
+
+        pool = (elementsHook.elementsRef and elementsHook.elementsRef.current) or elementsHook.elements;
+        moving = [];
+        staying = [];
+        pi = 0;
+        while pi < pool.length {
+            cand = pool[pi];
+            isPicked = False;
+            ci = 0;
+            while ci < len(picked) {
+                if cand.id == picked[ci] {
+                    isPicked = True;
+                }
+                ci = ci + 1;
+            }
+            # Order WITHIN the moved set is preserved, so sending three shapes
+            # back does not shuffle them against each other.
+            if isPicked {
+                moving.append(cand);
+            } else {
+                staying.append(cand);
+            }
+            pi = pi + 1;
+        }
+        if len(moving) == 0 {
+            contextMenu = None;
+            return;
+        }
+        if to_front {
+            elementsHook.setElements(staying + moving);
+        } else {
+            elementsHook.setElements(moving + staying);
         }
         contextMenu = None;
+    }
+
+    def handleBringToFront() -> None {
+        _reorder_selection(True);
     }
 
     def handleSendToBack() -> None {
-        if selectionHook.selectedElement {
-            selId = selectionHook.selectedElement.id;
-            element = selectionHook.selectedElement.element;
-            otherElements = [];
-            bfi = 0;
-            while bfi < elementsHook.elements.length {
-                if elementsHook.elements[bfi].id != selId {
-                    otherElements.append(elementsHook.elements[bfi]);
-                }
-                bfi = bfi + 1;
-            }
-            newElements = [element] + otherElements;
-            elementsHook.setElements(newElements);
-            selectionHook.clearSelection();
-        }
-        contextMenu = None;
+        _reorder_selection(False);
     }
 
+    # The handlers below are reached from the keydown listener, which is
+    # installed by an effect that only re-runs when the ELEMENT list changes.
+    # Selecting shapes does not change that list, so reading the selection from
+    # the closure returned whatever it was BEFORE the selection was made --
+    # Ctrl+A then Ctrl+G grouped nothing at all. They read the refs instead.
     def handleGroup() -> None {
         allSelected = [];
-        if selectionHook.selectedElements.length > 1 {
-            allSelected = selectionHook.selectedElements;
-        } elif selectionHook.selectedElement {
+        if selectedElementsRef.current.length > 1 {
+            allSelected = selectedElementsRef.current;
+        } elif selectedElementRef.current {
             # Single selected, nothing to group
             contextMenu = None;
             return;
@@ -1229,10 +1271,10 @@ def:pub Canvas(
 
     def handleUngroup() -> None {
         allSelected = [];
-        if selectionHook.selectedElements.length > 0 {
-            allSelected = selectionHook.selectedElements;
-        } elif selectionHook.selectedElement {
-            allSelected = [selectionHook.selectedElement];
+        if selectedElementsRef.current.length > 0 {
+            allSelected = selectedElementsRef.current;
+        } elif selectedElementRef.current {
+            allSelected = [selectedElementRef.current];
         }
         if len(allSelected) == 0 {
             contextMenu = None;
