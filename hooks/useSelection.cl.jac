@@ -19,6 +19,14 @@ def:pub useSelection() -> dict {
 
     def updateSelectedElements(val: list) -> None {
         selectedElements = val;
+        # The primary tracks the group. Without this, Ctrl+A on a fresh canvas
+        # left it null and the whole style panel stayed hidden -- it only looked
+        # like it worked when a shape had been clicked beforehand.
+        if val and len(val) > 0 {
+            selectedElement = val[0];
+        } else {
+            selectedElement = None;
+        }
     }
 
     def updateIsDragging(val: bool) -> None {
@@ -100,9 +108,11 @@ def:pub useSelection() -> dict {
     def removeFromSelection(id: str) -> None {
         newList = [sel for sel in selectedElements if sel.id != id];
         selectedElements = newList;
-        if len(newList) == 1 {
+        # Always re-point the primary. Leaving it alone when two or more remain
+        # could leave it pointing at the element that was just removed.
+        if len(newList) > 0 {
             selectedElement = newList[0];
-        } elif len(newList) == 0 {
+        } else {
             selectedElement = None;
         }
     }
@@ -135,7 +145,11 @@ def:pub useSelection() -> dict {
             }
 
             selectedElements = selected;
-            if len(selected) == 1 {
+            # Keep a primary element even for a multi-selection, exactly as
+            # updateSelectedElements does. The style panel keys off this, so
+            # clearing it meant rubber-band selecting two shapes made every
+            # colour and stroke control vanish -- while Ctrl+A kept them.
+            if len(selected) > 0 {
                 selectedElement = selected[0];
             } else {
                 selectedElement = None;

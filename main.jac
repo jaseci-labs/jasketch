@@ -275,7 +275,7 @@ cl {
                     }}
                 />
 
-                <div className="absolute bottom-3 right-4 z-10 pointer-events-none">
+                <div className="absolute bottom-3 right-20 z-10 pointer-events-none">
                     <span className="text-[10px] tracking-wider text-gray-300 font-medium uppercase">
                         {"Powered by Jaseci"}
                     </span>

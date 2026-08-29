@@ -1,4 +1,4 @@
-import from react { useRef }
+import from react { useRef, useEffect }
 
 def ToolIcon(
     toolId: str,
@@ -74,6 +74,37 @@ def:pub TopBar(
     jasketchFileInputRef = useRef(None);
 
     has menuOpen: bool = False;
+
+    menuBtnRef = useRef(None);
+    menuPanelRef = useRef(None);
+
+    # A dropdown that only closes by re-clicking its own button is a trap: every
+    # other menu on the web closes when you click away or press Escape, so a user
+    # who clicks the canvas expects it gone and instead has it covering the work.
+    useEffect(lambda () -> any {
+        def closeOnOutsideClick(ev: any) -> None {
+            btn = menuBtnRef.current;
+            panel = menuPanelRef.current;
+            inBtn = btn and btn.contains(ev.target);
+            inPanel = panel and panel.contains(ev.target);
+            if not inBtn and not inPanel {
+                menuOpen = False;
+            }
+        }
+        def closeOnEscape(ev: any) -> None {
+            if ev.key == "Escape" {
+                menuOpen = False;
+            }
+        }
+        if menuOpen {
+            document.addEventListener("mousedown", closeOnOutsideClick);
+            document.addEventListener("keydown", closeOnEscape);
+        }
+        return lambda {
+            document.removeEventListener("mousedown", closeOnOutsideClick);
+            document.removeEventListener("keydown", closeOnEscape);
+        };
+    }, [menuOpen]);
     has sessionIdCopied: bool = False;
 
     toolIds = ["select", "freehand", "line", "arrow", "rectangle", "diamond", "circle", "text", "image"];
@@ -253,7 +284,7 @@ def:pub TopBar(
                     {str(participant_count)}
                 </button> or None}
 
-                <button onClick={lambda { menuOpen = not menuOpen; }} title="Menu" className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400">
+                <button ref={menuBtnRef} onClick={lambda { menuOpen = not menuOpen; }} title="Menu" className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                         <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
                     </svg>
@@ -261,7 +292,7 @@ def:pub TopBar(
             </div>
         </div>
 
-        {menuOpen and <div className="fixed top-11 right-3 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-64 py-1">
+        {menuOpen and <div ref={menuPanelRef} className="fixed top-11 right-3 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-64 py-1">
             <div className="px-4 py-2 border-b border-gray-100">
                 <div className="text-xs text-gray-400 mb-1">{"Session ID"}</div>
                 <div className="flex items-center gap-2">

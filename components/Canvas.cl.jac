@@ -6,7 +6,8 @@ import from "..hooks.useSelection" { useSelection }
 import from "..hooks.useViewport" { useViewport }
 import from "..hooks.useTextInput" { useTextInput }
 import from "..hooks.useWebSocket" { useWebSocket }
-import from "..services.geometry" { constrain_drag_point, shift_element, getMousePosition, findNearestConnectionPoint, find_bound_line_updates_for_shape, get_elbow_full_points, move_elbow_segment }
+import from "..services.geometry" { normalize_box, constrain_drag_point, shift_element, getMousePosition, findNearestConnectionPoint, find_bound_line_updates_for_shape, get_elbow_full_points, move_elbow_segment }
+import from "..services.snapping" { element_bounds, union_bounds, compute_snap, draw_snap_guides, snap_threshold_for }
 import from "..services.canvas" { shape_text_min_height, drawPreview, getElementBounds, drawConnectionPoints, drawSnapIndicator }
 import from "..services.collision" { getResizeHandleAtPoint, getBendHandleAtPoint, get_rotation_handle_at_point, getLineEndpointAtPoint, get_elbow_segment_at_point }
 import from "..services.export" { exportSelectionAsPNG, exportSelectionAsSVG, copySelectionAsPNG, copyCanvasAsPNG, copyCanvasAsSVG, saveAsJaSketch, loadFromJaSketch }
@@ -57,6 +58,10 @@ def:pub Canvas(
     wsHook = useWebSocket(elementsHook, viewportHook, canvasHook.canvasRef, canvasHook, roomState, onSessionEnded);
     # The keydown listener is registered once, so it would capture the value of
     # toolLocked from the first render forever.
+    # Guides are pure feedback for the gesture in flight, so they live in a ref
+    # rather than state: they must not cause a re-render of their own.
+    snapGuidesRef = useRef([]);
+
     toolLockedRef = useRef(toolLocked);
     toolLockedRef.current = toolLocked;
 
@@ -135,6 +140,16 @@ def:pub Canvas(
         canvas = canvasRef.current;
         if canvas {
             canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, editingShapeId);
+            # Alignment guides sit on top of the finished frame; a drag updates
+            # the elements on every move, so this runs for each frame of it.
+            if snapGuidesRef.current and len(snapGuidesRef.current) > 0 {
+                guideCtx = canvas.getContext("2d");
+                guideCtx.save();
+                guideCtx.translate(viewportHook.panOffset.x, viewportHook.panOffset.y);
+                guideCtx.scale(viewportHook.zoom, viewportHook.zoom);
+                draw_snap_guides(guideCtx, snapGuidesRef.current, viewportHook.zoom);
+                guideCtx.restore();
+            }
         }
         if onSelectionChange {
             onSelectionChange(selectionHook.selectedElement);
@@ -738,6 +753,44 @@ def:pub Canvas(
         return grown;
     }
 
+    """Grow the shape being labelled as the user types.
+
+    The box otherwise only caught up on commit, so a long label spilled out of
+    it for the whole time it was being written -- which is exactly when the user
+    is looking at it. Silent: this is one continuous edit, not a stack of undo
+    steps, and the commit records the history entry."""
+    def growEditingShape(draft: str) -> None {
+        live_edit = textInputHook.textInput;
+        if not live_edit {
+            return;
+        }
+        shape_id = live_edit.editingShapeId;
+        if shape_id == None or shape_id == undefined {
+            return;
+        }
+        host = live_edit.editingShapeElement;
+        if not host {
+            return;
+        }
+        probe = {**host};
+        probe.shapeText = draft;
+        probe.shapeTextFontSize = currentFontSize;
+        probe.shapeTextFontFamily = currentFontFamily;
+        grown = fit_shape_to_label(probe);
+        if Math.abs(grown.height) != Math.abs(host.height) {
+            # Keep the stored label as it was; only the geometry moves while
+            # typing, so an abandoned edit does not leave half a word behind.
+            resized = {**host};
+            resized.height = grown.height;
+            # Grow about the CENTRE, not downward. The editing overlay is
+            # centred on the shape, so growing one-sided slides the box out from
+            # under the very text being typed.
+            resized.y = host.y + (host.height - grown.height) / 2;
+            elementsHook.updateElementSilent(shape_id, resized);
+            textInputHook.textInput.editingShapeElement = resized;
+        }
+    }
+
     # One normalisation pass on mount, so a drawing SAVED before shapes learned
     # to hold their labels heals itself on open rather than staying broken
     # forever. Idempotent: a drawing that is already correct is left untouched
@@ -801,6 +854,90 @@ def:pub Canvas(
         updated = fit_shape_to_label(updated);
         elementsHook.updateElement(element.id, updated);
         selectionHookRef.current.setSelectedElement({"element": updated, "id": element.id});
+    }
+
+    """Nudge a drag so the selection lines up with its neighbours.
+
+    Returns the pointer position to actually use, and records the guides that
+    justify it. Holding Ctrl/Cmd suppresses snapping, for the times you want a
+    shape exactly where you put it."""
+    def snapDragPosition(raw: any, disabled: bool) -> any {
+        snapGuidesRef.current = [];
+        if disabled {
+            return raw;
+        }
+
+        sel = selectedElementsRef.current;
+        single = selectedElementRef.current;
+        movers = [];
+        dx = 0.0;
+        dy = 0.0;
+
+        if sel and sel.length > 1 and selectionHook.dragStartPos {
+            dx = raw.x - selectionHook.dragStartPos.x;
+            dy = raw.y - selectionHook.dragStartPos.y;
+            si = 0;
+            while si < sel.length {
+                movers.append(sel[si].element);
+                si = si + 1;
+            }
+        } elif single and single.element and selectionHook.dragOffset {
+            moved_el = single.element;
+            # Freehand is dragged by its own point list rather than an origin,
+            # so there is no single delta to correct here.
+            if moved_el.type == "freehand" {
+                return raw;
+            }
+            movers.append(moved_el);
+            if moved_el.type == "line" or moved_el.type == "arrow" {
+                dx = raw.x - selectionHook.dragOffset.x - moved_el.x1;
+                dy = raw.y - selectionHook.dragOffset.y - moved_el.y1;
+            } else {
+                dx = raw.x - selectionHook.dragOffset.x - moved_el.x;
+                dy = raw.y - selectionHook.dragOffset.y - moved_el.y;
+            }
+        } else {
+            return raw;
+        }
+
+        moving_parts = [];
+        moving_ids = {};
+        mi = 0;
+        while mi < len(movers) {
+            mb = element_bounds(movers[mi]);
+            if mb {
+                moving_parts.append({
+                    "left": mb["left"] + dx, "right": mb["right"] + dx,
+                    "top": mb["top"] + dy, "bottom": mb["bottom"] + dy
+                });
+            }
+            moving_ids[movers[mi].id] = True;
+            mi = mi + 1;
+        }
+        moving = union_bounds(moving_parts);
+        if not moving {
+            return raw;
+        }
+
+        others = [];
+        pool = (elementsHook.elementsRef and elementsHook.elementsRef.current) or elementsHook.elements;
+        pi = 0;
+        while pi < pool.length {
+            cand = pool[pi];
+            if cand and not moving_ids[cand.id] {
+                ob = element_bounds(cand);
+                if ob {
+                    others.append(ob);
+                }
+            }
+            pi = pi + 1;
+        }
+
+        # The threshold is a SCREEN distance, so zooming in does not make the
+        # snap grabbier in world terms.
+        snap = compute_snap(moving, others, snap_threshold_for(viewportHook.zoom));
+        snapGuidesRef.current = snap["guides"];
+        return {"x": raw.x + snap["dx"], "y": raw.y + snap["dy"]};
     }
 
     """Move the selection by (dx, dy) world units. False when nothing is selected.
@@ -1782,6 +1919,10 @@ def:pub Canvas(
                 }
             }
 
+            # Line the drag up with the neighbours before anything is moved, so
+            # both the single and multi paths below inherit the correction.
+            pos = snapDragPosition(pos, e.ctrlKey or e.metaKey);
+
             if selectionHook.selectedElements.length > 1 and selectionHook.dragStartPos {
                 multiDx = pos.x - selectionHook.dragStartPos.x;
                 multiDy = pos.y - selectionHook.dragStartPos.y;
@@ -2086,6 +2227,16 @@ def:pub Canvas(
         }
 
         if selectionHook.isResizing {
+            # Dragging a handle past the opposite edge flips the box; put it
+            # back the right way round before the change is committed.
+            resized = selectionHook.selectedElement;
+            if resized and resized.element {
+                straight = normalize_box(resized.element);
+                if straight != resized.element {
+                    elementsHook.updateElementSilent(resized.id, straight);
+                    selectionHook.setSelectedElement({"element": straight, "id": resized.id});
+                }
+            }
             elementsHook.commitToHistory();
             selectionHook.stopResizing();
             return;
@@ -2099,6 +2250,8 @@ def:pub Canvas(
         if selectionHook.isDragging {
             elementsHook.commitToHistory();
         }
+        # The guides belong to the gesture, so they go when it does.
+        snapGuidesRef.current = [];
         selectionHook.stopDragging();
         viewportHook.stopPanning();
 
@@ -2222,6 +2375,8 @@ def:pub Canvas(
         }
 
         if newElement {
+            # Drawn bottom-up or right-to-left? Store it the right way round.
+            newElement = normalize_box(newElement);
             elementsHook.addElement(newElement);
             if currentTool != "freehand" {
                 selectionHook.setSelectedElement({"element": newElement, "id": newElement.id});
@@ -2295,6 +2450,7 @@ def:pub Canvas(
                 panOffset={viewportHook.panOffset}
                 onTextChange={lambda (e: any) {
                     textInputHook.updateTextContent(e.target.value);
+                    growEditingShape(e.target.value);
                 }}
                 onKeyDown={handleTextKeyDown}
                 onBlur={handleTextSubmit}

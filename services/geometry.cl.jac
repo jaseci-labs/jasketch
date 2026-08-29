@@ -446,3 +446,35 @@ def:pub shift_element(el: any, dx: float, dy: float) -> any {
     }
     return moved;
 }
+
+
+"""Return `el` with a non-negative width and height.
+
+A shape dragged out right-to-left or bottom-up stores a NEGATIVE size, and then
+every consumer has to remember that. The selection outline did not, which is why
+its handles sat offset from the shape they belonged to, and hit-testing inherited
+the same confusion. Normalising once at the source means nothing downstream has
+to care. Lines, arrows and freehand have no width/height and pass through."""
+def:pub normalize_box(el: any) -> any {
+    if not el {
+        return el;
+    }
+    w: any = el.width;
+    h: any = el.height;
+    if w == None or w == undefined or h == None or h == undefined {
+        return el;
+    }
+    if w >= 0 and h >= 0 {
+        return el;
+    }
+    fixed: any = {**el};
+    if w < 0 {
+        fixed.x = el.x + w;
+        fixed.width = -w;
+    }
+    if h < 0 {
+        fixed.y = el.y + h;
+        fixed.height = -h;
+    }
+    return fixed;
+}
