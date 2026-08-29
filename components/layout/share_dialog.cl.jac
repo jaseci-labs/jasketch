@@ -95,8 +95,8 @@ def:pub ShareDialog(
         async_generate();
     }
 
-    def handle_start_collab_session() -> None {
-        creds = generate_room_credentials();
+    async def handle_start_collab_session() -> None {
+        creds = await generate_room_credentials();
         room_id = creds["room_id"] or "";
         room_key = creds["room_key"] or "";
 

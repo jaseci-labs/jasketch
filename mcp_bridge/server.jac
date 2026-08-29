@@ -16,7 +16,11 @@ import from mcp.server.fastmcp { FastMCP }
 import from typing { Any }
 import from ..agent.canvas_tools { CanvasToolProvider }
 
-glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "wss://jasketch.jaseci.org/ws");
+# The relay is an endpoint of the app itself now (infrastructure/relay.jac), not
+# a separate server: one origin, one port, no bespoke ingress.
+glob RELAY_URL: str = os.environ.get(
+    "JASKETCH_RELAY_URL", "wss://jasketch.jaseci.org/ws/function/jasketch_relay"
+);
 glob REQUEST_TIMEOUT: float = 40.0;
 
 # HTTP transport config (used when JASKETCH_MCP_TRANSPORT=streamable-http)
@@ -29,7 +33,7 @@ glob _lock = threading.Lock();
 glob _ws: Any = None;
 glob _connected: bool = False;
 glob _canvas_sessions: Any = set();
-glob _pending: dict = {};
+glob _pending: dict[str, tuple[Any, dict]] = {};
 glob _relay_loop: Any = None;
 glob _relay_ready: Any = threading.Event();
 
@@ -51,55 +55,26 @@ async def _connect_to_relay() -> None {
                 _ws = ws;
                 _connected = True;
                 log(f"Connected to relay at {RELAY_URL}");
-                await ws.send(json.dumps({"role": "controller"}));
 
+                # jac:ignore[E1022] - websockets' ClientConnection IS async-iterable;
+                # the bundled stub does not model __aiter__.
                 async for raw in ws {
                     try {
-                        msg: dict = json.loads(raw);
-                        msg_type: str = msg.get("type", "");
-
-                        if msg_type == "registered" {
-                            existing: list = msg.get("connectedSessions", []);
-                            count: int = 0;
-                            with _lock {
-                                for sid in existing { _canvas_sessions.add(sid); }
-                                count = len(_canvas_sessions);
-                            }
-                            log(f"Registered as controller, {count} canvas(es) connected");
+                        # The relay is a broadcast endpoint: it wraps each yielded
+                        # envelope as {ok, type:"chunk", data}, and every client
+                        # sees every envelope. Ours are the responses whose
+                        # request_id is in _pending.
+                        envelope: dict = json.loads(str(raw));
+                        if envelope.get("type") != "chunk" {
                             continue;
                         }
-                        if msg_type == "canvasConnected" {
-                            session_id: Any = msg.get("sessionId");
-                            if not isinstance(session_id, str) or not session_id {
-                                log(f"Ignoring canvasConnected: invalid sessionId");
-                                continue;
-                            }
-                            count: int = 0;
-                            with _lock {
-                                _canvas_sessions.add(session_id);
-                                count = len(_canvas_sessions);
-                            }
-                            log(f"Canvas connected: {count} total");
-                            continue;
-                        }
-                        if msg_type == "canvasDisconnected" {
-                            session_id: Any = msg.get("sessionId");
-                            if not isinstance(session_id, str) or not session_id {
-                                log(f"Ignoring canvasDisconnected: invalid sessionId");
-                                continue;
-                            }
-                            count: int = 0;
-                            with _lock {
-                                _canvas_sessions.discard(session_id);
-                                count = len(_canvas_sessions);
-                            }
-                            log(f"Canvas disconnected: {count} remaining");
+                        msg: dict = envelope.get("data") or {};
+                        if msg.get("kind") != "response" {
                             continue;
                         }
 
-                        # Response from canvas
-                        request_id: str = msg.get("requestId", "");
-                        entry: Any = None;
+                        request_id: str = msg.get("request_id", "");
+                        entry: tuple[Any, dict] | None = None;
                         with _lock {
                             entry = _pending.pop(request_id, None);
                         }
@@ -123,9 +98,6 @@ async def _connect_to_relay() -> None {
 
         _ws = None;
         _connected = False;
-        with _lock {
-            _canvas_sessions.clear();
-        }
         log("Disconnected from relay, reconnecting in 3s...");
         await asyncio.sleep(3);
     }
@@ -140,16 +112,18 @@ def _start_relay_thread() -> None {
 }
 
 
-"""Resolve session ID — use explicit param, env var, or auto-select if only one canvas."""
+"""Resolve the target canvas. Explicit param first, then $JASKETCH_SESSION_ID.
+
+The old relay tracked which canvases were online and auto-picked when there was
+exactly one. A broadcast endpoint has no such registry, so the session has to be
+named: copy it from the browser tab (sessionStorage `jasketch_session_id`)."""
 def _resolve_session(session_id: str = "") -> str {
     sid: str = session_id or os.environ.get("JASKETCH_SESSION_ID", "");
     if sid { return sid; }
-    with _lock {
-        session_count: int = len(_canvas_sessions);
-        if session_count == 1 { return next(iter(_canvas_sessions)); }
-        if session_count == 0 { raise Exception("No canvas connected. Open JaSketch in browser."); }
-    }
-    raise Exception("Multiple canvases open. Set JASKETCH_SESSION_ID env var to select one.");
+    raise Exception(
+        "No canvas selected. Set JASKETCH_SESSION_ID to the tab's session id "
+        "(sessionStorage key 'jasketch_session_id' in the JaSketch browser tab)."
+    );
 }
 
 
@@ -171,8 +145,9 @@ def _send_command(action: str, data: dict | None = None, session_id: str = "", t
     }
 
     payload: str = json.dumps({
-        "requestId": request_id,
-        "sessionId": session_id,
+        "kind": "command",
+        "request_id": request_id,
+        "session_id": session_id,
         "action": action,
         "data": data if data is not None else {}
     });

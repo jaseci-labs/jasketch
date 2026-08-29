@@ -11,7 +11,7 @@ agent/chat.jac):
 
 import from react { useRef, useEffect }
 
-sv import from ...agent.chat { jasketch_chat_confirm }
+sv import from ..agent.chat { jasketch_chat_confirm }
 
 
 def:pub useChatSocket(

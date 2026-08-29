@@ -68,9 +68,6 @@ def base_url():
     """Start the JaSketch server on a free port, yield its base URL."""
     port = _get_free_port()
     env = dict(os.environ)
-    # The AI relay and chat sockets are not exercised by this suite and only add
-    # port contention when several runs overlap.
-    env.setdefault("JASKETCH_START_RELAY", "false")
     log_path = os.path.join(JASKETCH_DIR, ".jac-e2e-server.log")
     with open(log_path, "wb") as log:
         proc = subprocess.Popen(

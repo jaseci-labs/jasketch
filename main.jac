@@ -1,15 +1,10 @@
 """Main entry point for JaSketch - Modern Whiteboard Application."""
 
-import from typing { Any }
-import os;
-import from infrastructure.relay { start_relay_server }
-# Endpoint registration: a def:pub only reaches /function/<name> if the entry
-# module names it (jaseci-labs/jac#7695), so these imports are load-bearing.
+# Endpoint registration: a def:pub only reaches its route if the entry module
+# names it (jaseci-labs/jac#7695), so these imports are load-bearing.
 import from services.sharing { create_share, read_share, ShareRef, SharePayload }
 import from agent.chat { jasketch_chat, jasketch_chat_confirm }
-
-# Start relay by default unless explicitly disabled via JASKETCH_START_RELAY (helps avoid port conflicts when turned off in multi-process/reload scenarios)
-glob _relay_started: Any = start_relay_server() if os.environ.get("JASKETCH_START_RELAY", "true").lower() == "true" else None;
+import from infrastructure.relay { jasketch_relay }
 
 cl {
     # Client-side imports
@@ -99,7 +94,7 @@ cl {
                 }
                 return;
             }
-            if hash.startsWith("#json=") {
+            if hash.startswith("#json=") {
                 # Static share: #json=<share_id>,<encryption_key>
                 hash_part = hash[6:];
                 parts = hash_part.split(",");
@@ -120,7 +115,7 @@ cl {
                 } elif not (share_id and share_key) {
                     shareLoadError = "Share link is malformed — missing ID or key.";
                 }
-            } elif hash.startsWith("#room=") {
+            } elif hash.startswith("#room=") {
                 # Collaboration room: #room=<room_id>,<room_key>
                 room_hash_part = hash[6:];
                 room_parts = room_hash_part.split(",");

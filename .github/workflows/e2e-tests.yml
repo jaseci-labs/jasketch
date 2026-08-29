@@ -10,47 +10,54 @@ on:
 jobs:
   e2e-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      # jaclang, jac-client, jac-scale and byllm are one binary now: there is
+      # nothing to pip install, and no separate MCP package to build first.
+      - name: Read the pinned jac version
+        id: jac
+        run: |
+          VERSION=$(grep -E '^jac-version' jac.toml | sed -E 's/.*"==?([0-9.]+)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Testing on jac $VERSION"
 
-      - name: Set up Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+      - name: Install jac
+        run: |
+          gh release download "v${{ steps.jac.outputs.version }}" \
+            --repo jaseci-labs/jac \
+            --pattern "jac-${{ steps.jac.outputs.version }}-linux-x86_64" \
+            --output "$RUNNER_TEMP/jac"
+          chmod +x "$RUNNER_TEMP/jac"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: jac install --dev
 
-      - name: Install Jac and dependencies
-        run: pip install jaclang jac-client jac-scale[data] pytest pytest-playwright pytest-timeout byllm
+      - name: Install Playwright's browser
+        run: jac -m playwright install --with-deps chromium
 
-      - name: Install Playwright browsers
-        run: python -m playwright install --with-deps chromium
-
-      - name: Install app dependencies
-        run: jac install
-
-      - name: Install local MCP server into jac venv
-        run: .jac/venv/bin/pip install ./mcp-server --force-reinstall --no-deps
-
-      - name: Install jac-scale data dependencies into jac venv
-        run: .jac/venv/bin/pip install "jac-scale[data]"
+      # A type error does not stop the app from serving, so this is reported but
+      # not gating -- the e2e suite below is the gate.
+      - name: Type check
+        continue-on-error: true
+        run: jac check .
 
       - name: Run E2E tests
-        run: pytest tests/e2e/ -v --timeout=300
+        # The fixture starts the server with this same binary (see conftest).
+        run: jac -m pytest tests/e2e/ -v --timeout=300
+        env:
+          JAC_BIN: ${{ runner.temp }}/jac
 
-      - name: Upload test results
+      - name: Upload server log
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-test-results
-          path: tests/e2e/
+          name: e2e-server-log
+          path: .jac-e2e-server.log
           retention-days: 7

@@ -1197,6 +1197,10 @@ class TestShareLink:
             assert restored[0]["type"] == original[0]["type"]
         finally:
             viewer.close()
+            # The `app` page is module-scoped: leave the modal closed or the next
+            # test's toolbar clicks land on this backdrop.
+            app.locator("div.fixed.inset-0 button", has_text="×").last.click()
+            app.wait_for_timeout(ACTION_DELAY)
 
     def test_unknown_share_id_reports_an_error(self, app: Page, base_url):
         viewer = app.context.browser.new_context()
@@ -1209,3 +1213,61 @@ class TestShareLink:
             )
         finally:
             viewer.close()
+
+
+# -- Live collaboration tests --------------------------------------------------
+
+
+class TestLiveCollaboration:
+    """Two tabs in one room, over the broadcast relay endpoint.
+
+    Covers the whole collaboration path: a real per-room AES key, the encrypted
+    room_broadcast, infrastructure/relay.jac's fan-out, and the client-side
+    filter that decides which broadcast envelopes belong to this tab."""
+
+    def test_scene_reaches_the_other_tab(self, app: Page, base_url):
+        clear_canvas(app)
+
+        app.locator("button[title^='Live Collaboration']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        app.get_by_text("Start Session", exact=True).click()
+
+        link_box = app.locator("input[readonly]").first
+        expect(link_box).to_have_value(re.compile(r"#room="), timeout=20_000)
+        room_url = link_box.input_value()
+        # room_key must be an independent secret, not a copy of room_id
+        room_id, room_key = room_url.split("#room=")[1].split(",")
+        assert room_key != room_id, "room_key is still a copy of room_id"
+
+        # Scope the close to the dialog: an unscoped text match resolves behind
+        # the modal backdrop and the click is intercepted.
+        app.locator("div.fixed.inset-0 button", has_text="×").last.click()
+        app.wait_for_timeout(ACTION_DELAY)
+
+        guest_ctx = app.context.browser.new_context()
+        try:
+            guest = guest_ctx.new_page()
+            guest.goto(room_url, wait_until="load")
+            guest.locator("canvas").first.wait_for(state="visible", timeout=APP_READY_TIMEOUT)
+            # The joiner is asked for a display name before the room activates.
+            name_field = guest.locator("input[type='text']").first
+            name_field.fill("Guest")
+            guest.keyboard.press("Enter")
+            guest.wait_for_timeout(2000)
+
+            draw_shape(app, "Rectangle", S_X1, S_Y1, S_X2, S_Y2)
+            wait_for_elements(app, 1)
+
+            guest.wait_for_function(
+                """() => {
+                    const d = localStorage.getItem('jasketch_elements');
+                    return d && JSON.parse(d).length > 0;
+                }""",
+                timeout=25_000,
+            )
+            mirrored = guest.evaluate(
+                "() => JSON.parse(localStorage.getItem('jasketch_elements'))"
+            )
+            assert mirrored[0]["type"] == "rectangle"
+        finally:
+            guest_ctx.close()

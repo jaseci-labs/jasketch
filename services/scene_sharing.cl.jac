@@ -193,8 +193,13 @@ async def:pub import_from_share_backend(share_id: str, key: str) -> dict {
     }
 }
 
-"""Generate room_id (20 hex chars) and room_key."""
-def:pub generate_room_credentials() -> dict {
+"""Generate a room id (20 hex chars) and an independent AES-GCM room key.
+
+The key was previously a copy of the room id, which made it no secret at all --
+the id travels to the server on every frame. It is now a real key that only ever
+lives in the URL fragment, so the relay (and every tab it broadcasts to) sees
+room traffic as ciphertext."""
+async def:pub generate_room_credentials() -> dict {
     try {
         # Generate 20 hex characters for room_id
         room_id = "";
@@ -205,8 +210,10 @@ def:pub generate_room_credentials() -> dict {
             i = i + 1;
         }
 
-        # For MVP: room_key is same as room_id
-        room_key = room_id;
+        room_key = await generate_encryption_key();
+        if not room_key {
+            return {};
+        }
 
         return {"room_id": room_id, "room_key": room_key};
     } except Exception as e {

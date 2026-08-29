@@ -1,5 +1,8 @@
-name: Build and Deploy JaSketch
+name: Deploy JaSketch
 
+# There is no image to build any more. jac-scale ships the source to the cluster
+# on a PVC and the pods boot the pinned jac toolchain, so a deploy is one command
+# and needs no registry, no Dockerfile, and no ECR credentials.
 on:
   release:
     types: [published]
@@ -10,82 +13,32 @@ permissions:
   contents: read
 
 jobs:
-  publish-mcp:
-    if: startsWith(github.ref, 'refs/tags/jasketch-') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+  deploy:
     runs-on: ubuntu-latest
-    outputs:
-      published: ${{ steps.publish.outputs.published }}
-
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install build tools
-        run: pip install build twine requests
-
-      - name: Check if MCP version needs publishing
-        id: check
-        working-directory: mcp-server
+      - name: Read the pinned jac version
+        id: jac
         run: |
-          LOCAL=$(python -c "import tomllib; f=open('pyproject.toml','rb'); d=tomllib.load(f); print(d['project']['version'])")
-          PUBLISHED=$(python -c "
-          import urllib.request, json
-          try:
-            r = urllib.request.urlopen('https://pypi.org/pypi/jasketch-mcp-server/json')
-            print(json.loads(r.read())['info']['version'])
-          except:
-            print('none')
-          ")
-          echo "Local: $LOCAL | Published: $PUBLISHED"
-          if [ "$LOCAL" != "$PUBLISHED" ]; then
-            echo "needs_publish=true" >> $GITHUB_OUTPUT
-          else
-            echo "needs_publish=false" >> $GITHUB_OUTPUT
-          fi
+          VERSION=$(grep -E '^jac-version' jac.toml | sed -E 's/.*"==?([0-9.]+)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Deploying on jac $VERSION"
 
-      - name: Build package
-        if: steps.check.outputs.needs_publish == 'true'
-        working-directory: mcp-server
-        run: python -m build
-
-      - name: Publish to PyPI
-        id: publish
-        if: steps.check.outputs.needs_publish == 'true'
-        working-directory: mcp-server
+      - name: Install jac
+        run: |
+          gh release download "v${{ steps.jac.outputs.version }}" \
+            --repo jaseci-labs/jac \
+            --pattern "jac-${{ steps.jac.outputs.version }}-linux-x86_64" \
+            --output "$RUNNER_TEMP/jac"
+          chmod +x "$RUNNER_TEMP/jac"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
         env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          twine upload dist/*
-          echo "published=true" >> $GITHUB_OUTPUT
+          GH_TOKEN: ${{ github.token }}
 
-  deploy-jasketch:
-    needs: [publish-mcp]
-    if: startsWith(github.ref, 'refs/tags/jasketch-') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.tag.outputs.tag }}
-
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4.2.0
         with:
           aws-region: us-east-2
@@ -93,54 +46,26 @@ jobs:
           role-session-name: GitHubActions
           audience: sts.amazonaws.com
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name ${{ vars.EKS_CLUSTER_NAME }} --region us-east-2
 
-      - name: Get tag name
-        id: tag
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="manual-$(date +%Y%m%d-%H%M%S)"
-          elif [[ "${{ github.event_name }}" == "release" ]]; then
-            TAG_NAME=${GITHUB_REF#refs/tags/}
-            if [[ $TAG_NAME =~ ^jasketch-(.+)$ ]]; then
-              TAG="${BASH_REMATCH[1]}"
-            elif [[ $TAG_NAME =~ ^v(.+)$ ]]; then
-              TAG="$TAG_NAME"
-            else
-              TAG="$TAG_NAME"
-            fi
-          else
-            TAG="latest"
-          fi
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+      # Catches HPA bounds, bad resource units and missing secrets in ~1s,
+      # instead of after a rollout.
+      - name: Lint the deploy plan
+        run: jac start --scale --dry-run
 
-      - name: Build and push Docker image
+      - name: Deploy
+        run: jac start --scale
         env:
-          ECR_REGISTRY: 776241927220.dkr.ecr.us-east-2.amazonaws.com
-          ECR_REPOSITORY: jasketch
-          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
-        run: |
-          docker buildx build \
-            --platform linux/amd64 \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
-            --push \
-            .
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
 
-  summary:
-    needs: [publish-mcp, deploy-jasketch]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Summary
+      - name: Report status
+        if: always()
         run: |
-          echo "## JaSketch Release Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **MCP PyPI Published**: ${{ needs.publish-mcp.outputs.published || 'skipped (already up to date)' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image Tag**: ${{ needs.deploy-jasketch.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **ECR Repository**: 776241927220.dkr.ecr.us-east-2.amazonaws.com/jasketch" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deploy Status**: ${{ needs.deploy-jasketch.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Application URL**: https://jasketch.jaseci.org" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Note**: Deployment will be handled automatically by Flux in the infrastructure repository." >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## JaSketch deploy"
+            echo "- **jac**: ${{ steps.jac.outputs.version }}"
+            echo "- **result**: ${{ job.status }}"
+            echo "- **URL**: https://jasketch.jaseci.org"
+          } >> "$GITHUB_STEP_SUMMARY"
