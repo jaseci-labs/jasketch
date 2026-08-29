@@ -173,8 +173,6 @@ jobs:
         run: jac start --scale
         env:
           K8S_NAMESPACE: ${{ inputs.namespace || 'jasketch' }}
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          REDIS_URL: ${{ secrets.REDIS_URL }}
 
       - name: Report status
         if: always()

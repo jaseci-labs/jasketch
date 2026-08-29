@@ -68,25 +68,20 @@ description = "A collaborative whiteboard with an AI drawing agent, built in Jac
 icon = ".assets/icon.png"
 author = "Jaseci"
 
-# Both are EMPTY by default and normally stay that way: mongodb_enabled and
-# redis_enabled default to true, so the deploy provisions its own MongoDB and
-# Redis in the target namespace and wires the pods to them. Set these only to
-# attach to a database that already exists somewhere else (Atlas, an existing
-# StatefulSet); they are injected into the pods as a Kubernetes Secret.
+# NOTE: do NOT add [scale.secrets] MONGODB_URI/REDIS_URL "${VAR:-}" entries here.
+# The deploy provisions its own MongoDB and Redis (mongodb_enabled /
+# redis_enabled default to true) and injects their real URLs into the pods. A
+# [scale.secrets] entry becomes a Kubernetes Secret that OVERRIDES that env, so
+# interpolating an unset variable ships an EMPTY MONGODB_URI/REDIS_URL and the
+# pod loses both databases. Observed: the websocket backplane then closes every
+# connection with 4503 subscribe_unavailable.
 #
-# Unset locally -> SQLite under .jac/data and an in-process websocket
-# backplane, which is what a single `jac start` wants.
-[scale.secrets]
-MONGODB_URI = "${MONGODB_URI:-}"
-REDIS_URL = "${REDIS_URL:-}"
-
-# Room fan-out crosses workers only through a backplane. Left unset (or empty)
-# the in-process one is used, which is correct for a single-process `jac start`
-# and WRONG for more than one replica: a broadcast would only reach the clients
-# that happen to share a worker with the sender. Set REDIS_URL in any deployment
-# with min_replicas > 1.
-[scale.websocket]
-redis_url = "${REDIS_URL:-}"
+# Same reason there is no [scale.websocket] redis_url: that value is resolved in
+# the POD, not on the build host, so it would pin an empty string over the URL
+# the deploy just injected. Unset means auto-detect, which is what we want.
+#
+# Set them only to attach to a database that lives somewhere else, and then set
+# them to real values, never to an empty default.
 
 [scale.kubernetes]
 # `jasketch.jaseci.org` runs in the `jasketch` namespace of the SHARED
