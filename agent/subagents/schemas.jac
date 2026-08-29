@@ -76,8 +76,17 @@ sem PlannerDecision.blueprint = "Structured diagram plan; null for pure conceptu
 # which is why jacBuilder never hit this -- five of its six by-llm functions
 # return str, and its one structured call sits in the same file as its type.
 #
-# Revisit once the compiler emits a ClassInfo here: typed returns are better,
-# because the provider enforces the shape instead of us hoping for valid JSON.
+# ALREADY FIXED UPSTREAM, just not in the 0.34.x line this project pins. On main
+# (0.37.0) _type_to_schema type-checks the value instead of assuming it:
+#
+#     info_fields: list[FieldInfo] = [];
+#     if isinstance(info, VarInfo) {
+#         if isinstance(info.type_info, ClassInfo) { info_fields = info.type_info.fields; }
+#     } elif isinstance(info, ClassInfo) { info_fields = info.fields; }
+#
+# so a str falls through to [] rather than crashing. Revert this file and restore
+# the typed returns when [project] jac-version moves to a release carrying that
+# fix: a provider-enforced schema beats hoping the model emits valid JSON.
 
 import json;
 import from typing { Any }

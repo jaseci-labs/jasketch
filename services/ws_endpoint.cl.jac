@@ -14,6 +14,8 @@ Rather than pin one shape, ask: try the root, and if the gateway rejects the
 upgrade with 1008, fall back to the prefix and remember it for the rest of the
 session. Correct in both topologies with nothing to configure, and it self-heals
 if the upstream gap is closed.
+
+jaseci-labs/jac#8772.
 """
 
 # Set once the first successful shape is known, so later sockets skip the probe.

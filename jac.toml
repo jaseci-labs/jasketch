@@ -99,10 +99,11 @@ type = "redis"      # data.redis capability -> redis
 # where a stray deploy would land among everyone else's work). CI and prod set
 # K8S_NAMESPACE explicitly.
 #
-# Do not reach for `${VAR:?message}` to force it: only `${VAR}` and
-# `${VAR:-default}` are interpolated here. The `:?` form is passed through
-# VERBATIM, so the namespace becomes the literal string `${K8S_NAMESPACE:?...}`
-# -- checked against 0.34.14, contrary to what `jac guide jac-config` says.
+# Do not reach for `${VAR:?message}` to force it. That form IS implemented and
+# raises when the variable is unset, but _interpolate_recursive catches the
+# ValueError and returns the raw string, so the namespace becomes the literal
+# `${K8S_NAMESPACE:?...}` and --dry-run still reports the plan as clean.
+# jaseci-labs/jac#8773. Only `${VAR:-default}` is safe here.
 namespace = "${K8S_NAMESPACE:-jasketch-dev}"
 app_name = "${K8S_APP_NAME:-jasketch}"
 container_port = 8000
