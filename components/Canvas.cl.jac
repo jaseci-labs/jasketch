@@ -18,23 +18,33 @@ import from .canvas.collaborator_cursors { CollaboratorCursors }
 import from .layout.ShortcutHelp { ShortcutHelp }
 import from .layout.ConfirmDialog { ConfirmDialog }
 
-def:pub Canvas(props: dict) -> JsxElement {
-    showShortcutsProp = props["showShortcuts"] or False;
-    onToggleShortcuts = props["onToggleShortcuts"];
-    currentTool = props["currentTool"] or "select";
-    currentColor = props["currentColor"] or "#000000";
-    currentStrokeWidth = props["currentStrokeWidth"] or 2;
-    currentFontSize = props["currentFontSize"] or 24;
-    currentFontFamily = props["currentFontFamily"] or "Virgil";
-    currentOpacity = props["currentOpacity"] or 1.0;
-    currentLineStyle = props["currentLineStyle"] or "solid";
-    currentCurveStyle = props["currentCurveStyle"] or "curved";
-    currentFillColor = props["currentFillColor"] or "transparent";
-    roomState = props["roomState"] or {};
-    onSessionEnded = props["onSessionEnded"];
-    endSessionRef = props["endSessionRef"];
-    updateUsernameRef = props["updateUsernameRef"];
-    onParticipantsChange = props["onParticipantsChange"];
+def:pub Canvas(
+    clearCanvasRef: any,
+    addElementRef: any,
+    updateElementRef: any,
+    saveRef: any,
+    loadElementsRef: any,
+    elementsForShareRef: any,
+    setElementsRef: any,
+    endSessionRef: any,
+    updateUsernameRef: any,
+    onParticipantsChange: Callable[[dict], None],
+    onSessionEnded: Callable[[], None],
+    onSelectionChange: Callable[[any], None],
+    onToolChange: Callable[[str], None],
+    onToggleShortcuts: Callable[[], None],
+    showShortcuts: bool = False,
+    roomState: dict = {},
+    currentTool: str = "select",
+    currentColor: str = "#000000",
+    currentStrokeWidth: float = 2,
+    currentFontSize: float = 24,
+    currentFontFamily: str = "Virgil",
+    currentOpacity: float = 1.0,
+    currentLineStyle: str = "solid",
+    currentCurveStyle: str = "curved",
+    currentFillColor: str = "transparent"
+) -> JsxElement {
 
     canvasHook = useCanvas();
     drawingState = useDrawingState();
@@ -119,8 +129,8 @@ def:pub Canvas(props: dict) -> JsxElement {
         if canvas {
             canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, editingShapeId);
         }
-        if props["onSelectionChange"] {
-            props["onSelectionChange"](selectionHook.selectedElement);
+        if onSelectionChange {
+            onSelectionChange(selectionHook.selectedElement);
         }
     }
 
@@ -153,8 +163,8 @@ def:pub Canvas(props: dict) -> JsxElement {
                         };
                         elementsHook.addElement(imgElement);
                         selectionHook.setSelectedElement({"element": imgElement, "id": imgElement.id});
-                        if props["onToolChange"] {
-                            props["onToolChange"]("select");
+                        if onToolChange {
+                            onToolChange("select");
                         }
                     };
                     imgObj.src = loadEvt.target.result;
@@ -356,8 +366,8 @@ def:pub Canvas(props: dict) -> JsxElement {
                 } else {
                     shortcuts = TOOL_SHORTCUTS();
                     toolForKey = shortcuts[e.key];
-                    if toolForKey and props["onToolChange"] {
-                        props["onToolChange"](toolForKey);
+                    if toolForKey and onToolChange {
+                        onToolChange(toolForKey);
                     }
                 }
             }
@@ -405,19 +415,19 @@ def:pub Canvas(props: dict) -> JsxElement {
     }
 
     can with elementsHook.elements entry {
-        if props["clearCanvasRef"] {
-            props["clearCanvasRef"].current = lambda {
+        if clearCanvasRef {
+            clearCanvasRef.current = lambda {
                 elementsHook.clearElements();
                 selectionHook.clearSelection();
             };
         }
-        if props["addElementRef"] {
-            props["addElementRef"].current = lambda (element: any) {
+        if addElementRef {
+            addElementRef.current = lambda (element: any) {
                 elementsHook.addElement(element);
             };
         }
-        if props["updateElementRef"] {
-            props["updateElementRef"].current = lambda (id: any, changes: any) {
+        if updateElementRef {
+            updateElementRef.current = lambda (id: any, changes: any) {
                 fi = 0;
                 foundEl = None;
                 while fi < elementsHook.elements.length {
@@ -433,13 +443,13 @@ def:pub Canvas(props: dict) -> JsxElement {
                 }
             };
         }
-        if props["saveRef"] {
-            props["saveRef"].current = lambda {
+        if saveRef {
+            saveRef.current = lambda {
                 saveAsJaSketch(elementsHook.elements, "drawing.jasketch");
             };
         }
-        if props["loadElementsRef"] {
-            props["loadElementsRef"].current = lambda (file: any) {
+        if loadElementsRef {
+            loadElementsRef.current = lambda (file: any) {
                 loadFromJaSketch(file, lambda (loaded: any) {
                     elementsHook.setElements(loaded);
                     selectionHook.clearSelection();
@@ -449,11 +459,11 @@ def:pub Canvas(props: dict) -> JsxElement {
                 });
             };
         }
-        if props["elementsForShareRef"] {
-            props["elementsForShareRef"].current = elementsHook.elements;
+        if elementsForShareRef {
+            elementsForShareRef.current = elementsHook.elements;
         }
-        if props["setElementsRef"] {
-            props["setElementsRef"].current = lambda (elements: any) {
+        if setElementsRef {
+            setElementsRef.current = lambda (elements: any) {
                 elementsHook.setElements(elements);
                 selectionHook.clearSelection();
             };
@@ -464,8 +474,8 @@ def:pub Canvas(props: dict) -> JsxElement {
         if currentTool == "text" {
             if textInputHook.textInput {
                 handleTextSubmit();
-                if props["onToolChange"] {
-                    props["onToolChange"]("select");
+                if onToolChange {
+                    onToolChange("select");
                 }
                 return;
             }
@@ -578,8 +588,8 @@ def:pub Canvas(props: dict) -> JsxElement {
             selectionHook.setSelectedElement({"element": textEl, "id": textEl.id});
         }
         textInputHook.cancelTextInput();
-        if props["onToolChange"] {
-            props["onToolChange"]("select");
+        if onToolChange {
+            onToolChange("select");
         }
     }
 
@@ -1180,8 +1190,8 @@ def:pub Canvas(props: dict) -> JsxElement {
                 drawingState.setIsDrawing(False);
                 drawingState.setStartPoint(None);
                 selectionHook.setSelectedElement({"element": lineElement, "id": lineElement.id});
-                if props["onToolChange"] {
-                    props["onToolChange"]("select");
+                if onToolChange {
+                    onToolChange("select");
                 }
             } else {
                 startSnap = findNearestConnectionPoint(pos, elementsHook.elements, 20.0);
@@ -1822,8 +1832,8 @@ def:pub Canvas(props: dict) -> JsxElement {
                     drawingState.setIsDrawing(False);
                     drawingState.setStartPoint(None);
                     selectionHook.setSelectedElement({"element": dragLineEl, "id": dragLineEl.id});
-                    if props["onToolChange"] {
-                        props["onToolChange"]("select");
+                    if onToolChange {
+                        onToolChange("select");
                     }
                 }
             }
@@ -1899,8 +1909,8 @@ def:pub Canvas(props: dict) -> JsxElement {
             if currentTool != "freehand" {
                 selectionHook.setSelectedElement({"element": newElement, "id": newElement.id});
             }
-            if props["onToolChange"] and currentTool != "freehand" {
-                props["onToolChange"]("select");
+            if onToolChange and currentTool != "freehand" {
+                onToolChange("select");
             }
         }
     }
@@ -2031,7 +2041,7 @@ def:pub Canvas(props: dict) -> JsxElement {
                 {toastMessage}
             </div> or None}
 
-            {(showShortcutsProp or False) and <ShortcutHelp onClose={lambda { if onToggleShortcuts { onToggleShortcuts(); } }} /> or None}
+            {(showShortcuts or False) and <ShortcutHelp onClose={lambda { if onToggleShortcuts { onToggleShortcuts(); } }} /> or None}
 
             {showResetConfirm and <ConfirmDialog
                 title="Reset Canvas"

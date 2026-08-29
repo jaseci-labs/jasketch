@@ -1,9 +1,10 @@
 import from react { useRef }
 
-def ToolIcon(props: dict) -> JsxElement {
-    toolId = props["toolId"];
-    color = props["color"] or "currentColor";
-    size = props["size"] or 18;
+def ToolIcon(
+    toolId: str,
+    color: str = "currentColor",
+    size: float = 18
+) -> JsxElement {
 
     if toolId == "select" {
         return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -52,20 +53,21 @@ def ToolIcon(props: dict) -> JsxElement {
     return <span>{toolId}</span>;
 }
 
-def:pub TopBar(props: dict) -> JsxElement {
-    currentTool = props["currentTool"] or "select";
-    onToolChange = props["onToolChange"];
-    onImageLoad = props["onImageLoad"];
-    onSave = props["onSave"];
-    onLoad = props["onLoad"];
-    onShowShortcuts = props["onShowShortcuts"];
-    onShare = props["onShare"];
-    onCollab = props["onCollab"];
-    roomState = props["roomState"] or {};
-    participants = props["participants"] or {};
-    isHost = props["isHost"] or False;
-    participantListOpen = props["participantListOpen"] or False;
-    onParticipantListToggle = props["onParticipantListToggle"];
+def:pub TopBar(
+    onToolChange: Callable[[str], None],
+    onImageLoad: Callable[[any], None],
+    onSave: Callable[[], None],
+    onLoad: Callable[[any], None],
+    onShowShortcuts: Callable[[], None],
+    onShare: Callable[[], None],
+    onCollab: Callable[[], None],
+    onParticipantListToggle: Callable[[], None],
+    currentTool: str = "select",
+    roomState: dict = {},
+    participants: dict = {},
+    isHost: bool = False,
+    participantListOpen: bool = False
+) -> JsxElement {
     fileInputRef = useRef(None);
     jasketchFileInputRef = useRef(None);
 

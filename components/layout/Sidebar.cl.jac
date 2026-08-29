@@ -2,27 +2,27 @@ import from "...constants.colors" { PRESET_COLORS }
 import from "...constants.fonts" { FONTS, FONT_SIZES }
 import from "...constants.tools" { LINE_STYLES, CURVE_STYLES }
 
-def:pub Sidebar(props: dict) -> JsxElement | None {
-    currentTool = props["currentTool"] or "select";
-    currentColor = props["currentColor"] or "#000000";
-    currentStrokeWidth = props["currentStrokeWidth"] or 2;
-    currentOpacity = props["currentOpacity"] or 1.0;
-    currentFontSize = props["currentFontSize"] or 24;
-    currentFontFamily = props["currentFontFamily"] or "Virgil";
-    currentLineStyle = props["currentLineStyle"] or "solid";
-    currentCurveStyle = props["currentCurveStyle"] or "curved";
-    currentFillColor = props["currentFillColor"] or "transparent";
-
-    selectedElement = props["selectedElement"];
-    onColorChange = props["onColorChange"];
-    onStrokeWidthChange = props["onStrokeWidthChange"];
-    onOpacityChange = props["onOpacityChange"];
-    onFontSizeChange = props["onFontSizeChange"];
-    onFontFamilyChange = props["onFontFamilyChange"];
-    onLineStyleChange = props["onLineStyleChange"];
-    onCurveStyleChange = props["onCurveStyleChange"];
-    onFillColorChange = props["onFillColorChange"];
-    onUpdateElement = props["onUpdateElement"];
+def:pub Sidebar(
+    onColorChange: Callable[[str], None],
+    onStrokeWidthChange: Callable[[float], None],
+    onOpacityChange: Callable[[float], None],
+    onFontSizeChange: Callable[[float], None],
+    onFontFamilyChange: Callable[[str], None],
+    onLineStyleChange: Callable[[str], None],
+    onCurveStyleChange: Callable[[str], None],
+    onFillColorChange: Callable[[str], None],
+    onUpdateElement: Callable[[dict], None],
+    selectedElement: any = None,
+    currentTool: str = "select",
+    currentColor: str = "#000000",
+    currentStrokeWidth: float = 2,
+    currentOpacity: float = 1.0,
+    currentFontSize: float = 24,
+    currentFontFamily: str = "Virgil",
+    currentLineStyle: str = "solid",
+    currentCurveStyle: str = "curved",
+    currentFillColor: str = "transparent"
+) -> JsxElement | None {
 
     presetColors = PRESET_COLORS();
     fontSizes = FONT_SIZES();
