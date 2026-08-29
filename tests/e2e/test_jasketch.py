@@ -1718,3 +1718,26 @@ class TestLabelFontSize:
         press_key(app, "Control+Shift+Period")
         after = get_elements(app)[0].get("fontSize")
         assert after == before + 2, f"text font size should rise, {before} -> {after}"
+
+    def test_a_drawing_saved_before_the_fix_heals_on_open(self, app: Page):
+        """A shape authored elsewhere -- by the MCP tools, the agent, or an older
+        build -- never passed through the editor, so nothing checked that its box
+        could hold its label. Opening it is the last chance to notice."""
+        clear_canvas(app)
+        app.evaluate(
+            """() => localStorage.setItem('jasketch_elements', JSON.stringify([{
+                type: "rectangle", x: 120, y: 80, width: 200, height: 40, id: "legacy-1",
+                color: "#000000", strokeWidth: 2, fillColor: "transparent",
+                lineStyle: "solid", opacity: 1,
+                shapeText: "A long label that cannot possibly fit inside forty pixels",
+                shapeTextColor: "#000000", shapeTextFontSize: 20, shapeTextFontFamily: "Virgil"
+            }]))"""
+        )
+        app.reload(wait_until="load")
+        get_canvas(app).wait_for(state="visible", timeout=APP_READY_TIMEOUT)
+        app.wait_for_timeout(ACTION_DELAY * 4)
+        el = get_elements(app)[0]
+        assert abs(el["height"]) > 40, (
+            f"a too-short legacy shape should heal on open, height is {el['height']}"
+        )
+        assert el.get("shapeText"), "the label itself must survive the repair"

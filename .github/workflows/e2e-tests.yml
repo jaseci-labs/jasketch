@@ -3,8 +3,10 @@ name: JaSketch E2E Tests
 on:
   push:
     branches: [main, dev]
+  # Every pull request, whatever it targets. Filtering to main/dev meant a PR
+  # into a longer-lived branch (a migration branch, say) merged without the
+  # suite ever running -- which is exactly when the suite is most useful.
   pull_request:
-    branches: [main, dev]
   workflow_dispatch:
 
 jobs:

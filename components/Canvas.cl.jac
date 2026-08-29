@@ -443,7 +443,11 @@ def:pub Canvas(
         }
         if addElementRef {
             addElementRef.current = lambda (element: any) {
-                elementsHook.addElement(element);
+                # Elements arriving from the MCP tools or the agent never went
+                # through the editor, so nothing has checked that a labelled
+                # shape is tall enough to hold its label. Same containment as
+                # the UI paths, applied at the boundary.
+                elementsHook.addElement(fit_shape_to_label(element));
             };
         }
         if updateElementRef {
@@ -543,7 +547,13 @@ def:pub Canvas(
         }
         if setElementsRef {
             setElementsRef.current = lambda (elements: any) {
-                elementsHook.setElements(elements);
+                fitted = [];
+                si = 0;
+                while si < elements.length {
+                    fitted.append(fit_shape_to_label(elements[si]));
+                    si = si + 1;
+                }
+                elementsHook.setElements(fitted);
                 selectionHook.clearSelection();
             };
         }
@@ -726,6 +736,33 @@ def:pub Canvas(
         grown = {**el};
         grown.height = needed if el.height >= 0 else -needed;
         return grown;
+    }
+
+    # One normalisation pass on mount, so a drawing SAVED before shapes learned
+    # to hold their labels heals itself on open rather than staying broken
+    # forever. Idempotent: a drawing that is already correct is left untouched
+    # and nothing is written.
+    can with entry {
+        heal_canvas = canvasRef.current;
+        if heal_canvas {
+            heal_src = (elementsHook.elementsRef and elementsHook.elementsRef.current)
+                or elementsHook.elements;
+            heal_out = [];
+            heal_changed = False;
+            hi = 0;
+            while hi < heal_src.length {
+                heal_el = heal_src[hi];
+                heal_fit = fit_shape_to_label(heal_el);
+                if heal_fit != heal_el {
+                    heal_changed = True;
+                }
+                heal_out.append(heal_fit);
+                hi = hi + 1;
+            }
+            if heal_changed {
+                elementsHook.setElementsReplaceAll(heal_out);
+            }
+        }
     }
 
     """Resize the selected element's text by `delta` points.
