@@ -123,8 +123,20 @@ def:pub useCanvas() -> dict {
     useEffect(lambda () -> any {
         handleResize();
         window.addEventListener("resize", handleResize);
+        # The window is not the only thing that resizes the canvas: folding the
+        # inspector away changes the container without any window event at all,
+        # and the drawing surface kept its old width until something else
+        # happened to trigger a redraw.
+        watcher = None;
+        if containerRef.current and window.ResizeObserver {
+            watcher = new(ResizeObserver, lambda { handleResize(); });
+            watcher.observe(containerRef.current);
+        }
         return lambda {
             window.removeEventListener("resize", handleResize);
+            if watcher {
+                watcher.disconnect();
+            }
         };
     }, []);
 

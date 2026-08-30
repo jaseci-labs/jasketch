@@ -203,10 +203,10 @@ def CanvasConfirmModal(
     if not pending or not pending.confirmId {
         return <></>;
     }
-    return <div className="flex-shrink-0 border-t border-amber-200/40 bg-amber-50 px-4 py-3">
+    return <div className="flex-shrink-0 border-t border-slate-900/[0.07] bg-white/60 px-4 py-3">
         <div className="flex items-start gap-3">
             <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-amber-600 mb-1">Canvas Confirmation</p>
+                <p className="text-xs font-semibold text-slate-700 mb-1">Canvas Confirmation</p>
                 <p className="text-xs text-gray-700 mb-3">{pending.message}</p>
                 <div className="flex gap-2">
                     <button onClick={onApprove}
@@ -236,7 +236,7 @@ def ChatInput(
     isDisabled = not apiKey or isLoading;
 
     return <div className="px-4 py-3 border-t border-orange-100">
-        {not apiKey and <p className="text-[10px] text-amber-500 mb-2 flex items-center gap-1">
+        {not apiKey and <p className="text-[10px] text-orange-600 mb-2 flex items-center gap-1">
             <WarnIcon />
             {"Set your API key in settings to start"}
         </p> or None}
@@ -254,7 +254,7 @@ def ChatInput(
             <button
                 onClick={onSend}
                 disabled={not canSend}
-                className="w-9 h-9 rounded-xl flex items-center justify-center bg-orange-500 text-white hover:bg-orange-600 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all duration-150 flex-shrink-0"
+                className="w-9 h-9 rounded-xl flex items-center justify-center bg-orange-500 text-white hover:bg-orange-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed transition-all duration-150 flex-shrink-0"
                 title="Send message"
             >
                 <SendIcon />
@@ -377,7 +377,7 @@ def:pub ChatPanel(
     if not isOpen {
         return <button
             onClick={onToggle}
-            className="fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full bg-orange-500 hover:bg-orange-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center"
+            className="absolute bottom-6 right-6 z-30 w-12 h-12 rounded-full bg-orange-500 hover:bg-orange-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center"
             title="Open AI Chat"
         >
             <ChatIcon size={22} />
@@ -386,7 +386,7 @@ def:pub ChatPanel(
 
 
     # Open state: full panel
-    return <div className="chat-panel fixed right-0 top-[44px] bottom-0 w-[380px] z-40 bg-orange-50/95 backdrop-blur-xl border-l border-orange-100/60 shadow-xl flex flex-col animate-slide-in-right">
+    return <div className="chat-panel fixed right-0 top-[44px] bottom-0 w-[380px] z-40 bg-white/75 backdrop-blur-2xl border-l border-slate-900/[0.07] shadow-xl flex flex-col animate-slide-in-right">
 
         <ChatHeader
             isConnected={chat.isConnected}

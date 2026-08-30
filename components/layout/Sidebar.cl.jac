@@ -21,7 +21,8 @@ def:pub Sidebar(
     currentFontFamily: str = "Virgil",
     currentLineStyle: str = "solid",
     currentCurveStyle: str = "curved",
-    currentFillColor: str = "transparent"
+    currentFillColor: str = "transparent",
+    selectedElements: list = []
 ) -> JsxElement | None {
 
     presetColors = PRESET_COLORS();
@@ -93,6 +94,24 @@ def:pub Sidebar(
             if elType == "rectangle" or elType == "circle" or elType == "diamond" {
                 showFillColor = True;
                 activeFillColor = sel.fillColor or "transparent";
+
+                # A label anywhere in the selection is enough. Keying only off
+                # the PRIMARY element meant selecting a plain box together with
+                # a labelled one hid the text controls entirely, with no way to
+                # restyle the label without picking the shapes apart again.
+                labelledSel = sel;
+                if not labelledSel.shapeText and selectedElements {
+                    lsi = 0;
+                    while lsi < len(selectedElements) {
+                        cand = selectedElements[lsi].element;
+                        if cand and cand.shapeText and not labelledSel.shapeText {
+                            labelledSel = cand;
+                        }
+                        lsi = lsi + 1;
+                    }
+                }
+                sel = labelledSel;
+
                 # Show text controls if shape has text
                 if sel.shapeText {
                     isShapeWithText = True;
@@ -133,9 +152,10 @@ def:pub Sidebar(
 
     # Hide sidebar entirely when nothing to show
     hasContent = showColor or showStroke or showOpacity or showFont or showFontSize or showLineStyle or showCurveStyle or showFillColor or hasSelection;
-    if not hasContent {
-        return None;
-    }
+    # The inspector is a permanent part of the layout now, so it always renders:
+    # an empty 248px column with nothing in it reads as broken, and the header
+    # alone still tells you whether you are editing a shape or setting the
+    # defaults for the next one.
 
     # Handlers: update element if selected, or update tool defaults
     def handleColorChange(color: str) -> None {
@@ -209,9 +229,19 @@ def:pub Sidebar(
         }
     }
 
-    return <div className="sidebar bg-white/95 backdrop-blur-xl rounded-xl shadow-md border border-gray-200/60 w-[200px] py-2.5 px-2.5 flex flex-col gap-2.5 animate-slide-in overflow-y-auto max-h-[calc(100vh-140px)]">
+    return <div className="sidebar w-full px-4 py-4 flex flex-col gap-4">
 
-        {hasSelection and <div className="flex items-center gap-2 pb-1">
+        <div className="flex items-center gap-2 pb-3 border-b border-slate-900/[0.06]">
+            <div className={"w-1.5 h-1.5 rounded-full " + (hasSelection and "bg-orange-500" or "bg-slate-300")}></div>
+            <span className="text-[13px] font-semibold text-slate-900 capitalize">
+                {hasSelection and sel.type or "Defaults"}
+            </span>
+            <span className="ml-auto text-[10px] text-slate-400">
+                {hasSelection and "selected" or "for new shapes"}
+            </span>
+        </div>
+
+        {False and <div className="flex items-center gap-2 pb-1">
             <div className="w-2 h-2 rounded-full bg-orange-500"></div>
             <span className="text-[10px] font-semibold text-orange-600 uppercase tracking-wider">{sel.type + " selected"}</span>
         </div> or None}
@@ -224,19 +254,24 @@ def:pub Sidebar(
                         key={color}
                         onClick={lambda { handleColorChange(color); }}
                         title={color}
-                        className={"w-7 h-7 rounded-full transition-all duration-150 border border-gray-200/60 " + (activeColor == color and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
+                        className={"w-7 h-7 rounded-full transition-all duration-150 border border-slate-900/10 " + (activeColor == color and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
                         style={{"backgroundColor": color}}
                     />
                     for color in presetColors
                 ]}
             </div>
-            <input
-                type="color"
-                value={activeColor}
-                onChange={lambda (e: any) { handleColorChange(e.target.value); }}
-                title="Custom color"
-                className="color-input w-full h-7 rounded-md cursor-pointer border border-gray-200 p-0 mt-1.5"
-            />
+            <label className="flex items-center gap-2 mt-2 cursor-pointer group">
+                <input
+                    type="color"
+                    value={activeColor}
+                    onChange={lambda (e: any) { handleColorChange(e.target.value); }}
+                    title="Custom color"
+                    className="color-input w-6 h-6 rounded-md cursor-pointer border border-slate-900/10 p-0 shrink-0"
+                />
+                <span className="text-[11px] text-slate-400 group-hover:text-slate-600 transition-colors">
+                    {activeColor}
+                </span>
+            </label>
         </div> or None}
 
         {showColor and <div className="h-px bg-gray-100"></div> or None}
@@ -247,7 +282,7 @@ def:pub Sidebar(
                 <button
                     onClick={lambda { handleFillColorChange("transparent"); }}
                     title="No fill"
-                    className={"w-7 h-7 rounded-full border transition-all duration-150 flex items-center justify-center " + (activeFillColor == "transparent" and "ring-2 ring-orange-500 ring-offset-1 border-gray-300" or "border-gray-200 hover:scale-110")}
+                    className={"w-7 h-7 rounded-full border transition-all duration-150 flex items-center justify-center " + (activeFillColor == "transparent" and "ring-2 ring-orange-500 ring-offset-1 border-slate-300" or "border-slate-900/10 hover:scale-110")}
                     style={{"background": "repeating-conic-gradient(#e5e7eb 0% 25%, white 0% 50%) 50% / 8px 8px"}}
                 >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round">
@@ -257,7 +292,7 @@ def:pub Sidebar(
                 <button
                     onClick={lambda { handleFillColorChange(activeColor); }}
                     title="Fill with stroke color"
-                    className={"w-7 h-7 rounded-full border transition-all duration-150 " + (activeFillColor != "transparent" and activeFillColor == activeColor and "ring-2 ring-orange-500 ring-offset-1 border-gray-300" or "border-gray-200 hover:scale-110")}
+                    className={"w-7 h-7 rounded-full border transition-all duration-150 " + (activeFillColor != "transparent" and activeFillColor == activeColor and "ring-2 ring-orange-500 ring-offset-1 border-slate-300" or "border-slate-900/10 hover:scale-110")}
                     style={{"backgroundColor": activeColor, "opacity": 0.3}}
                 />
                 <div className="relative">
@@ -266,7 +301,7 @@ def:pub Sidebar(
                         value={activeFillColor != "transparent" and activeFillColor or "#ffffff"}
                         onChange={lambda (e: any) { handleFillColorChange(e.target.value); }}
                         title="Custom fill color"
-                        className="color-input w-7 h-7 rounded-full cursor-pointer border border-gray-200 p-0"
+                        className="color-input w-7 h-7 rounded-full cursor-pointer border border-slate-300 p-0 hover:scale-110 transition-transform"
                     />
                 </div>
             </div>
@@ -282,19 +317,24 @@ def:pub Sidebar(
                         key={stcColor}
                         onClick={lambda { handleShapeTextColorChange(stcColor); }}
                         title={stcColor}
-                        className={"w-7 h-7 rounded-full transition-all duration-150 border border-gray-200/60 " + (activeShapeTextColor == stcColor and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
+                        className={"w-7 h-7 rounded-full transition-all duration-150 border border-slate-900/10 " + (activeShapeTextColor == stcColor and "ring-2 ring-orange-500 ring-offset-1 scale-110" or "hover:scale-110")}
                         style={{"backgroundColor": stcColor}}
                     />
                     for stcColor in presetColors
                 ]}
             </div>
-            <input
-                type="color"
-                value={activeShapeTextColor}
-                onChange={lambda (e: any) { handleShapeTextColorChange(e.target.value); }}
-                title="Custom text color"
-                className="color-input w-full h-7 rounded-md cursor-pointer border border-gray-200 p-0 mt-1.5"
-            />
+            <label className="flex items-center gap-2 mt-2 cursor-pointer group">
+                <input
+                    type="color"
+                    value={activeShapeTextColor}
+                    onChange={lambda (e: any) { handleShapeTextColorChange(e.target.value); }}
+                    title="Custom text color"
+                    className="color-input w-6 h-6 rounded-md cursor-pointer border border-slate-300 p-0 shrink-0"
+                />
+                <span className="text-[11px] text-slate-400 group-hover:text-slate-600 transition-colors">
+                    {activeShapeTextColor}
+                </span>
+            </label>
         </div> or None}
 
         {showShapeTextColor and <div className="h-px bg-gray-100"></div> or None}
@@ -302,7 +342,7 @@ def:pub Sidebar(
         {showStroke and <div>
             <div className="flex items-center justify-between">
                 <span className="sidebar-label">Stroke Width</span>
-                <span className="text-[10px] text-gray-400 font-medium">{activeStrokeWidth + "px"}</span>
+                <span className="text-[11px] text-slate-400 font-medium tabular-nums">{activeStrokeWidth + "px"}</span>
             </div>
             <input
                 type="range"
@@ -323,7 +363,7 @@ def:pub Sidebar(
                         key={style.id}
                         onClick={lambda { handleLineStyleChange(style.id); }}
                         title={style.label}
-                        className={"flex-1 h-8 rounded-lg flex items-center justify-center transition-all duration-150 " + (activeLineStyle == style.id and "bg-orange-50 ring-1 ring-orange-200" or "bg-gray-50 hover:bg-gray-100")}
+                        className={"flex-1 h-8 rounded-lg flex items-center justify-center transition-all duration-150 " + (activeLineStyle == style.id and "bg-orange-50 ring-1 ring-orange-200" or "bg-gray-50 hover:bg-slate-900/10")}
                     >
                         <svg width="32" height="4" viewBox="0 0 32 4">
                             <line
@@ -348,14 +388,14 @@ def:pub Sidebar(
                         key={cs.id}
                         onClick={lambda { handleCurveStyleChange(cs.id); }}
                         title={cs.label}
-                        className={"flex-1 h-9 rounded-lg flex flex-col items-center justify-center gap-0.5 transition-all duration-150 " + (activeCurveStyle == cs.id and "bg-orange-50 ring-1 ring-orange-200" or "bg-gray-50 hover:bg-gray-100")}
+                        className={"flex-1 h-9 rounded-lg flex flex-col items-center justify-center gap-0.5 transition-all duration-150 " + (activeCurveStyle == cs.id and "bg-orange-50 ring-1 ring-orange-200" or "bg-gray-50 hover:bg-slate-900/10")}
                     >
                         <svg width="32" height="16" viewBox="0 0 32 16">
                             {cs.id == "sharp" and <path d="M2 14 L16 4 L30 14" stroke={activeCurveStyle == cs.id and "#ea580c" or "#9ca3af"} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" /> or None}
                             {cs.id == "curved" and <path d="M2 14 Q16 2 30 14" stroke={activeCurveStyle == cs.id and "#ea580c" or "#9ca3af"} strokeWidth="1.8" fill="none" strokeLinecap="round" /> or None}
                             {cs.id == "elbow" and <path d="M2 14 L2 8 Q2 4 6 4 L30 4" stroke={activeCurveStyle == cs.id and "#ea580c" or "#9ca3af"} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" /> or None}
                         </svg>
-                        <span className={"text-[9px] font-medium " + (activeCurveStyle == cs.id and "text-orange-600" or "text-gray-400")}>{cs.label}</span>
+                        <span className={"text-[9px] font-medium " + (activeCurveStyle == cs.id and "text-orange-600" or "text-slate-400")}>{cs.label}</span>
                     </button>
                     for cs in curveStyles
                 ]}
@@ -365,7 +405,7 @@ def:pub Sidebar(
         {showOpacity and <div>
             <div className="flex items-center justify-between">
                 <span className="sidebar-label">Opacity</span>
-                <span className="text-[10px] text-gray-400 font-medium">{Math.round(activeOpacity * 100) + "%"}</span>
+                <span className="text-[11px] text-slate-400 font-medium tabular-nums">{Math.round(activeOpacity * 100) + "%"}</span>
             </div>
             <input
                 type="range"
@@ -387,7 +427,7 @@ def:pub Sidebar(
                         key={font.id}
                         onClick={lambda { handleFontFamilyChange(font.id); }}
                         title={font.id}
-                        className={"px-2 h-7 rounded-md flex items-center text-xs font-medium transition-all duration-150 whitespace-nowrap " + (activeFontFamily == font.id and "bg-orange-50 text-orange-700 ring-1 ring-orange-200" or "text-gray-500 hover:bg-gray-50")}
+                        className={"px-2 h-7 rounded-md flex items-center text-xs font-medium transition-all duration-150 whitespace-nowrap " + (activeFontFamily == font.id and "bg-orange-50 text-orange-700 ring-1 ring-orange-200" or "text-slate-500 hover:bg-slate-900/5")}
                         style={{"fontFamily": font.id}}
                     >
                         {font.label}
@@ -404,7 +444,7 @@ def:pub Sidebar(
                     <button
                         key={size}
                         onClick={lambda { handleFontSizeChange(size); }}
-                        className={"h-7 rounded-md flex items-center justify-center text-xs font-medium transition-all duration-150 " + (activeFontSize == size and "bg-orange-50 text-orange-700 ring-1 ring-orange-200" or "text-gray-500 hover:bg-gray-50")}
+                        className={"h-7 rounded-md flex items-center justify-center text-xs font-medium transition-all duration-150 " + (activeFontSize == size and "bg-orange-50 text-orange-700 ring-1 ring-orange-200" or "text-slate-500 hover:bg-slate-900/5")}
                     >
                         {size}
                     </button>

@@ -1,3 +1,40 @@
+/* ---- JaSketch palette -------------------------------------------------
+   Glass over a tinted ground.
+
+   Glass only reads if there is something behind it to blur, so the app ground
+   carries a soft cool gradient rather than being flat white -- a translucent
+   panel on a flat white page just looks like a slightly grey panel.
+
+   The drawing surface itself stays pure white. A tinted canvas shifts how
+   every colour reads and an export would not match what was drawn, so the
+   tint lives strictly in the chrome around it.
+
+   Orange stays reserved for the ACTIVE state. It is the one saturated colour
+   here, so the moment it decorates anything it stops meaning "this one". */
+:root {
+    --jsk-ground:      #dfe6f0;   /* behind everything, gives glass its depth */
+    --jsk-ground-2:    #eef2f8;
+    --jsk-glass:       rgba(255, 255, 255, 0.68);
+    --jsk-glass-solid: rgba(255, 255, 255, 0.86);
+    --jsk-hairline:    rgba(15, 23, 42, 0.08);
+    --jsk-edge:        rgba(255, 255, 255, 0.7);   /* the lit top edge      */
+    --jsk-paper:       #ffffff;   /* the drawing surface                    */
+    --jsk-ink:         #0f172a;
+    --jsk-ink-soft:    #64748b;
+    --jsk-ink-faint:   #94a3b8;
+    --jsk-accent:      #ea580c;
+    --jsk-shadow:      0 8px 32px rgba(15, 23, 42, 0.10);
+}
+
+/* One class for every floating surface, so they cannot drift apart. */
+.jsk-glass {
+    background: var(--jsk-glass);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--jsk-hairline);
+    box-shadow: var(--jsk-shadow), inset 0 1px 0 var(--jsk-edge);
+}
+
 @import "tailwindcss";
 
 /* Import handwriting and display fonts */
@@ -76,12 +113,21 @@ body {
 
 /* Sidebar section label */
 .sidebar-label {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #6b7280;
+    /* Sentence case at a readable size. The old 10px uppercase was shouting a
+       word nobody needs shouted, and was harder to read while doing it. */
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: var(--jsk-ink-soft);
     display: block;
+}
+
+/* The ground the glass is read against. Applied to the app root rather than
+   `body`, which the framework resets out from under us. */
+.jsk-app-ground {
+    background:
+        radial-gradient(1100px 700px at 12% -8%, #ffffff 0%, transparent 55%),
+        linear-gradient(160deg, var(--jsk-ground-2) 0%, var(--jsk-ground) 100%);
 }
 
 /* Custom range slider */
@@ -89,7 +135,7 @@ body {
     -webkit-appearance: none;
     appearance: none;
     height: 4px;
-    background: #e5e7eb;
+    background: rgba(15, 23, 42, 0.10);
     border-radius: 2px;
     outline: none;
 }
@@ -205,7 +251,9 @@ button, input, select, textarea {
 
 /* Subtle dot grid canvas background */
 .canvas-dotgrid {
-    background-image: radial-gradient(circle, #d1d5db 0.8px, transparent 0.8px);
+    /* Pure white paper, cool faint grid: orientation, not decoration. */
+    background-color: var(--jsk-paper);
+    background-image: radial-gradient(circle, #d7dee8 0.8px, transparent 0.8px);
     background-size: 24px 24px;
 }
 

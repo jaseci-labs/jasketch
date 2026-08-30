@@ -200,7 +200,7 @@ def:pub TopBar(
     participant_count = len(participant_sids);
     collab_btn_class = "w-8 h-8 rounded-md flex items-center justify-center transition-all duration-150 " + (is_session_active and "text-green-600 bg-green-50 shadow-[0_0_8px_2px_rgba(34,197,94,0.35)] hover:bg-green-100" or "text-orange-600 hover:bg-orange-50");
 
-    return <header className="topbar bg-white/95 border-b border-gray-200/60 flex-shrink-0 relative overflow-visible">
+    return <header className="topbar bg-white/55 backdrop-blur-2xl border-b border-slate-900/[0.07] flex-shrink-0 relative overflow-visible">
         <div className="h-11 px-3 flex items-center justify-between overflow-visible">
             <div className="flex items-center gap-2 min-w-[120px]">
                 <div className="w-9 h-9 rounded-lg shadow-sm overflow-hidden">
@@ -225,13 +225,13 @@ def:pub TopBar(
                 <span className="text-sm font-bold text-gray-700 tracking-tight">JaSketch</span>
             </div>
 
-            <div className="flex items-center gap-0.5 bg-gray-50 rounded-lg px-1 py-0.5">
+            <div className="jsk-glass flex items-center gap-0.5 rounded-xl px-1.5 py-1">
                 {[
                     <button
                         key={toolId}
                         onClick={lambda { handleToolClick(toolId); }}
                         title={toolLabels[toolId] + (toolShortcuts[toolId] and (" (" + toolShortcuts[toolId] + ")") or "")}
-                        className={"relative w-9 h-9 rounded-md flex flex-col items-center justify-center gap-0 transition-all duration-150 " + (currentTool == toolId and toolId != "image" and "bg-white text-orange-600 shadow-sm" or "text-gray-400 hover:bg-white/60 hover:text-gray-600")}
+                        className={"relative w-9 h-9 rounded-md flex flex-col items-center justify-center gap-0 transition-all duration-150 " + (currentTool == toolId and toolId != "image" and "bg-white text-orange-600 shadow-sm" or "text-slate-400 hover:bg-white/60 hover:text-slate-600")}
                     >
                         <ToolIcon toolId={toolId} size={17} color={currentTool == toolId and toolId != "image" and "#ea580c" or "currentColor"} />
                         {toolShortcuts[toolId] and <span className={"text-[7px] leading-none font-medium mt-px " + (currentTool == toolId and toolId != "image" and "text-orange-400" or "text-gray-300")}>{toolShortcuts[toolId]}</span> or None}
@@ -243,7 +243,7 @@ def:pub TopBar(
                     onClick={lambda { onToggleToolLock(); }}
                     title={("Tool stays selected -- click to unlock (Q)" if toolLocked else "Keep the tool selected after drawing (Q)")}
                     aria-pressed={toolLocked}
-                    className={"relative w-9 h-9 rounded-md flex flex-col items-center justify-center transition-all duration-150 " + ("bg-white text-orange-600 shadow-sm" if toolLocked else "text-gray-400 hover:bg-white/60 hover:text-gray-600")}
+                    className={"relative w-9 h-9 rounded-md flex flex-col items-center justify-center transition-all duration-150 " + ("bg-white text-orange-600 shadow-sm" if toolLocked else "text-slate-400 hover:bg-white/60 hover:text-slate-600")}
                 >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="4" y="11" width="16" height="10" rx="2" />
@@ -254,7 +254,7 @@ def:pub TopBar(
             </div>
 
             <div className="min-w-[150px] flex items-center justify-end gap-1 relative">
-                <span className="text-[10px] text-gray-400 hidden lg:block mr-2">{"Scroll to pan | Ctrl+scroll to zoom"}</span>
+                <span className="text-[10px] text-slate-400 hidden lg:block mr-2">{"Scroll to pan | Ctrl+scroll to zoom"}</span>
 
                 <button onClick={lambda {handleShare();}} title="Shareable link"
                     className="w-8 h-8 rounded-md flex items-center justify-center text-orange-600 hover:bg-orange-50 transition-all duration-150">
@@ -277,14 +277,14 @@ def:pub TopBar(
                 {is_session_active and participant_count > 0 and <button
                     onClick={lambda { if onParticipantListToggle { onParticipantListToggle(); } }}
                     title="Participants"
-                    className={"h-8 px-2 rounded-md flex items-center gap-1 text-xs font-medium transition-all duration-150 " + (participantListOpen and "bg-green-100 text-green-700" or "text-gray-600 hover:bg-gray-100")}>
+                    className={"h-8 px-2 rounded-md flex items-center gap-1 text-xs font-medium transition-all duration-150 " + (participantListOpen and "bg-green-100 text-green-700" or "text-slate-600 hover:bg-slate-900/10")}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <circle cx="12" cy="8" r="4" /><path d="M20 21a8 8 0 1 0-16 0" />
                     </svg>
                     {str(participant_count)}
                 </button> or None}
 
-                <button ref={menuBtnRef} onClick={lambda { menuOpen = not menuOpen; }} title="Menu" className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400">
+                <button ref={menuBtnRef} onClick={lambda { menuOpen = not menuOpen; }} title="Menu" className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                         <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
                     </svg>
@@ -292,36 +292,36 @@ def:pub TopBar(
             </div>
         </div>
 
-        {menuOpen and <div ref={menuPanelRef} className="fixed top-11 right-3 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-64 py-1">
-            <div className="px-4 py-2 border-b border-gray-100">
-                <div className="text-xs text-gray-400 mb-1">{"Session ID"}</div>
+        {menuOpen and <div ref={menuPanelRef} className="fixed top-11 right-3 bg-white border border-slate-900/10 rounded-lg shadow-lg z-50 w-64 py-1">
+            <div className="px-4 py-2 border-b border-slate-900/[0.06]">
+                <div className="text-xs text-slate-400 mb-1">{"Session ID"}</div>
                 <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono text-gray-600 flex-1 truncate">{sessionStorage.getItem("jasketch_session_id") or "-"}</span>
+                    <span className="text-xs font-mono text-slate-600 flex-1 truncate">{sessionStorage.getItem("jasketch_session_id") or "-"}</span>
                     <button onClick={lambda { handleCopySessionId(); }}
-                        className={"text-xs px-2 py-0.5 rounded transition-colors " + (sessionIdCopied and "bg-green-100 text-green-700" or "bg-gray-100 text-gray-600 hover:bg-gray-200")}>
+                        className={"text-xs px-2 py-0.5 rounded transition-colors " + (sessionIdCopied and "bg-green-100 text-green-700" or "bg-gray-100 text-slate-600 hover:bg-gray-200")}>
                         {sessionIdCopied and "Copied!" or "Copy"}
                     </button>
                 </div>
             </div>
             <button onClick={lambda { if jasketchFileInputRef.current { jasketchFileInputRef.current.click(); } menuOpen = False; }}
-                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-slate-900/5 flex items-center gap-3">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                 </svg>
                 {"Open"}
-                <span className="ml-auto text-xs text-gray-400">{"Ctrl+O"}</span>
+                <span className="ml-auto text-xs text-slate-400">{"Ctrl+O"}</span>
             </button>
             <button onClick={lambda { handleSave(); menuOpen = False; }}
-                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-slate-900/5 flex items-center gap-3">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
                 {"Save to disk"}
-                <span className="ml-auto text-xs text-gray-400">{"Ctrl+S"}</span>
+                <span className="ml-auto text-xs text-slate-400">{"Ctrl+S"}</span>
             </button>
-            <div className="border-t border-gray-100 my-1"></div>
+            <div className="border-t border-slate-900/[0.06] my-1"></div>
             <button onClick={lambda { handleShare(); menuOpen = False; }}
-                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-slate-900/5 flex items-center gap-3">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
@@ -329,21 +329,21 @@ def:pub TopBar(
                 {"Shareable link"}
             </button>
             <button onClick={lambda { handleCollab(); menuOpen = False; }}
-                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-slate-900/5 flex items-center gap-3">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
                     <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
                 </svg>
                 {"Live collaboration"}
             </button>
-            <div className="border-t border-gray-100 my-1"></div>
+            <div className="border-t border-slate-900/[0.06] my-1"></div>
             <button onClick={lambda { if onShowShortcuts { onShowShortcuts(); } menuOpen = False; }}
-                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-slate-900/5 flex items-center gap-3">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" />
                 </svg>
                 {"Keyboard shortcuts"}
-                <span className="ml-auto text-xs text-gray-400">{"?"}</span>
+                <span className="ml-auto text-xs text-slate-400">{"?"}</span>
             </button>
         </div> or None}
 
