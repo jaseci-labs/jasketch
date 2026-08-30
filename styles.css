@@ -1,24 +1,38 @@
 /* ---- JaSketch palette -------------------------------------------------
-   Warm chrome, neutral drawing surface.
+   Glass over a tinted ground.
 
-   The canvas itself stays near-white on purpose: a cream drawing surface
-   shifts how every colour reads, and an export would not match what was
-   drawn. The warmth lives in the chrome around it, which also gives the
-   canvas the "sheet of paper on a desk" separation it never had.
+   Glass only reads if there is something behind it to blur, so the app ground
+   carries a soft cool gradient rather than being flat white -- a translucent
+   panel on a flat white page just looks like a slightly grey panel.
 
-   Orange is reserved for the ACTIVE state. It is the one saturated colour in
-   the interface, so the moment it decorates anything it stops meaning
-   "this one" -- and the drawing has to compete with the app for attention. */
+   The drawing surface itself stays pure white. A tinted canvas shifts how
+   every colour reads and an export would not match what was drawn, so the
+   tint lives strictly in the chrome around it.
+
+   Orange stays reserved for the ACTIVE state. It is the one saturated colour
+   here, so the moment it decorates anything it stops meaning "this one". */
 :root {
-    --jsk-desk:      #faf8f5;   /* app ground, behind everything */
-    --jsk-panel:     #fdfcfa;   /* inspector and bars           */
-    --jsk-paper:     #ffffff;   /* the drawing surface           */
-    --jsk-line:      #e7e0d8;   /* borders on warm ground        */
-    --jsk-line-soft: #efe9e1;
-    --jsk-ink:       #1f1b18;   /* text                          */
-    --jsk-ink-soft:  #8a7f72;   /* labels                        */
-    --jsk-ink-faint: #a1968a;   /* values, hints                 */
-    --jsk-accent:    #ea580c;   /* active state ONLY             */
+    --jsk-ground:      #dfe6f0;   /* behind everything, gives glass its depth */
+    --jsk-ground-2:    #eef2f8;
+    --jsk-glass:       rgba(255, 255, 255, 0.68);
+    --jsk-glass-solid: rgba(255, 255, 255, 0.86);
+    --jsk-hairline:    rgba(15, 23, 42, 0.08);
+    --jsk-edge:        rgba(255, 255, 255, 0.7);   /* the lit top edge      */
+    --jsk-paper:       #ffffff;   /* the drawing surface                    */
+    --jsk-ink:         #0f172a;
+    --jsk-ink-soft:    #64748b;
+    --jsk-ink-faint:   #94a3b8;
+    --jsk-accent:      #ea580c;
+    --jsk-shadow:      0 8px 32px rgba(15, 23, 42, 0.10);
+}
+
+/* One class for every floating surface, so they cannot drift apart. */
+.jsk-glass {
+    background: var(--jsk-glass);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--jsk-hairline);
+    box-shadow: var(--jsk-shadow), inset 0 1px 0 var(--jsk-edge);
 }
 
 @import "tailwindcss";
@@ -108,12 +122,20 @@ body {
     display: block;
 }
 
+/* The ground the glass is read against. Applied to the app root rather than
+   `body`, which the framework resets out from under us. */
+.jsk-app-ground {
+    background:
+        radial-gradient(1100px 700px at 12% -8%, #ffffff 0%, transparent 55%),
+        linear-gradient(160deg, var(--jsk-ground-2) 0%, var(--jsk-ground) 100%);
+}
+
 /* Custom range slider */
 .range-slider {
     -webkit-appearance: none;
     appearance: none;
     height: 4px;
-    background: var(--jsk-line);
+    background: rgba(15, 23, 42, 0.10);
     border-radius: 2px;
     outline: none;
 }
@@ -229,9 +251,9 @@ button, input, select, textarea {
 
 /* Subtle dot grid canvas background */
 .canvas-dotgrid {
-    /* Warmer, and a touch fainter: the grid is orientation, not decoration. */
+    /* Pure white paper, cool faint grid: orientation, not decoration. */
     background-color: var(--jsk-paper);
-    background-image: radial-gradient(circle, #ddd6cc 0.8px, transparent 0.8px);
+    background-image: radial-gradient(circle, #d7dee8 0.8px, transparent 0.8px);
     background-size: 24px 24px;
 }
 

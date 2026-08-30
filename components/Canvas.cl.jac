@@ -31,7 +31,7 @@ def:pub Canvas(
     updateUsernameRef: any,
     onParticipantsChange: Callable[[dict], None],
     onSessionEnded: Callable[[], None],
-    onSelectionChange: Callable[[any], None],
+    onSelectionChange: Callable[[any, any], None],
     onToolChange: Callable[[str], None],
     onToggleShortcuts: Callable[[], None],
     onToolLockChange: Callable[[bool], None],
@@ -61,9 +61,18 @@ def:pub Canvas(
     # Guides are pure feedback for the gesture in flight, so they live in a ref
     # rather than state: they must not cause a re-render of their own.
     snapGuidesRef = useRef([]);
-    # Which element the pointer is over. A ref, so moving the mouse across the
-    # canvas does not re-render the whole component on every frame.
-    hoveredIdRef = useRef(None);
+    # Which element the pointer is over.
+    #
+    # This is state rather than a ref on purpose. It began as a ref that
+    # repainted the canvas itself, which meant TWO independent things were
+    # drawing the same surface -- the redraw effect and the hover handler -- and
+    # whichever ran last won. Right after a drag that produced a frame painted
+    # from the pre-drag selection, leaving a second selection box behind at the
+    # old position. One painter only.
+    #
+    # It changes when the pointer crosses a shape boundary, not on every mouse
+    # move, so the re-render is rare.
+    has hoveredId: any = None;
 
     toolLockedRef = useRef(toolLocked);
     toolLockedRef.current = toolLocked;
@@ -139,10 +148,30 @@ def:pub Canvas(
         return lambda {};
     }
 
-    can with [elementsHook.elements, canvasHook.canvasSize, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, drawingState.isDrawing, textInputHook.textInput] entry {
+    can with [elementsHook.elements, canvasHook.canvasSize, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, drawingState.isDrawing, textInputHook.textInput, hoveredId] entry {
         canvas = canvasRef.current;
         if canvas {
             canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, editingShapeId);
+            # Hover outline, on top of the finished frame.
+            if hoveredId {
+                hovered = None;
+                hvi = 0;
+                while hvi < elementsHook.elements.length {
+                    if elementsHook.elements[hvi] and elementsHook.elements[hvi].id == hoveredId {
+                        hovered = elementsHook.elements[hvi];
+                    }
+                    hvi = hvi + 1;
+                }
+                if hovered {
+                    hoverCtx = canvas.getContext("2d");
+                    hoverCtx.save();
+                    hoverCtx.translate(viewportHook.panOffset.x, viewportHook.panOffset.y);
+                    hoverCtx.scale(viewportHook.zoom, viewportHook.zoom);
+                    draw_hover_outline(hoverCtx, getElementBounds(hoverCtx, hovered), viewportHook.zoom);
+                    hoverCtx.restore();
+                }
+            }
+
             # Alignment guides sit on top of the finished frame; a drag updates
             # the elements on every move, so this runs for each frame of it.
             if snapGuidesRef.current and len(snapGuidesRef.current) > 0 {
@@ -155,7 +184,10 @@ def:pub Canvas(
             }
         }
         if onSelectionChange {
-            onSelectionChange(selectionHook.selectedElement);
+            # The whole selection, not only the primary: the inspector has to
+            # know whether ANY selected shape carries a label before it can
+            # decide whether to offer the text controls.
+            onSelectionChange(selectionHook.selectedElement, selectionHook.selectedElements);
         }
     }
 
@@ -951,17 +983,8 @@ def:pub Canvas(
                 nextHover = over.id;
             }
         }
-        if nextHover != hoveredIdRef.current {
-            hoveredIdRef.current = nextHover;
-            canvasHook.redrawCanvas(elementsHook.elements, viewportHook.zoom, viewportHook.panOffset, selectionHook.selectedElement, selectionHook.selectedElements, selectionHook.isBoxSelecting, selectionHook.boxStart, selectionHook.boxEnd, editingShapeId);
-            if nextHover {
-                hoverCtx2 = target.getContext("2d");
-                hoverCtx2.save();
-                hoverCtx2.translate(viewportHook.panOffset.x, viewportHook.panOffset.y);
-                hoverCtx2.scale(viewportHook.zoom, viewportHook.zoom);
-                draw_hover_outline(hoverCtx2, getElementBounds(hoverCtx2, over.element), viewportHook.zoom);
-                hoverCtx2.restore();
-            }
+        if nextHover != hoveredId {
+            hoveredId = nextHover;
         }
     }
 
@@ -2592,7 +2615,7 @@ def:pub Canvas(
     }
 
     def handleMouseLeave() -> None {
-        hoveredIdRef.current = None;
+        hoveredId = None;
         if not (currentTool == "line" or currentTool == "arrow") {
             drawingState.setIsDrawing(False);
         }
@@ -2686,11 +2709,11 @@ def:pub Canvas(
             />
 
             <div className="absolute bottom-4 left-4 flex items-center gap-2 z-40 select-none">
-              <div className="flex items-center bg-white/90 backdrop-blur-xl border border-[#e7e0d8]/80 rounded-xl shadow-lg">
+              <div className="jsk-glass flex items-center rounded-xl">
                 <button
                     title="Undo (Ctrl+Z)"
                     aria-label="Undo"
-                    className="px-3 py-2 text-[#6b6055] hover:bg-[#efe9e1] rounded-l-xl transition-colors"
+                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 rounded-l-xl transition-colors"
                     onClick={lambda { elementsHook.undo(); selectionHook.clearSelection(); }}
                 >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2700,7 +2723,7 @@ def:pub Canvas(
                 <button
                     title="Redo (Ctrl+Shift+Z)"
                     aria-label="Redo"
-                    className="px-3 py-2 text-[#6b6055] hover:bg-[#efe9e1] rounded-r-xl transition-colors"
+                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 rounded-r-xl transition-colors"
                     onClick={lambda { elementsHook.redo(); selectionHook.clearSelection(); }}
                 >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2708,9 +2731,9 @@ def:pub Canvas(
                     </svg>
                 </button>
               </div>
-              <div className="flex items-center bg-white/90 backdrop-blur-xl border border-[#e7e0d8]/80 rounded-xl shadow-lg">
+              <div className="jsk-glass flex items-center rounded-xl">
                 <button
-                    className="px-3 py-2 text-[#6b6055] hover:bg-[#efe9e1] rounded-l-xl text-base font-medium transition-colors"
+                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 rounded-l-xl text-base font-medium transition-colors"
                     onClick={lambda {
                         zoomCanvas = canvasRef.current;
                         if zoomCanvas {
@@ -2720,14 +2743,14 @@ def:pub Canvas(
                     }}
                 >-</button>
                 <button
-                    className="px-3 py-2 text-[#6b6055] hover:bg-[#efe9e1] text-sm font-medium min-w-[56px] text-center transition-colors"
+                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 text-sm font-medium min-w-[56px] text-center transition-colors"
                     onClick={lambda {
                         viewportHook.setZoom(1);
                         viewportHook.setPanOffset({"x": 0, "y": 0});
                     }}
                 >{str(Math.round(viewportHook.zoom * 100)) + "%"}</button>
                 <button
-                    className="px-3 py-2 text-[#6b6055] hover:bg-[#efe9e1] text-base font-medium transition-colors"
+                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 text-base font-medium transition-colors"
                     onClick={lambda {
                         ziCanvas = canvasRef.current;
                         if ziCanvas {
@@ -2739,7 +2762,7 @@ def:pub Canvas(
                 <button
                     title="Zoom to fit (Shift+1)"
                     aria-label="Zoom to fit"
-                    className="px-3 py-2 text-[#6b6055] hover:bg-[#efe9e1] rounded-r-xl border-l border-[#e7e0d8]/80 transition-colors"
+                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 rounded-r-xl border-l border-slate-900/10/80 transition-colors"
                     onClick={lambda { fitToContent(); }}
                 >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

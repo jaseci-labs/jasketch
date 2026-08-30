@@ -2292,6 +2292,11 @@ class TestInspectorLayout:
     def test_the_canvas_is_not_covered_by_the_panel(self, app: Page):
         """The old left panel sat ON the canvas, so its whole footprint was a
         dead zone: a mousedown there never reached the drawing surface."""
+        # Arm a drawing tool so there is something to configure -- with select
+        # and nothing selected the inspector is deliberately absent.
+        press_key(app, "Escape")
+        press_key(app, "5")
+        app.wait_for_timeout(ACTION_DELAY)
         geo = app.evaluate(
             """() => {
                 const c = document.querySelector('canvas').getBoundingClientRect();
