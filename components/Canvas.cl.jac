@@ -2625,7 +2625,7 @@ def:pub Canvas(
     }
 
     return (
-        <div ref={containerRef} className="relative w-full h-full flex items-center justify-center overflow-hidden bg-gray-50/50 canvas-dotgrid" onContextMenu={handleContextMenu}>
+        <div ref={containerRef} className="relative w-full h-full flex items-center justify-center overflow-hidden canvas-dotgrid" onContextMenu={handleContextMenu}>
             <CanvasRenderer
                 canvasRef={canvasRef}
                 canvasSize={canvasHook.canvasSize}
@@ -2686,11 +2686,11 @@ def:pub Canvas(
             />
 
             <div className="absolute bottom-4 left-4 flex items-center gap-2 z-40 select-none">
-              <div className="flex items-center bg-white/90 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-lg">
+              <div className="flex items-center bg-white/90 backdrop-blur-xl border border-[#e7e0d8]/80 rounded-xl shadow-lg">
                 <button
                     title="Undo (Ctrl+Z)"
                     aria-label="Undo"
-                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-l-xl transition-colors"
+                    className="px-3 py-2 text-[#6b6055] hover:bg-[#efe9e1] rounded-l-xl transition-colors"
                     onClick={lambda { elementsHook.undo(); selectionHook.clearSelection(); }}
                 >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2700,7 +2700,7 @@ def:pub Canvas(
                 <button
                     title="Redo (Ctrl+Shift+Z)"
                     aria-label="Redo"
-                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-r-xl transition-colors"
+                    className="px-3 py-2 text-[#6b6055] hover:bg-[#efe9e1] rounded-r-xl transition-colors"
                     onClick={lambda { elementsHook.redo(); selectionHook.clearSelection(); }}
                 >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2708,9 +2708,9 @@ def:pub Canvas(
                     </svg>
                 </button>
               </div>
-              <div className="flex items-center bg-white/90 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-lg">
+              <div className="flex items-center bg-white/90 backdrop-blur-xl border border-[#e7e0d8]/80 rounded-xl shadow-lg">
                 <button
-                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-l-xl text-base font-medium transition-colors"
+                    className="px-3 py-2 text-[#6b6055] hover:bg-[#efe9e1] rounded-l-xl text-base font-medium transition-colors"
                     onClick={lambda {
                         zoomCanvas = canvasRef.current;
                         if zoomCanvas {
@@ -2720,14 +2720,14 @@ def:pub Canvas(
                     }}
                 >-</button>
                 <button
-                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 text-sm font-medium min-w-[56px] text-center transition-colors"
+                    className="px-3 py-2 text-[#6b6055] hover:bg-[#efe9e1] text-sm font-medium min-w-[56px] text-center transition-colors"
                     onClick={lambda {
                         viewportHook.setZoom(1);
                         viewportHook.setPanOffset({"x": 0, "y": 0});
                     }}
                 >{str(Math.round(viewportHook.zoom * 100)) + "%"}</button>
                 <button
-                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 text-base font-medium transition-colors"
+                    className="px-3 py-2 text-[#6b6055] hover:bg-[#efe9e1] text-base font-medium transition-colors"
                     onClick={lambda {
                         ziCanvas = canvasRef.current;
                         if ziCanvas {
@@ -2739,7 +2739,7 @@ def:pub Canvas(
                 <button
                     title="Zoom to fit (Shift+1)"
                     aria-label="Zoom to fit"
-                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-r-xl border-l border-gray-200/80 transition-colors"
+                    className="px-3 py-2 text-[#6b6055] hover:bg-[#efe9e1] rounded-r-xl border-l border-[#e7e0d8]/80 transition-colors"
                     onClick={lambda { fitToContent(); }}
                 >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

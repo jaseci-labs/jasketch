@@ -1,3 +1,26 @@
+/* ---- JaSketch palette -------------------------------------------------
+   Warm chrome, neutral drawing surface.
+
+   The canvas itself stays near-white on purpose: a cream drawing surface
+   shifts how every colour reads, and an export would not match what was
+   drawn. The warmth lives in the chrome around it, which also gives the
+   canvas the "sheet of paper on a desk" separation it never had.
+
+   Orange is reserved for the ACTIVE state. It is the one saturated colour in
+   the interface, so the moment it decorates anything it stops meaning
+   "this one" -- and the drawing has to compete with the app for attention. */
+:root {
+    --jsk-desk:      #faf8f5;   /* app ground, behind everything */
+    --jsk-panel:     #fdfcfa;   /* inspector and bars           */
+    --jsk-paper:     #ffffff;   /* the drawing surface           */
+    --jsk-line:      #e7e0d8;   /* borders on warm ground        */
+    --jsk-line-soft: #efe9e1;
+    --jsk-ink:       #1f1b18;   /* text                          */
+    --jsk-ink-soft:  #8a7f72;   /* labels                        */
+    --jsk-ink-faint: #a1968a;   /* values, hints                 */
+    --jsk-accent:    #ea580c;   /* active state ONLY             */
+}
+
 @import "tailwindcss";
 
 /* Import handwriting and display fonts */
@@ -76,11 +99,12 @@ body {
 
 /* Sidebar section label */
 .sidebar-label {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #6b7280;
+    /* Sentence case at a readable size. The old 10px uppercase was shouting a
+       word nobody needs shouted, and was harder to read while doing it. */
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: var(--jsk-ink-soft);
     display: block;
 }
 
@@ -89,7 +113,7 @@ body {
     -webkit-appearance: none;
     appearance: none;
     height: 4px;
-    background: #e5e7eb;
+    background: var(--jsk-line);
     border-radius: 2px;
     outline: none;
 }
@@ -205,7 +229,9 @@ button, input, select, textarea {
 
 /* Subtle dot grid canvas background */
 .canvas-dotgrid {
-    background-image: radial-gradient(circle, #d1d5db 0.8px, transparent 0.8px);
+    /* Warmer, and a touch fainter: the grid is orientation, not decoration. */
+    background-color: var(--jsk-paper);
+    background-image: radial-gradient(circle, #ddd6cc 0.8px, transparent 0.8px);
     background-size: 24px 24px;
 }
 

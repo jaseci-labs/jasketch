@@ -45,6 +45,10 @@ cl {
         # because both the toolbar toggle and the canvas's Q shortcut set it.
         has toolLocked: bool = False;
 
+        # The inspector is always present. This only folds it away for the
+        # moments you want the canvas edge to edge.
+        has inspectorOpen: bool = True;
+
         # Share dialog state
         has shareDialogOpen: bool = False;
 
@@ -158,7 +162,7 @@ cl {
             </div>;
         }
 
-        return <div className="h-screen flex flex-col overflow-hidden bg-white">
+        return <div className="h-screen flex flex-col overflow-hidden bg-[#faf8f5]">
             <TopBar
                 currentTool={currentTool}
                 onToolChange={lambda (tool: any) { currentTool = tool; }}
@@ -181,32 +185,8 @@ cl {
                 toolLocked={toolLocked}
             />
 
-            <div className="flex-1 overflow-hidden relative">
-                <div className="absolute left-3 top-3 z-10">
-                    <Sidebar
-                        currentTool={currentTool}
-                        currentColor={currentColor}
-                        currentStrokeWidth={currentStrokeWidth}
-                        currentOpacity={currentOpacity}
-                        currentFontSize={currentFontSize}
-                        currentFontFamily={currentFontFamily}
-                        currentLineStyle={currentLineStyle}
-                        currentCurveStyle={currentCurveStyle}
-                        currentFillColor={currentFillColor}
-                        selectedElement={selectedElement}
-                        onColorChange={lambda (color: any) { currentColor = color; }}
-                        onStrokeWidthChange={lambda (width: any) { currentStrokeWidth = width; }}
-                        onOpacityChange={lambda (opacity: any) { currentOpacity = opacity; }}
-                        onFontSizeChange={lambda (size: any) { currentFontSize = size; }}
-                        onFontFamilyChange={lambda (font: any) { currentFontFamily = font; }}
-                        onLineStyleChange={lambda (style: any) { currentLineStyle = style; }}
-                        onCurveStyleChange={lambda (style: any) { currentCurveStyle = style; }}
-                        onFillColorChange={lambda (color: any) { currentFillColor = color; }}
-                        onUpdateElement={handleUpdateElement}
-                    />
-                </div>
-
-                <div className="w-full h-full">
+            <div className="flex-1 overflow-hidden relative flex flex-row min-h-0">
+                <div className="flex-1 relative min-w-0 h-full">
                     <Canvas
                         currentTool={currentTool}
                         currentColor={currentColor}
@@ -245,6 +225,41 @@ cl {
                         onToggleShortcuts={lambda { showShortcuts = not showShortcuts; }}
                     />
                 </div>
+
+                <button
+                    onClick={lambda { inspectorOpen = not inspectorOpen; }}
+                    title={inspectorOpen and "Hide the inspector" or "Show the inspector"}
+                    className="absolute top-1/2 -translate-y-1/2 z-20 w-5 h-12 rounded-l-md bg-[#fdfcfa] border border-r-0 border-[#e7e0d8] text-[#a1968a] hover:text-[#1f1b18] hover:bg-[#f4efe8] flex items-center justify-center transition-colors"
+                    style={inspectorOpen and {"right": "248px"} or {"right": "0px"}}
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        {inspectorOpen and <polyline points="9 18 15 12 9 6" /> or <polyline points="15 18 9 12 15 6" />}
+                    </svg>
+                </button>
+
+                {inspectorOpen and <div className="shrink-0 w-[248px] h-full border-l border-[#e7e0d8] bg-[#fdfcfa] overflow-y-auto">
+                    <Sidebar
+                        currentTool={currentTool}
+                        currentColor={currentColor}
+                        currentStrokeWidth={currentStrokeWidth}
+                        currentOpacity={currentOpacity}
+                        currentFontSize={currentFontSize}
+                        currentFontFamily={currentFontFamily}
+                        currentLineStyle={currentLineStyle}
+                        currentCurveStyle={currentCurveStyle}
+                        currentFillColor={currentFillColor}
+                        selectedElement={selectedElement}
+                        onColorChange={lambda (color: any) { currentColor = color; }}
+                        onStrokeWidthChange={lambda (width: any) { currentStrokeWidth = width; }}
+                        onOpacityChange={lambda (opacity: any) { currentOpacity = opacity; }}
+                        onFontSizeChange={lambda (size: any) { currentFontSize = size; }}
+                        onFontFamilyChange={lambda (font: any) { currentFontFamily = font; }}
+                        onLineStyleChange={lambda (style: any) { currentLineStyle = style; }}
+                        onCurveStyleChange={lambda (style: any) { currentCurveStyle = style; }}
+                        onFillColorChange={lambda (color: any) { currentFillColor = color; }}
+                        onUpdateElement={handleUpdateElement}
+                    />
+                </div> or None}
 
                 <ChatPanel
                     isOpen={chatOpen}

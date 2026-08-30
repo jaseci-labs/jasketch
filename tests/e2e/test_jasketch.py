@@ -389,7 +389,12 @@ class TestSelectionAndDeletion:
         wait_for_elements(app, 1)
         select_tool(app, "Select")
         click_canvas(app, S_CX, S_CY)
-        expect(app.get_by_text("rectangle selected")).to_be_visible(timeout=5_000)
+        # The inspector names what you are editing. It reads "Rectangle" with a
+        # "selected" state beside it, rather than one run-on phrase.
+        # The DOM text is the raw type ("rectangle"); the capital is CSS.
+        inspector = app.locator(".sidebar")
+        expect(inspector.get_by_text(re.compile(r"^rectangle$", re.I))).to_be_visible(timeout=5_000)
+        expect(inspector.get_by_text("selected", exact=True)).to_be_visible(timeout=5_000)
 
     def test_delete_selected_element(self, app: Page):
         """Pressing Delete removes the selected element."""
@@ -2278,3 +2283,59 @@ class TestPointerFeedback:
         assert app.screenshot(clip={"x": 380, "y": 230, "width": 220, "height": 150}) == away, (
             "the hover outline was left behind after moving away"
         )
+
+
+class TestInspectorLayout:
+    """The properties panel moved to the right and became part of the layout
+    rather than a card floating over the drawing."""
+
+    def test_the_canvas_is_not_covered_by_the_panel(self, app: Page):
+        """The old left panel sat ON the canvas, so its whole footprint was a
+        dead zone: a mousedown there never reached the drawing surface."""
+        geo = app.evaluate(
+            """() => {
+                const c = document.querySelector('canvas').getBoundingClientRect();
+                const s = document.querySelector('.sidebar');
+                return {cx: c.x, cw: c.width, sx: s ? s.getBoundingClientRect().x : null};
+            }"""
+        )
+        assert geo["cx"] == 0, "the canvas should start at the left edge"
+        assert geo["sx"] is not None, "the inspector should always be present"
+        assert geo["cw"] <= geo["sx"] + 2, "the canvas runs underneath the inspector"
+
+    def test_the_far_left_of_the_canvas_is_drawable(self, app: Page):
+        """This is the dead zone, tested directly."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 60, 300, 200, 400)
+        wait_for_elements(app, 1)
+        assert get_elements_count(app) == 1
+
+    def test_the_inspector_shows_defaults_with_nothing_selected(self, app: Page):
+        """Setting a colour and then drawing has to keep working, which is why
+        this is a permanent panel and not a selection popup."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        inspector = app.locator(".sidebar")
+        expect(inspector).to_be_visible()
+        expect(inspector.get_by_text("Defaults", exact=True)).to_be_visible()
+        swatches = app.evaluate(
+            """() => [...document.querySelectorAll('.sidebar button')]
+                 .filter(b => /^#/.test(b.getAttribute('title') || '')).length"""
+        )
+        assert swatches > 0, "no colour controls with nothing selected"
+
+    def test_collapsing_gives_the_canvas_the_full_width(self, app: Page):
+        """The canvas has to re-measure: folding the panel away changes its
+        container without firing a window resize."""
+        full = app.evaluate("() => innerWidth")
+        app.locator("button[title*='inspector']").click()
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        widened = app.evaluate("() => document.querySelector('canvas').getBoundingClientRect().width")
+        assert abs(widened - full) < 2, f"canvas did not reclaim the space: {widened} of {full}"
+        app.locator("button[title*='inspector']").click()
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        restored = app.evaluate("() => document.querySelector('canvas').getBoundingClientRect().width")
+        assert restored < full, "the inspector did not come back"
