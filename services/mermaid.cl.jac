@@ -47,8 +47,9 @@ glob MM_DIAMOND_PAD_Y: float = 34.0;
 # behind itself so the words are not struck through, and on a short arrow that
 # knockout eats most of the line and the arrow reads as severed. Longer arrows
 # leave room for the label and still look like arrows.
-# How far apart to hold an A->B / B->A pair so both labels stay readable.
-glob MM_PAIR_OFFSET: float = 27.0;
+# How far the return leg of an A->B / B->A pair is displaced. Only that leg
+# moves, so this is the whole separation rather than half of it.
+glob MM_PAIR_OFFSET: float = 52.0;
 
 glob MM_STATE_DOT: float = 34.0;
 
@@ -846,17 +847,32 @@ def:pub to_elements(parsed: any, color: str, stroke_width: float, font_family: s
                     }
                 }
                 if has_reverse[e["to"] + " " + e["from"]] {
-                    # Perpendicular to this edge's own direction, so the
-                    # opposing edge derives the opposite normal and the two
-                    # separate instead of both shifting the same way.
-                    dx = bx - ax;
-                    dy = by - ay;
-                    run = Math.sqrt(dx * dx + dy * dy);
-                    if run > 0.5 {
-                        ox = (0 - dy) / run * MM_PAIR_OFFSET;
-                        oy = dx / run * MM_PAIR_OFFSET;
-                        ax = ax + ox; ay = ay + oy;
-                        bx = bx + ox; by = by + oy;
+                    # Only ONE of the pair moves, and it is always the one
+                    # going backwards through the layering.
+                    #
+                    # Offsetting both looks symmetric but is worse: the forward
+                    # edge gets shoved sideways off its node's face and cuts
+                    # across whatever sibling edge is next to it. Leaving the
+                    # forward edge on its natural path and displacing only the
+                    # return trip gives the same separation with no crossing.
+                    is_back = False;
+                    if b["layer"] < a["layer"] {
+                        is_back = True;
+                    } elif b["layer"] == a["layer"] and e["from"] > e["to"] {
+                        # Same layer, so neither is "backwards". Pick one by a
+                        # stable rule instead, or both move and they collide.
+                        is_back = True;
+                    }
+                    if is_back {
+                        dx = bx - ax;
+                        dy = by - ay;
+                        run = Math.sqrt(dx * dx + dy * dy);
+                        if run > 0.5 {
+                            ox = (0 - dy) / run * MM_PAIR_OFFSET;
+                            oy = dx / run * MM_PAIR_OFFSET;
+                            ax = ax + ox; ay = ay + oy;
+                            bx = bx + ox; by = by + oy;
+                        }
                     }
                 }
                 out.append({
