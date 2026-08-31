@@ -2572,6 +2572,101 @@ class TestMermaidImport:
         assert len(dashed) == 1, f"expected one dotted connector, got {len(dashed)}"
 
 
+class TestTextEditorGrowsWithItsContent:
+    """You must be able to see what you are typing.
+
+    The editor is a real <textarea> laid over the canvas. It only grew to fit
+    its content when editing a SHAPE label; free canvas text got no growth at
+    all. A bare textarea defaults to rows=2 and the element carries
+    overflow-hidden, so typing a third line scrolled the first out of sight,
+    and a long single line scrolled its own start off the left. The text was
+    never actually lost, which is why it all reappeared on commit, but while
+    typing you were writing blind.
+    """
+
+    def _start_text(self, page: Page, x: int, y: int):
+        select_tool(page, "Text")
+        click_canvas(page, x, y)
+        ta = page.locator("textarea.canvas-text-input")
+        expect(ta).to_be_visible()
+        return ta
+
+    def _overflow(self, ta):
+        return ta.evaluate(
+            "e => ({h: e.clientHeight, sh: e.scrollHeight,"
+            "       w: e.clientWidth, sw: e.scrollWidth})"
+        )
+
+    def test_every_line_stays_visible_while_typing(self, app: Page):
+        clear_canvas(app)
+        ta = self._start_text(app, S_CX, S_CY)
+        for i, line in enumerate(["line one", "line two", "line three", "line four"]):
+            app.keyboard.type(line, delay=15)
+            app.wait_for_timeout(ACTION_DELAY)
+            m = self._overflow(ta)
+            assert m["sh"] <= m["h"] + 2, (
+                f"after {i + 1} line(s) the editor hides content: "
+                f"height={m['h']} content={m['sh']}"
+            )
+            if i < 3:
+                app.keyboard.press("Enter")
+
+    def test_a_long_line_is_not_clipped_sideways(self, app: Page):
+        clear_canvas(app)
+        ta = self._start_text(app, 200, 200)
+        app.keyboard.type("a very long single line of text that keeps going", delay=8)
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        m = self._overflow(ta)
+        assert m["sw"] <= m["w"] + 2, (
+            f"long line is clipped: width={m['w']} content={m['sw']}"
+        )
+
+    def test_multiline_text_commits_intact(self, app: Page):
+        """The symptom was cosmetic, but prove the text itself survives."""
+        clear_canvas(app)
+        ta = self._start_text(app, S_CX, S_CY)
+        ta.fill("alpha\nbeta\ngamma\ndelta")
+        ta.press("Escape")
+        app.wait_for_timeout(ACTION_DELAY)
+        wait_for_elements(app, 1)
+        assert get_elements(app)[0]["text"] == "alpha\nbeta\ngamma\ndelta"
+
+    def test_the_editor_shrinks_back_when_text_is_deleted(self, app: Page):
+        clear_canvas(app)
+        ta = self._start_text(app, 200, 200)
+        app.keyboard.type("a very long single line of text", delay=8)
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        wide = self._overflow(ta)["w"]
+        ta.fill("hi")
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        narrow = self._overflow(ta)["w"]
+        assert narrow < wide, f"editor stayed {narrow}px wide after deleting (was {wide}px)"
+
+    def test_no_browser_chrome_over_the_canvas(self, app: Page):
+        """Spellcheck squiggles and autofill dropdowns do not belong on a drawing."""
+        clear_canvas(app)
+        ta = self._start_text(app, S_CX, S_CY)
+        assert ta.get_attribute("spellcheck") == "false"
+        assert ta.get_attribute("autocomplete") == "off"
+
+    def test_shape_labels_still_grow_downward(self, app: Page):
+        """The shape path already worked; make sure it was not traded away."""
+        clear_canvas(app)
+        draw_shape(app, "Rectangle", 350, 200, 650, 400)
+        double_click_canvas(app, 500, 300)
+        ta = app.locator("textarea.canvas-text-input")
+        expect(ta).to_be_visible()
+        app.keyboard.type("one", delay=15)
+        for _ in range(3):
+            app.keyboard.press("Enter")
+            app.keyboard.type("more", delay=15)
+        app.wait_for_timeout(ACTION_DELAY)
+        m = self._overflow(ta)
+        assert m["sh"] <= m["h"] + 2, (
+            f"shape label editor hides content: height={m['h']} content={m['sh']}"
+        )
+
+
 class TestTextFieldsKeepTheirKeys:
     """The canvas shortcuts must not eat typing in a dialog.
 

@@ -1,4 +1,5 @@
 import from react { useEffect }
+import from "...services.canvas" { measure_widest_line }
 
 def:pub TextInput(
     textInput: any,
@@ -78,9 +79,32 @@ def:pub TextInput(
         # Not `node`: that is an Object-Spatial keyword in Jac and will not parse
         # as a variable name.
         box = textInputRef.current;
-        if box and isShapeEdit {
-            box.style.height = "auto";
-            box.style.height = box.scrollHeight + "px";
+        if not box {
+            return;
+        }
+
+        # This used to run only for shape labels. Free canvas text got no
+        # growth at all, and a bare <textarea> defaults to rows=2, so the
+        # third line pushed the first out of sight behind overflow:hidden.
+        # The text was never lost, it just could not be seen until commit.
+        box.style.height = "auto";
+        box.style.height = box.scrollHeight + "px";
+
+        # Shape labels wrap to a width set from the shape, so they only ever
+        # need to grow downward. Free text is white-space:pre and never wraps,
+        # so it has to grow sideways too or a long line scrolls its own start
+        # off the left. Collapse to 0 first so the box also shrinks back when
+        # text is deleted, instead of sticking at the cols=20 default.
+        if not isShapeEdit {
+            # Measured with a canvas rather than read off the element:
+            # a <textarea>'s scrollWidth reports the box's own width, not its
+            # content, so it can grow a box but can never shrink one back.
+            widest = measure_widest_line(
+                textInput.text or "", scaledFontSize, currentFontFamily
+            );
+            # A little slack so the caret at the end of the longest line is
+            # not sitting on the clipped edge.
+            box.style.width = (widest + scaledFontSize * 0.4 + 4) + "px";
         }
     }
 
@@ -93,6 +117,11 @@ def:pub TextInput(
         onKeyDown={onKeyDown}
         onBlur={onBlur}
         autoFocus={True}
+        wrap={"soft" if isShapeEdit else "off"}
+        spellCheck={False}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
         className="absolute outline-none resize-none overflow-hidden canvas-text-input"
         style={baseStyle}
     />;

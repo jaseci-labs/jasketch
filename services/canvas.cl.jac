@@ -1,5 +1,34 @@
 import from .geometry { getConnectionPoints, _rotate_points, getTextDimensions, get_elbow_full_points, get_freehand_center }
 
+"""How wide a run of text really is, at the font it will be drawn in.
+
+A detached canvas is enough: measureText needs a context, not a visible one.
+Preferred over an element's scrollWidth, which on a <textarea> reports the
+box's own width rather than its content and so cannot be used to shrink one."""
+def:pub measure_text_width(text: str, font_size: float, font_family: str) -> float {
+    probe = document.createElement("canvas");
+    ctx = probe.getContext("2d");
+    if not ctx {
+        return len(str(text or "")) * font_size * 0.55;
+    }
+    ctx.font = font_size + "px " + font_family;
+    return ctx.measureText(str(text or "")).width;
+}
+
+
+"""The widest line in a multi-line run of text."""
+def:pub measure_widest_line(text: str, font_size: float, font_family: str) -> float {
+    widest = 0.0;
+    for line in str(text or "").split("\n") {
+        w = measure_text_width(line, font_size, font_family);
+        if w > widest {
+            widest = w;
+        }
+    }
+    return widest;
+}
+
+
 # Helper: Apply rotation transform to canvas context
 def:pub apply_rotation_transform(ctx: any, element: dict) -> None {
     if element["rotation"] and (element["rotation"] != 0) {
