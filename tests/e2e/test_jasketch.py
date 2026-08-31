@@ -2572,6 +2572,92 @@ class TestMermaidImport:
         assert len(dashed) == 1, f"expected one dotted connector, got {len(dashed)}"
 
 
+class TestTextFieldsKeepTheirKeys:
+    """The canvas shortcuts must not eat typing in a dialog.
+
+    Nearly every canvas shortcut is a bare letter, a digit or Backspace, which
+    are also just ordinary typing. The global handler used to guard only on
+    `textInputHook.textInput`, which tracks label editing ON the canvas, so a
+    dialog textarea got none of that protection: Backspace deleted your shapes
+    instead of a character and Ctrl+V pasted canvas elements instead of your
+    clipboard. That made the Mermaid dialog impossible to actually use, since
+    pasting a diagram in is the entire point of it.
+    """
+
+    def _open(self, page: Page):
+        page.locator("button[title='Import from Mermaid']").first.click()
+        page.wait_for_timeout(ACTION_DELAY)
+        return page.locator("textarea").last
+
+    def test_backspace_edits_text_instead_of_deleting_shapes(self, app: Page):
+        clear_canvas(app)
+        draw_shape(app, "Rectangle", 500, 300, 650, 400)
+        before = len(get_elements(app))
+        ta = self._open(app)
+        ta.click()
+        app.keyboard.type("graph TD", delay=20)
+        app.keyboard.press("Backspace")
+        app.keyboard.press("Backspace")
+        app.wait_for_timeout(ACTION_DELAY)
+        assert ta.input_value() == "graph ", f"backspace did not edit: {ta.input_value()!r}"
+        assert len(get_elements(app)) == before, "backspace destroyed canvas elements"
+
+    def test_paste_puts_the_clipboard_in_the_field(self, app: Page):
+        clear_canvas(app)
+        text = "graph TD\n    A[One] --> B[Two]"
+        ta = self._open(app)
+        ta.fill("")
+        app.evaluate("t => navigator.clipboard.writeText(t)", text)
+        app.wait_for_timeout(ACTION_DELAY)
+        ta.click()
+        app.keyboard.press("ControlOrMeta+v")
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        assert ta.input_value().strip() == text.strip(), (
+            f"paste was swallowed by the canvas: {ta.input_value()!r}"
+        )
+
+    def test_select_all_stays_inside_the_field(self, app: Page):
+        clear_canvas(app)
+        ta = self._open(app)
+        ta.fill("some text")
+        ta.click()
+        app.keyboard.press("ControlOrMeta+a")
+        app.keyboard.type("x", delay=20)
+        app.wait_for_timeout(ACTION_DELAY)
+        assert ta.input_value() == "x", f"ctrl+A did not select the field: {ta.input_value()!r}"
+
+    def test_letters_and_digits_type_rather_than_switching_tools(self, app: Page):
+        clear_canvas(app)
+        ta = self._open(app)
+        ta.fill("")
+        ta.click()
+        app.keyboard.type("q1 5d", delay=25)
+        app.wait_for_timeout(ACTION_DELAY)
+        assert ta.input_value() == "q1 5d", f"shortcuts stole the keys: {ta.input_value()!r}"
+
+    def test_escape_still_closes_the_dialog(self, app: Page):
+        clear_canvas(app)
+        ta = self._open(app)
+        ta.click()
+        app.keyboard.type("graph TD", delay=20)
+        app.keyboard.press("Escape")
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        assert "Import from Mermaid" not in app.inner_text("body")
+
+    def test_canvas_shortcuts_still_work_once_the_field_is_gone(self, app: Page):
+        """The guard must be narrow: it exempts text fields, nothing else."""
+        clear_canvas(app)
+        draw_shape(app, "Rectangle", 500, 300, 650, 400)
+        assert len(get_elements(app)) == 1
+        app.mouse.click(700, 600)
+        app.wait_for_timeout(ACTION_DELAY)
+        app.keyboard.press("ControlOrMeta+a")
+        app.wait_for_timeout(ACTION_DELAY)
+        app.keyboard.press("Backspace")
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        assert len(get_elements(app)) == 0, "canvas Backspace stopped deleting"
+
+
 class TestMermaidIsDiscoverable:
     def test_there_is_a_toolbar_button(self, app: Page):
         expect(app.locator("button[title='Import from Mermaid']").first).to_be_visible()

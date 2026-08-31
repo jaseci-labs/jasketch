@@ -257,7 +257,33 @@ def:pub Canvas(
     }
 
     can with (textInputHook.textInput, elementsHook.elements) entry {
+        """True when a keystroke belongs to a text field rather than the canvas.
+
+        Almost every canvas shortcut is a bare letter, a digit or Backspace,
+        which are also just ordinary typing. `textInputHook.textInput` only
+        tracks label editing ON the canvas, so without this check any dialog
+        with a text field is unusable: Backspace deletes your shapes instead of
+        a character, and Ctrl+V pastes canvas elements instead of your text."""
+        def _is_text_entry(target: any) -> bool {
+            if not target {
+                return False;
+            }
+            tag = (target.tagName or "").toLowerCase();
+            if tag == "input" or tag == "textarea" or tag == "select" {
+                return True;
+            }
+            if target.isContentEditable {
+                return True;
+            }
+            return False;
+        }
+
         def handleKeyDown(e: KeyboardEvent) -> None {
+            # Let the focused field have the key. Dialogs bring their own
+            # Escape handlers, so closing still works from in here.
+            if _is_text_entry(e.target) {
+                return;
+            }
             if e.key == " " and not textInputHook.textInput {
                 e.preventDefault();
                 spacePressed = True;
