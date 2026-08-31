@@ -2484,13 +2484,16 @@ class TestMermaidImport:
         app.wait_for_timeout(ACTION_DELAY * 2)
         assert get_elements_count(app) == 0, "the import should undo in one step"
 
-    def test_a_non_flowchart_is_refused_rather_than_mangled(self, app: Page):
+    def test_an_unsupported_diagram_is_refused_rather_than_mangled(self, app: Page):
+        """This used to use a sequence diagram as its example. Sequence and
+        state diagrams are supported now, so it points at one that still is
+        not: a pie chart cannot be drawn honestly without arcs."""
         clear_canvas(app)
         self._open_dialog(app)
-        app.locator("textarea").last.fill("sequenceDiagram\n  Alice->>Bob: Hello")
+        app.locator("textarea").last.fill('pie title Pets\n    "Dogs" : 386\n')
         app.get_by_text("Add to canvas").click()
         app.wait_for_timeout(ACTION_DELAY * 2)
-        assert "Only flowcharts" in app.evaluate("() => document.body.innerText")
+        assert "pie chart" in app.evaluate("() => document.body.innerText")
         assert get_elements_count(app) == 0, "nothing should be drawn for an unsupported diagram"
         press_key(app, "Escape")
 
@@ -2751,6 +2754,266 @@ class TestTextFieldsKeepTheirKeys:
         app.keyboard.press("Backspace")
         app.wait_for_timeout(ACTION_DELAY * 2)
         assert len(get_elements(app)) == 0, "canvas Backspace stopped deleting"
+
+
+class TestMermaidRoutesAlongTheLayoutDirection:
+    """An edge must leave the face that points at its target.
+
+    to_elements used to decide this on the vertical axis only, with a sideways
+    special case that fired just when two nodes shared a row within 8px. In LR
+    the layers advance along x, so that test almost never fired and every edge
+    was drawn bottom-to-top: a diagonal straight through the shapes.
+    """
+
+    CHART = (
+        "graph LR\n"
+        "    A[One] --> B[Two]\n"
+        "    B --> C[Three]\n"
+        "    C --> B\n"
+    )
+
+    def _import(self, page: Page, text: str):
+        page.locator("button[title='Import from Mermaid']").first.click()
+        page.wait_for_timeout(ACTION_DELAY)
+        page.locator("textarea").last.fill(text)
+        page.get_by_text("Add to canvas").click()
+        page.wait_for_timeout(ACTION_DELAY * 4)
+
+    def _faces(self, page: Page):
+        out = []
+        for e in get_elements(page):
+            if e["type"] in ("arrow", "line") and e.get("startBinding"):
+                out.append(e["startBinding"]["side"] + "->" + e["endBinding"]["side"])
+        return out
+
+    def test_left_to_right_edges_leave_the_right_face(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.CHART)
+        faces = self._faces(app)
+        assert faces.count("right->left") == 2, f"forward edges routed as {faces}"
+        assert "bottom->top" not in faces, f"a sideways chart used vertical faces: {faces}"
+
+    def test_a_back_edge_faces_the_other_way(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.CHART)
+        assert "left->right" in self._faces(app), "the C --> B back edge did not reverse"
+
+    def test_top_down_still_routes_vertically(self, app: Page):
+        """The vertical path was correct already; make sure it was not traded."""
+        clear_canvas(app)
+        self._import(app, "graph TD\n    A[One] --> B[Two]\n    B --> C[Three]\n")
+        faces = self._faces(app)
+        assert faces.count("bottom->top") == 2, f"top-down chart routed as {faces}"
+
+
+class TestMermaidStateDiagrams:
+    """A state machine is a directed graph, so it reuses the flowchart pipeline.
+
+    Only the grammar differs: `-->` is the only connector, the label follows a
+    colon rather than sitting inside pipes, and `[*]` is a pseudostate meaning
+    the start when it is the source and the end when it is the target.
+    """
+
+    MACHINE = (
+        "stateDiagram-v2\n"
+        "    [*] --> Idle\n"
+        "    Idle --> Loading : fetch\n"
+        "    Loading --> Ready : ok\n"
+        "    Loading --> Failed : error\n"
+        "    Failed --> Loading : retry\n"
+        "    Ready --> [*]\n"
+    )
+
+    def _import(self, page: Page, text: str):
+        page.locator("button[title='Import from Mermaid']").first.click()
+        page.wait_for_timeout(ACTION_DELAY)
+        page.locator("textarea").last.fill(text)
+        page.get_by_text("Add to canvas").click()
+        page.wait_for_timeout(ACTION_DELAY * 4)
+
+    def test_states_become_boxes_and_transitions_become_arrows(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.MACHINE)
+        kinds = {}
+        for e in get_elements(app):
+            kinds[e["type"]] = kinds.get(e["type"], 0) + 1
+        assert kinds.get("rectangle") == 4, f"expected 4 states, got {kinds}"
+        assert kinds.get("arrow") == 6, f"expected 6 transitions, got {kinds}"
+
+    def test_state_and_transition_labels_both_survive(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.MACHINE)
+        labels = {e.get("shapeText") for e in get_elements(app) if e.get("shapeText")}
+        for want in ("Idle", "Loading", "Ready", "Failed", "fetch", "ok", "error", "retry"):
+            assert want in labels, f"{want!r} missing from {labels}"
+
+    def test_pseudostates_are_dots_with_no_caption(self, app: Page):
+        """`[*]` is a marker, not a state. Sizing it from an empty label would
+        give a 120px circle, and falling back to its internal id would caption
+        it __start__."""
+        clear_canvas(app)
+        self._import(app, self.MACHINE)
+        circles = [e for e in get_elements(app) if e["type"] == "circle"]
+        assert len(circles) == 2, f"expected a start and an end dot, got {len(circles)}"
+        for c in circles:
+            assert c["width"] <= 40, f"pseudostate is {c['width']}px wide"
+            assert not c.get("shapeText"), f"pseudostate captioned {c.get('shapeText')!r}"
+
+    def test_start_and_end_are_separate(self, app: Page):
+        """Both spell `[*]`, but one is entered and one is left."""
+        clear_canvas(app)
+        self._import(app, self.MACHINE)
+        circles = [e for e in get_elements(app) if e["type"] == "circle"]
+        assert len({round(c["y"]) for c in circles}) == 2, "start and end collapsed into one"
+
+    def test_opposing_transitions_do_not_hide_each_other(self, app: Page):
+        """`Loading --> Failed` and `Failed --> Loading` otherwise land on the
+        same line, and the second label paints over the first."""
+        clear_canvas(app)
+        self._import(app, self.MACHINE)
+        pair = [
+            e for e in get_elements(app)
+            if e["type"] == "arrow" and e.get("shapeText") in ("error", "retry")
+        ]
+        assert len(pair) == 2, f"expected both labels, got {[e.get('shapeText') for e in pair]}"
+        a, b = pair
+        amid = ((a["x1"] + a["x2"]) / 2, (a["y1"] + a["y2"]) / 2)
+        bmid = ((b["x1"] + b["x2"]) / 2, (b["y1"] + b["y2"]) / 2)
+        apart = math.hypot(amid[0] - bmid[0], amid[1] - bmid[1])
+        assert apart > 40, f"opposing transitions are only {apart:.0f} units apart"
+
+    def test_a_retry_loop_does_not_blow_the_layout_apart(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.MACHINE)
+        xs = [e["x"] for e in get_elements(app) if e["type"] not in ("arrow", "line")]
+        assert max(xs) - min(xs) < 1200, f"span is {max(xs) - min(xs):.0f}px"
+
+
+class TestMermaidSequenceDiagrams:
+    """A sequence diagram is NOT a graph: it is a row of participants and a
+    script of messages running down a timeline, so it gets its own layout."""
+
+    SCRIPT = (
+        "sequenceDiagram\n"
+        "    participant A as Alice\n"
+        "    participant B as Bob\n"
+        "    participant DB as Database\n"
+        "    A->>B: Hello Bob\n"
+        "    B-->>A: Great!\n"
+        "    A->>DB: save(record)\n"
+        "    DB-->>A: ok\n"
+        "    A->>A: log locally\n"
+        "    Note right of B: Bob is idle\n"
+        "    loop every minute\n"
+        "        B->>DB: ping\n"
+        "    end\n"
+    )
+
+    def _import(self, page: Page, text: str):
+        page.locator("button[title='Import from Mermaid']").first.click()
+        page.wait_for_timeout(ACTION_DELAY)
+        page.locator("textarea").last.fill(text)
+        page.get_by_text("Add to canvas").click()
+        page.wait_for_timeout(ACTION_DELAY * 4)
+
+    def _boxes(self, page: Page):
+        els = get_elements(page)
+        top = min(e["y"] for e in els if e["type"] == "rectangle")
+        return [e for e in els if e["type"] == "rectangle" and abs(e["y"] - top) < 1]
+
+    def test_participants_sit_in_a_row_along_the_top(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.SCRIPT)
+        boxes = self._boxes(app)
+        assert [b["shapeText"] for b in boxes] == ["Alice", "Bob", "Database"]
+        assert len({round(b["y"]) for b in boxes}) == 1, "participants are not aligned"
+
+    def test_each_participant_gets_a_dashed_lifeline(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.SCRIPT)
+        boxes = self._boxes(app)
+        bottom = max(b["y"] + b["height"] for b in boxes)
+        lifelines = [
+            e for e in get_elements(app)
+            if e["type"] == "line" and e["x1"] == e["x2"] and abs(e["y1"] - bottom) < 1
+        ]
+        assert len(lifelines) == 3, f"expected 3 lifelines, got {len(lifelines)}"
+        for ll in lifelines:
+            assert ll["lineStyle"] == "dashed", "a lifeline should be dashed"
+
+    def test_messages_are_horizontal_and_run_down_the_page(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.SCRIPT)
+        msgs = [
+            e for e in get_elements(app)
+            if e["type"] == "arrow" and abs(e["y1"] - e["y2"]) < 1
+        ]
+        assert len(msgs) >= 4, f"expected several horizontal messages, got {len(msgs)}"
+        assert len({round(m["y1"]) for m in msgs}) >= 4, "messages share a row"
+
+    def test_message_text_and_reply_style_survive(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.SCRIPT)
+        els = get_elements(app)
+        labels = {e.get("shapeText") for e in els if e.get("shapeText")}
+        for want in ("Hello Bob", "Great!", "save(record)", "ok", "ping"):
+            assert want in labels, f"{want!r} missing"
+        dashed = [e for e in els if e["type"] == "arrow" and e.get("lineStyle") == "dashed"]
+        assert len(dashed) >= 2, "`-->>` replies should stay dashed"
+
+    def test_a_message_to_itself_is_drawn_as_a_loop(self, app: Page):
+        """`A->>A` would otherwise be a zero-length arrow inside the lifeline."""
+        clear_canvas(app)
+        self._import(app, self.SCRIPT)
+        self_msg = [e for e in get_elements(app) if e.get("shapeText") == "log locally"]
+        assert len(self_msg) == 1
+        assert abs(self_msg[0]["x1"] - self_msg[0]["x2"]) > 20, "self-message has no width"
+
+    def test_notes_and_block_labels_are_not_silently_dropped(self, app: Page):
+        """Losing `loop every minute` would change what the diagram means."""
+        clear_canvas(app)
+        self._import(app, self.SCRIPT)
+        els = get_elements(app)
+        assert any(e.get("shapeText") == "Bob is idle" for e in els), "note lost"
+        assert any(
+            e["type"] == "text" and e.get("text", "").startswith("loop") for e in els
+        ), "loop label lost"
+
+
+class TestMermaidDeclinesByName:
+    """A diagram we cannot draw is named, not met with a generic parse error."""
+
+    def _try_import(self, page: Page, text: str) -> str:
+        page.locator("button[title='Import from Mermaid']").first.click()
+        page.wait_for_timeout(ACTION_DELAY)
+        page.locator("textarea").last.fill(text)
+        page.get_by_text("Add to canvas").click()
+        page.wait_for_timeout(ACTION_DELAY * 2)
+        body = page.inner_text("body")
+        # A declined import leaves the dialog OPEN, unlike a successful one.
+        # The app fixture is shared by the whole module, so leaving it up would
+        # cover the canvas for every test that runs after this one.
+        press_key(page, "Escape")
+        page.wait_for_timeout(ACTION_DELAY)
+        return body
+
+    @pytest.mark.parametrize(
+        "source,name",
+        [
+            ('pie title Pets\n    "Dogs" : 386\n', "pie chart"),
+            ("gantt\n    title A\n    section S\n", "Gantt chart"),
+            ("mindmap\n  root((go))\n", "mind map"),
+            ("erDiagram\n    A ||--o{ B : has\n", "entity relationship diagram"),
+        ],
+    )
+    def test_unsupported_types_are_named(self, app: Page, source: str, name: str):
+        clear_canvas(app)
+        body = self._try_import(app, source)
+        assert name in body, f"expected the error to name a {name}"
+        assert "state diagram" in body and "sequence" in body, (
+            "the error should say what IS supported"
+        )
+        assert len(get_elements(app)) == 0, "nothing should be drawn for a declined type"
 
 
 class TestMermaidIsDiscoverable:
