@@ -2344,3 +2344,80 @@ class TestInspectorLayout:
         app.wait_for_timeout(ACTION_DELAY * 2)
         restored = app.evaluate("() => document.querySelector('canvas').getBoundingClientRect().width")
         assert restored < full, "the inspector did not come back"
+
+
+class TestDuplicateIsNeverSilent:
+    """Three ways to duplicate a shape. None of them may leave a copy sitting
+    exactly on its original, where it is indistinguishable from nothing having
+    happened."""
+
+    def _one_shape(self, page: Page):
+        clear_canvas(page)
+        press_key(page, "Escape")
+        press_key(page, "5")
+        drag_canvas(page, 500, 300, 650, 400)
+        wait_for_elements(page, 1)
+        press_key(page, "Escape")
+        click_canvas(page, 575, 350)
+
+    def test_alt_drag_that_barely_moves_still_offsets_the_copy(self, app: Page):
+        """The one that could genuinely stack: Alt+drag clones in place and then
+        drags, so releasing immediately leaves the copy on top of the original."""
+        self._one_shape(app)
+        box = get_canvas(app).bounding_box()
+        app.keyboard.down("Alt")
+        app.mouse.move(box["x"] + 575, box["y"] + 350)
+        app.mouse.down()
+        app.mouse.move(box["x"] + 577, box["y"] + 351, steps=3)
+        app.mouse.up()
+        app.keyboard.up("Alt")
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        els = get_elements(app)
+        assert len(els) == 2, f"Alt+drag should duplicate, got {len(els)}"
+        dx = abs(els[0]["x"] - els[1]["x"])
+        dy = abs(els[0]["y"] - els[1]["y"])
+        assert dx > 5 or dy > 5, f"the copy is stacked on the original ({dx}, {dy})"
+
+    def test_alt_drag_leaves_the_copy_selected(self, app: Page):
+        """setSelectedElements also re-points the primary, so clearing it after
+        selecting the copy left nothing selected at all."""
+        self._one_shape(app)
+        box = get_canvas(app).bounding_box()
+        app.keyboard.down("Alt")
+        app.mouse.move(box["x"] + 575, box["y"] + 350)
+        app.mouse.down()
+        app.mouse.move(box["x"] + 700, box["y"] + 430, steps=6)
+        app.mouse.up()
+        app.keyboard.up("Alt")
+        app.wait_for_timeout(ACTION_DELAY)
+        before = [e["x"] for e in get_elements(app)]
+        press_key(app, "ArrowRight")
+        after = [e["x"] for e in get_elements(app)]
+        moved = sum(1 for a, b in zip(before, after) if abs(a - b) > 0.01)
+        assert moved == 1, "the freshly duplicated shape should still be selected"
+
+    def test_duplicate_and_paste_report_themselves(self, app: Page):
+        self._one_shape(app)
+        press_key(app, "Control+d")
+        app.wait_for_timeout(ACTION_DELAY)
+        expect(app.get_by_text("Duplicated")).to_be_visible(timeout=3000)
+        app.wait_for_timeout(2200)          # the toast clears itself
+        press_key(app, "Control+c")
+        press_key(app, "Control+v")
+        app.wait_for_timeout(ACTION_DELAY)
+        expect(app.get_by_text("Pasted")).to_be_visible(timeout=3000)
+
+
+class TestChromeIsGrouped:
+    def test_the_permanent_pan_hint_is_gone(self, app: Page):
+        """It was a first-run tip living permanently in the toolbar. The same
+        information is in the shortcuts dialog, where people look for it."""
+        assert "Scroll to pan" not in app.evaluate("() => document.body.innerText")
+
+    def test_the_shortcuts_dialog_explains_pan_and_zoom(self, app: Page):
+        press_key(app, "Escape")
+        press_key(app, "?")
+        app.wait_for_timeout(ACTION_DELAY)
+        text = app.evaluate("() => document.body.innerText")
+        assert "Pan the canvas" in text and "Zoom the canvas" in text
+        press_key(app, "Escape")
