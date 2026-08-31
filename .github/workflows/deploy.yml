@@ -1,146 +1,193 @@
-name: Build and Deploy JaSketch
+name: Deploy JaSketch
 
+# There is no image to build any more. jac-scale ships the source to the cluster
+# on a PVC and the pods boot the pinned jac toolchain, so a deploy is one command
+# and needs no registry, no Dockerfile, and no ECR credentials.
 on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      namespace:
+        description: "Target namespace. `jasketch` is PRODUCTION."
+        required: true
+        default: jasketch-dev
+      ingress_host:
+        description: "Hostname for the ingress. `jasketch.jaseci.org` is PRODUCTION."
+        required: true
+        default: jasketch-dev.jaseci.org
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
+  # The MCP server is published from mcp_server/jac.toml -- jac.toml IS the
+  # packaging manifest, so there is no pyproject.toml and no `python -m build`.
+  # `jac build --as wheel` transpiles Jac to Python and vendors the runtime
+  # modules the output touches, so the wheel installs and runs under `uvx` with
+  # no jac toolchain present.
   publish-mcp:
-    if: startsWith(github.ref, 'refs/tags/jasketch-') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    # RELEASES ONLY. A PyPI version cannot be unpublished and its number can
+    # never be reused, so a manual dispatch -- which is how previews and test
+    # deploys are run -- must not be able to push one.
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       published: ${{ steps.publish.outputs.published }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install build tools
-        run: pip install build twine requests
-
-      - name: Check if MCP version needs publishing
-        id: check
-        working-directory: mcp-server
+      - name: Read the pinned jac version
+        id: jac
         run: |
-          LOCAL=$(python -c "import tomllib; f=open('pyproject.toml','rb'); d=tomllib.load(f); print(d['project']['version'])")
-          PUBLISHED=$(python -c "
-          import urllib.request, json
-          try:
-            r = urllib.request.urlopen('https://pypi.org/pypi/jasketch-mcp-server/json')
-            print(json.loads(r.read())['info']['version'])
-          except:
-            print('none')
-          ")
-          echo "Local: $LOCAL | Published: $PUBLISHED"
-          if [ "$LOCAL" != "$PUBLISHED" ]; then
-            echo "needs_publish=true" >> $GITHUB_OUTPUT
-          else
-            echo "needs_publish=false" >> $GITHUB_OUTPUT
-          fi
+          VERSION=$(grep -E '^jac-version' jac.toml | sed -E 's/.*"==?([0-9.]+)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Build package
-        if: steps.check.outputs.needs_publish == 'true'
-        working-directory: mcp-server
-        run: python -m build
+      - name: Install jac
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh \
+            | bash -s -- --version "${{ steps.jac.outputs.version }}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Does this version need publishing?
+        id: check
+        working-directory: mcp_server
+        run: |
+          LOCAL=$(grep -E '^version' jac.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          PUBLISHED=$(python3 - <<'PY'
+          import json, urllib.request
+          try:
+              with urllib.request.urlopen("https://pypi.org/pypi/jasketch-mcp-server/json", timeout=20) as r:
+                  print(json.load(r)["info"]["version"])
+          except Exception:
+              print("none")
+          PY
+          )
+          echo "Local: $LOCAL | Published: $PUBLISHED"
+          [ "$LOCAL" != "$PUBLISHED" ] && echo "needed=true" >> "$GITHUB_OUTPUT" || echo "needed=false" >> "$GITHUB_OUTPUT"
+
+      # Type-check gated: `jac build --as wheel` refuses to bundle a project
+      # that does not check, so a broken bridge cannot reach PyPI.
+      - name: Build wheel + sdist
+        if: steps.check.outputs.needed == 'true'
+        working-directory: mcp_server
+        run: jac build --as wheel
+
+      # Proves the artifact runs with NO jac toolchain: install it into a plain
+      # venv and complete a real MCP initialize/tools-list handshake over stdio.
+      - name: Smoke test the wheel in a jac-free venv
+        if: steps.check.outputs.needed == 'true'
+        working-directory: mcp_server
+        run: |
+          python3 -m venv /tmp/mcpcheck
+          /tmp/mcpcheck/bin/pip -q install dist/*.whl
+          ! /tmp/mcpcheck/bin/pip show jaclang >/dev/null 2>&1 || { echo "wheel pulled jaclang from PyPI"; exit 1; }
+          JASKETCH_SESSION_ID=ci JASKETCH_RELAY_URL=ws://127.0.0.1:9/none \
+            /tmp/mcpcheck/bin/python - <<'PY'
+          import json, subprocess
+          p = subprocess.Popen(["/tmp/mcpcheck/bin/jasketch-mcp-server"], text=True, bufsize=1,
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+          def send(m): p.stdin.write(json.dumps(m) + "\n"); p.stdin.flush()
+          send({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+              "protocolVersion":"2024-11-05","capabilities":{},
+              "clientInfo":{"name":"ci","version":"1"}}})
+          assert json.loads(p.stdout.readline())["result"]["serverInfo"]["name"] == "jasketch"
+          send({"jsonrpc":"2.0","method":"notifications/initialized"})
+          send({"jsonrpc":"2.0","id":2,"method":"tools/list"})
+          tools = json.loads(p.stdout.readline())["result"]["tools"]
+          assert len(tools) >= 15, tools
+          print(f"MCP handshake ok, {len(tools)} tools")
+          p.terminate()
+          PY
 
       - name: Publish to PyPI
         id: publish
-        if: steps.check.outputs.needs_publish == 'true'
-        working-directory: mcp-server
+        if: steps.check.outputs.needed == 'true'
+        working-directory: mcp_server
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
+          pip install --quiet twine
           twine upload dist/*
-          echo "published=true" >> $GITHUB_OUTPUT
+          echo "published=true" >> "$GITHUB_OUTPUT"
 
-  deploy-jasketch:
+  deploy:
     needs: [publish-mcp]
-    if: startsWith(github.ref, 'refs/tags/jasketch-') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    # publish-mcp is skipped on a dispatch; `needs` alone would skip this too.
+    if: always() && needs.publish-mcp.result != 'failure' && needs.publish-mcp.result != 'cancelled'
     runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.tag.outputs.tag }}
-
-    permissions:
-      id-token: write
-      contents: read
-
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Read the pinned jac version
+        id: jac
+        run: |
+          VERSION=$(grep -E '^jac-version' jac.toml | sed -E 's/.*"==?([0-9.]+)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Deploying on jac $VERSION"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      # Only the DRIVER needs this. The pods get their own copy of the pinned
+      # release, shipped to them on the bundle PVC (see the deploy step).
+      - name: Install jac
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh \
+            | bash -s -- --version "${{ steps.jac.outputs.version }}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Configure AWS Credentials
+      # AWS is only needed to REACH the cluster now: nothing is built and nothing
+      # is pushed to a registry.
+      #
+      # This is deliberately NOT GitHubActionsSharedECRRole, which the old
+      # image-building workflow used. That role is absent from the cluster's
+      # aws-auth ConfigMap, so it cannot talk to Kubernetes at all -- IAM
+      # permissions are irrelevant when the cluster does not map the principal.
+      # GitHubActionsJaseciDeployRole is mapped, as `github-actions-deployer` in
+      # system:masters.
+      # Required before anything drives the deploy: the Kubernetes realizer
+      # imports python-dotenv at module load, so without this the very first
+      # `jac start --scale` dies with ModuleNotFoundError: dotenv.
+      - name: Install dependencies
+        run: jac install
+
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4.2.0
         with:
           aws-region: us-east-2
-          role-to-assume: arn:aws:iam::776241927220:role/GitHubActionsSharedECRRole
-          role-session-name: GitHubActions
+          role-to-assume: arn:aws:iam::776241927220:role/GitHubActionsJaseciDeployRole
+          role-session-name: GitHubActionsJasketchDeploy
           audience: sts.amazonaws.com
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name ${{ vars.EKS_CLUSTER_NAME }} --region us-east-2
 
-      - name: Get tag name
-        id: tag
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="manual-$(date +%Y%m%d-%H%M%S)"
-          elif [[ "${{ github.event_name }}" == "release" ]]; then
-            TAG_NAME=${GITHUB_REF#refs/tags/}
-            if [[ $TAG_NAME =~ ^jasketch-(.+)$ ]]; then
-              TAG="${BASH_REMATCH[1]}"
-            elif [[ $TAG_NAME =~ ^v(.+)$ ]]; then
-              TAG="$TAG_NAME"
-            else
-              TAG="$TAG_NAME"
-            fi
-          else
-            TAG="latest"
-          fi
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-
-      - name: Build and push Docker image
+      # Catches HPA bounds, bad resource units and missing secrets in ~1s,
+      # instead of after a rollout.
+      - name: Lint the deploy plan
+        run: jac start --scale --dry-run
         env:
-          ECR_REGISTRY: 776241927220.dkr.ecr.us-east-2.amazonaws.com
-          ECR_REPOSITORY: jasketch
-          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
-        run: |
-          docker buildx build \
-            --platform linux/amd64 \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
-            --push \
-            .
+          K8S_NAMESPACE: ${{ inputs.namespace || 'jasketch' }}
+          K8S_INGRESS_HOST: ${{ inputs.ingress_host || 'jasketch.jaseci.org' }}
 
-  summary:
-    needs: [publish-mcp, deploy-jasketch]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Summary
+      - name: Deploy
+        run: jac start --scale
+        env:
+          K8S_NAMESPACE: ${{ inputs.namespace || 'jasketch' }}
+          K8S_INGRESS_HOST: ${{ inputs.ingress_host || 'jasketch.jaseci.org' }}
+
+      - name: Report status
+        if: always()
         run: |
-          echo "## JaSketch Release Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **MCP PyPI Published**: ${{ needs.publish-mcp.outputs.published || 'skipped (already up to date)' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image Tag**: ${{ needs.deploy-jasketch.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **ECR Repository**: 776241927220.dkr.ecr.us-east-2.amazonaws.com/jasketch" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deploy Status**: ${{ needs.deploy-jasketch.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Application URL**: https://jasketch.jaseci.org" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Note**: Deployment will be handled automatically by Flux in the infrastructure repository." >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## JaSketch deploy"
+            echo "- **jac**: ${{ steps.jac.outputs.version }}"
+            echo "- **namespace**: ${{ inputs.namespace || 'jasketch' }}"
+            echo "- **result**: ${{ job.status }}"
+            echo "- **MCP published**: ${{ needs.publish-mcp.outputs.published || 'skipped (version unchanged)' }}"
+            echo "- **URL**: https://jasketch.jaseci.org"
+          } >> "$GITHUB_STEP_SUMMARY"

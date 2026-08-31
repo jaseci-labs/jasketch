@@ -1,4 +1,4 @@
-import from react { useRef }
+import from react { useRef, useEffect }
 import from "..services.canvas" { drawElement, applyViewportTransform, drawSelectionBox, drawGroupSelectionBox, drawBoxSelectionRect }
 import from "..constants.canvas" { CANVAS_DEFAULTS }
 
@@ -25,24 +25,24 @@ def:pub useCanvas() -> dict {
 
         # HiDPI fix: scale canvas for sharp rendering
         dpr = window.devicePixelRatio or 1;
-        canvas.width = Math.round(canvasSize.width * dpr);
-        canvas.height = Math.round(canvasSize.height * dpr);
+        canvas.width = Math.round(canvasSize["width"] * dpr);
+        canvas.height = Math.round(canvasSize["height"] * dpr);
         ctx.scale(dpr, dpr);
 
         ctx.save();
         applyViewportTransform(ctx, zoom, panOffset);
 
         # Callback to redraw canvas when an image finishes loading
-        imgLoadRedraw = lambda -> None {
+        imgLoadRedraw = lambda {
             redrawCanvas(elements, zoom, panOffset, selectedElement, selectedElements, isBoxSelecting, boxStart, boxEnd, editingShapeId);
         };
 
         drIdx = 0;
-        while drIdx < elements.length {
+        while drIdx < len(elements) {
             drEl = elements[drIdx];
             if editingShapeId != None and editingShapeId != undefined and drEl.id == editingShapeId and drEl.shapeText {
                 # Temporarily hide shapeText while editing this shape
-                drCopy = Object.assign({}, drEl);
+                drCopy = {**drEl};
                 drCopy.shapeText = None;
                 drawElement(ctx, drCopy, imgLoadRedraw);
             } else {
@@ -55,7 +55,7 @@ def:pub useCanvas() -> dict {
             drawSelectionBox(ctx, selectedElement.element);
         }
 
-        if selectedElements and selectedElements.length > 0 {
+        if selectedElements and len(selectedElements) > 0 {
             # Check if all selected elements share the same groupId
             allGrouped = True;
             sharedGroupId = None;
@@ -66,7 +66,7 @@ def:pub useCanvas() -> dict {
             }
             if allGrouped {
                 gci = 1;
-                while gci < selectedElements.length {
+                while gci < len(selectedElements) {
                     if not selectedElements[gci].element or selectedElements[gci].element.groupId != sharedGroupId {
                         allGrouped = False;
                     }
@@ -77,9 +77,9 @@ def:pub useCanvas() -> dict {
                 # Draw single combined selection box for group
                 groupEls = [];
                 gei = 0;
-                while gei < selectedElements.length {
+                while gei < len(selectedElements) {
                     if selectedElements[gei].element {
-                        groupEls.push(selectedElements[gei].element);
+                        groupEls.append(selectedElements[gei].element);
                     }
                     gei = gei + 1;
                 }
@@ -87,7 +87,7 @@ def:pub useCanvas() -> dict {
             } else {
                 # Draw individual selection boxes
                 selBoxIdx = 0;
-                while selBoxIdx < selectedElements.length {
+                while selBoxIdx < len(selectedElements) {
                     if selectedElements[selBoxIdx].element {
                         drawSelectionBox(ctx, selectedElements[selBoxIdx].element);
                     }
@@ -113,17 +113,32 @@ def:pub useCanvas() -> dict {
         }
     }
 
-    can with entry {
-        def handleResize() -> None {
-            initializeCanvas();
-        }
+    def handleResize() -> None {
+        initializeCanvas();
+    }
 
+    # Acquire-and-release in ONE effect: `can with entry`/`can with exit` compile
+    # to separate useEffect closures, so the listener added on mount would never
+    # be the one removed on unmount.
+    useEffect(lambda () -> any {
         handleResize();
         window.addEventListener("resize", handleResize);
-        return lambda -> None {
+        # The window is not the only thing that resizes the canvas: folding the
+        # inspector away changes the container without any window event at all,
+        # and the drawing surface kept its old width until something else
+        # happened to trigger a redraw.
+        watcher = None;
+        if containerRef.current and window.ResizeObserver {
+            watcher = new(ResizeObserver, lambda { handleResize(); });
+            watcher.observe(containerRef.current);
+        }
+        return lambda {
             window.removeEventListener("resize", handleResize);
+            if watcher {
+                watcher.disconnect();
+            }
         };
-    }
+    }, []);
 
     return {
         "canvasRef": canvasRef,

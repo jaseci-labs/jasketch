@@ -1,4 +1,6 @@
-import from react { useRef }
+import from react { useRef, useEffect }
+import from "..services.scene_sharing" { encrypt_scene, decrypt_scene }
+import from "..services.ws_endpoint" { ws_url, ws_should_retry_under_prefix }
 
 def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, canvasHook: dict, roomState: dict = None, onSessionEnded: any = None) -> dict {
     wsRef = useRef(None);
@@ -33,59 +35,95 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
     onSessionEndedRef.current = onSessionEnded;
 
     def getRelayUrl() -> str {
-        # Auto-detect: use wss:// for deployed, ws:// for localhost
-        protocol = window.location.protocol;
-        host = window.location.hostname;
-        port = window.location.port;
+        # The relay is an endpoint of this app now, not a server on its own port.
+        return str(ws_url("function/jasketch_relay"));
+    }
 
-        if host == "localhost" or host == "127.0.0.1" {
-            # Local dev: relay runs on port 9601
-            return "ws://" + host + ":9601";
-        }
-        # Deployed: relay exposed on /ws path via same host
-        wsProtocol = "ws:";
-        if protocol == "https:" {
-            wsProtocol = "wss:";
-        }
-        return wsProtocol + "//" + host + "/ws";
+    """Send one relay frame. `kind` names the exchange; see infrastructure/relay.jac."""
+    def relaySend(frame: dict) -> None {
+        ws = wsRef.current;
+        if not ws { return; }
+        if not connectedRef.current { return; }
+        ws.send(JSON.stringify(frame));
+    }
+
+    def currentRoomId() -> str {
+        state: any = roomStateRef.current or {};
+        return state.room_id or "";
+    }
+
+    def currentRoomKey() -> str {
+        state: any = roomStateRef.current or {};
+        return state.room_key or "";
     }
 
     def sendResponse(ws: any, requestId: str, success: bool, data: any) -> None {
-        msg = {"role": "canvas", "requestId": requestId, "success": success, "data": data};
-        ws.send(JSON.stringify(msg));
+        ws.send(JSON.stringify({
+            "kind": "response",
+            "session_id": getSessionId(),
+            "request_id": requestId,
+            "success": success,
+            "data": data
+        }));
     }
 
     def sendError(ws: any, requestId: str, error: str) -> None {
-        msg = {"requestId": requestId, "success": False, "error": error};
-        ws.send(JSON.stringify(msg));
+        ws.send(JSON.stringify({
+            "kind": "response",
+            "session_id": getSessionId(),
+            "request_id": requestId,
+            "success": False,
+            "error": error
+        }));
     }
 
-    def handleMessage(ws: any, event: any) -> None {
-        msg = JSON.parse(event.data);
+    """Route one broadcast frame.
 
-        # Skip relay control messages
-        if msg.type == "registered" or msg.type == "canvasConnected" or msg.type == "canvasDisconnected" {
+    Every connected tab receives every envelope this endpoint yields, so the
+    first job is deciding whether this one is ours: room traffic is matched on
+    room_id, controller traffic on session_id. Scene payloads are ciphertext and
+    are only decryptable by tabs holding the room key anyway."""
+    async def handleMessage(ws: any, event: any) -> None {
+        envelope: any = JSON.parse(event.data);
+
+        # Transport control frames and the stream terminator carry no relay payload.
+        if envelope.type == "ping" or envelope.type == "pong" or envelope.type == "refreshed" {
+            return;
+        }
+        if envelope.ok == False or envelope.type != "chunk" {
+            return;
+        }
+        msg: any = envelope.data or {};
+        msg_type = msg.kind or "";
+
+        my_room = currentRoomId();
+        my_sid = getSessionId();
+
+        # Room traffic addressed to a room we are not in.
+        if msg.room_id and msg.room_id != my_room {
+            return;
+        }
+        # room_joined and command are addressed TO one session; everything else
+        # describes what somebody ELSE did, so our own echoes are dropped.
+        addressed_to_me = msg_type == "room_joined" or msg_type == "command";
+        if msg.session_id and (msg.session_id == my_sid) != addressed_to_me {
             return;
         }
 
-        # Handle room collaboration messages
-        msg_type = msg.type or "";
         if msg_type == "room_joined" {
-            # Joined a collaboration room successfully
-            roomStateRef.current = {
-                "room_id": msg.roomId,
-                "room_key": msg.roomKey or ""
-            };
-            console.log("[JaSketch] Joined room: " + msg.roomId);
+            # Joined a collaboration room successfully. The key is ours alone --
+            # it lives in the URL fragment and never reaches the server.
+            roomStateRef.current = {"room_id": msg.room_id, "room_key": currentRoomKey()};
+            console.log("[JaSketch] Joined room: " + msg.room_id);
             # Initialize self in participants
             rj_sid = getSessionId();
             rj_name = localStorage.getItem("jasketch_username") or "Anonymous";
-            rj_color = msg.cursorColor or "#999999";
-            rj_parts = Object.assign({}, participantsRef.current);
+            rj_color = msg.cursor_color or "#999999";
+            rj_parts = {**participantsRef.current};
             rj_parts[rj_sid] = {"username": rj_name, "color": rj_color};
             # Add all existing room members sent by the server
             if msg.members {
-                rj_member_sids = Object.keys(msg.members);
+                rj_member_sids = msg.members.keys();
                 for rj_msid in rj_member_sids {
                     rj_parts[rj_msid] = {
                         "username": msg.members[rj_msid].username or "Anonymous",
@@ -94,56 +132,53 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                 }
             }
             participantsRef.current = rj_parts;
-            participants = Object.assign({}, rj_parts);
+            participants = {**rj_parts};
             # Store host session ID from server
-            if msg.hostSessionId {
-                hostSessionIdRef.current = msg.hostSessionId;
-                hostSessionId = msg.hostSessionId;
+            if msg.host_session_id {
+                hostSessionIdRef.current = msg.host_session_id;
+                hostSessionId = msg.host_session_id;
             }
-            return;
-        }
-
-        if msg_type == "room_sync" {
-            # Late joiner: receive current scene from room host
-            # TODO: Decrypt scene and apply it
             return;
         }
 
         if msg_type == "room_update" {
             upd_payload = msg.payload or "";
-            if upd_payload {
-                upd_hook = elementsHookRef.current;
-                upd_elements = JSON.parse(upd_payload);
-                isApplyingRemoteRef.current = True;
-                upd_hook.setElementsReplaceAll(upd_elements);
+            upd_key = currentRoomKey();
+            if upd_payload and upd_key {
+                upd_elements = await decrypt_scene(upd_payload, upd_key);
+                if upd_elements {
+                    upd_hook = elementsHookRef.current;
+                    isApplyingRemoteRef.current = True;
+                    upd_hook.setElementsReplaceAll(upd_elements);
+                }
             }
             return;
         }
 
         if msg_type == "cursor_update" {
             # Another member's cursor position
-            cu_sid = msg.sessionId or "";
+            cu_sid = msg.session_id or "";
             # Ignore own cursor echoes (relay broadcasts to all during update_username)
             if cu_sid == getSessionId() { return; }
-            cu_updated = Object.assign({}, cursorStatesRef.current);
+            cu_updated = {**cursorStatesRef.current};
             cu_updated[cu_sid] = {
                 "username": msg.username or "Anonymous",
-                "color": msg.cursorColor or "#999999",
+                "color": msg.cursor_color or "#999999",
                 "x": msg.x or 0.0,
                 "y": msg.y or 0.0
             };
             cursorStatesRef.current = cu_updated;
-            cursorStates = Object.assign({}, cu_updated);
+            cursorStates = {**cu_updated};
             # Always upsert participant info (handles users not yet seen via room_joined)
             if cu_sid {
-                cu_parts = Object.assign({}, participantsRef.current);
+                cu_parts = {**participantsRef.current};
                 cu_existing = cu_parts[cu_sid] or {};
-                cu_parts[cu_sid] = Object.assign({}, cu_existing, {
+                cu_parts[cu_sid] = {**cu_existing, **{
                     "username": msg.username or "Anonymous",
-                    "color": msg.cursorColor or "#999999"
-                });
+                    "color": msg.cursor_color or "#999999"
+                }};
                 participantsRef.current = cu_parts;
-                participants = Object.assign({}, cu_parts);
+                participants = {**cu_parts};
             }
             return;
         }
@@ -151,12 +186,12 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         if msg_type == "room_member_joined" {
             console.log("[JaSketch] Member joined: " + msg.username);
             # Add new member to participants
-            rmj_sid = msg.sessionId or "";
+            rmj_sid = msg.session_id or "";
             if rmj_sid {
-                rmj_parts = Object.assign({}, participantsRef.current);
-                rmj_parts[rmj_sid] = {"username": msg.username or "Anonymous", "color": msg.cursorColor or "#999999"};
+                rmj_parts = {**participantsRef.current};
+                rmj_parts[rmj_sid] = {"username": msg.username or "Anonymous", "color": msg.cursor_color or "#999999"};
                 participantsRef.current = rmj_parts;
-                participants = Object.assign({}, rmj_parts);
+                participants = {**rmj_parts};
             }
             sync_hook = elementsHookRef.current;
             sync_elems = (sync_hook.elementsRef and sync_hook.elementsRef.current) or sync_hook.elements;
@@ -168,17 +203,17 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         }
 
         if msg_type == "room_member_left" {
-            left_sid = msg.sessionId or "";
+            left_sid = msg.session_id or "";
             if left_sid {
-                cl_updated = Object.assign({}, cursorStatesRef.current);
-                cl_filtered = Object.fromEntries(Object.entries(cl_updated).filter(lambda kv: any -> bool { return kv[0] != left_sid; }));
+                cl_updated = {**cursorStatesRef.current};
+                cl_filtered = {cl_k: cl_v for (cl_k, cl_v) in cl_updated.items() if cl_k != left_sid};
                 cursorStatesRef.current = cl_filtered;
-                cursorStates = Object.assign({}, cl_filtered);
+                cursorStates = {**cl_filtered};
                 # Remove from participants
-                rml_parts = Object.assign({}, participantsRef.current);
-                rml_filtered = Object.fromEntries(Object.entries(rml_parts).filter(lambda kv: any -> bool { return kv[0] != left_sid; }));
+                rml_parts = {**participantsRef.current};
+                rml_filtered = {rml_k: rml_v for (rml_k, rml_v) in rml_parts.items() if rml_k != left_sid};
                 participantsRef.current = rml_filtered;
-                participants = Object.assign({}, rml_filtered);
+                participants = {**rml_filtered};
             }
             console.log("[JaSketch] Member left");
             return;
@@ -195,9 +230,14 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             return;
         }
 
-        requestId = msg.requestId;
+        # Everything below is a controller command addressed to this canvas
+        # (the MCP bridge): read or mutate the canvas, then answer by request_id.
+        if msg_type != "command" {
+            return;
+        }
+        requestId = msg.request_id;
         action = msg.action;
-        data = msg.data or {};
+        data: any = msg.data or {};
         hook = elementsHookRef.current;
 
         if action == "addElement" {
@@ -209,16 +249,16 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             hook.addMultipleElements(items);
             addedIds = [];
             for it in items {
-                addedIds.push(it.id or "");
+                addedIds.append(it.id or "");
             }
-            sendResponse(ws, requestId, True, {"ids": addedIds, "count": items.length, "action": "created"});
+            sendResponse(ws, requestId, True, {"ids": addedIds, "count": len(items), "action": "created"});
         } elif action == "getElements" {
             # Use elementsRef for synchronous read (avoids stale React state snapshot)
             elems = (hook.elementsRef and hook.elementsRef.current) or hook.elements;
             result = [];
             for el in elems {
                 if el and (not data.type or el.type == data.type) {
-                    result.push({"id": el.id, "element": el});
+                    result.append({"id": el.id, "element": el});
                 }
             }
             sendResponse(ws, requestId, True, {"elements": result, "total": elems.length});
@@ -233,7 +273,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
                 }
             }
             if foundEl {
-                updated = Object.assign({}, foundEl, changes);
+                updated = {**foundEl, **changes};
                 hook.updateElement(targetId, updated);
                 sendResponse(ws, requestId, True, {"id": targetId, "action": "updated"});
             } else {
@@ -448,134 +488,116 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         return sid;
     }
 
-    def sendRoomBroadcast(bcast_elements: list) -> None {
-        bcast_room_state = roomStateRef.current;
-        if not (bcast_room_state and bcast_room_state.room_id) {
-            return;
-        }
-        bcast_ws = wsRef.current;
-        if not (bcast_ws and connectedRef.current) {
+    """Publish the scene to the room, encrypted under the room key."""
+    async def sendRoomBroadcast(bcast_elements: list) -> None {
+        bcast_room = currentRoomId();
+        bcast_key = currentRoomKey();
+        if not (bcast_room and bcast_key) {
             return;
         }
         # Filter out draft elements (id="__draft__") received from remote previews
         bcast_filtered = [];
         bcast_fi = 0;
-        while bcast_fi < bcast_elements.length {
+        while bcast_fi < len(bcast_elements) {
             if bcast_elements[bcast_fi] and bcast_elements[bcast_fi].id != "__draft__" {
-                bcast_filtered.push(bcast_elements[bcast_fi]);
+                bcast_filtered.append(bcast_elements[bcast_fi]);
             }
             bcast_fi = bcast_fi + 1;
         }
-        bcast_msg = {
-            "type": "room_broadcast",
-            "roomId": bcast_room_state.room_id,
-            "sessionId": getSessionId(),
-            "payload": JSON.stringify(bcast_filtered)
-        };
-        bcast_ws.send(JSON.stringify(bcast_msg));
+        bcast_cipher = await encrypt_scene(bcast_filtered, bcast_key);
+        if not bcast_cipher { return; }
+        relaySend({
+            "kind": "room_broadcast",
+            "room_id": bcast_room,
+            "session_id": getSessionId(),
+            "payload": bcast_cipher
+        });
     }
     sendRoomBroadcastRef.current = sendRoomBroadcast;
 
-    def sendRoomPreview(prev_elements: list) -> None {
-        # Like sendRoomBroadcast but includes draft elements (for live drawing preview)
-        prev_room_state = roomStateRef.current;
-        if not (prev_room_state and prev_room_state.room_id) {
+    """Like sendRoomBroadcast but keeps draft elements, for live drawing preview."""
+    async def sendRoomPreview(prev_elements: list) -> None {
+        prev_room = currentRoomId();
+        prev_key = currentRoomKey();
+        if not (prev_room and prev_key) {
             return;
         }
-        prev_ws = wsRef.current;
-        if not (prev_ws and connectedRef.current) {
-            return;
-        }
-        prev_msg = {
-            "type": "room_broadcast",
-            "roomId": prev_room_state.room_id,
-            "sessionId": getSessionId(),
-            "payload": JSON.stringify(prev_elements)
-        };
-        prev_ws.send(JSON.stringify(prev_msg));
+        prev_cipher = await encrypt_scene(prev_elements, prev_key);
+        if not prev_cipher { return; }
+        relaySend({
+            "kind": "room_broadcast",
+            "room_id": prev_room,
+            "session_id": getSessionId(),
+            "payload": prev_cipher
+        });
     }
     sendRoomPreviewRef.current = sendRoomPreview;
 
     def sendCursorBroadcast(cur_x: float, cur_y: float, cur_username: str) -> None {
-        cur_room_state = roomStateRef.current;
-        if not (cur_room_state and cur_room_state.room_id) {
-            return;
-        }
-        cur_ws = wsRef.current;
-        if not (cur_ws and connectedRef.current) {
-            return;
-        }
-        cur_msg = {
-            "type": "cursor_move",
-            "roomId": cur_room_state.room_id,
-            "sessionId": getSessionId(),
+        cur_room = currentRoomId();
+        if not cur_room { return; }
+        relaySend({
+            "kind": "cursor_move",
+            "room_id": cur_room,
+            "session_id": getSessionId(),
             "x": cur_x,
             "y": cur_y,
             "username": cur_username
-        };
-        cur_ws.send(JSON.stringify(cur_msg));
+        });
     }
     sendCursorBroadcastRef.current = sendCursorBroadcast;
 
     def joinRoom(jr_room_id: str, jr_username: str) -> None {
-        jr_ws = wsRef.current;
-        if not (jr_ws and connectedRef.current) {
-            return;
-        }
-        jr_msg = {
-            "type": "join_room",
-            "roomId": jr_room_id,
-            "sessionId": getSessionId(),
+        relaySend({
+            "kind": "join_room",
+            "room_id": jr_room_id,
+            "session_id": getSessionId(),
             "username": jr_username
-        };
-        jr_ws.send(JSON.stringify(jr_msg));
+        });
     }
     joinRoomRef.current = joinRoom;
 
     def sendEndSession(es_room_id: str) -> None {
-        es_ws = wsRef.current;
-        if not (es_ws and connectedRef.current) { return; }
-        es_ws.send(JSON.stringify({
-            "type": "end_session",
-            "roomId": es_room_id,
-            "sessionId": getSessionId()
-        }));
+        relaySend({
+            "kind": "end_session",
+            "room_id": es_room_id,
+            "session_id": getSessionId()
+        });
     }
     sendEndSessionRef.current = sendEndSession;
 
     def sendUpdateUsername(uu_room_id: str, uu_username: str) -> None {
-        uu_ws = wsRef.current;
-        if not (uu_ws and connectedRef.current) { return; }
-        uu_ws.send(JSON.stringify({
-            "type": "update_username",
-            "roomId": uu_room_id,
-            "sessionId": getSessionId(),
+        relaySend({
+            "kind": "update_username",
+            "room_id": uu_room_id,
+            "session_id": getSessionId(),
             "username": uu_username
-        }));
+        });
         # Optimistic self-update
         uu_sid = getSessionId();
         if participantsRef.current[uu_sid] {
-            uu_parts = Object.assign({}, participantsRef.current);
-            uu_parts[uu_sid] = Object.assign({}, uu_parts[uu_sid], {"username": uu_username});
+            uu_parts = {**participantsRef.current};
+            uu_parts[uu_sid] = {**uu_parts[uu_sid], **{"username": uu_username}};
             participantsRef.current = uu_parts;
-            participants = Object.assign({}, uu_parts);
+            participants = {**uu_parts};
         }
     }
     sendUpdateUsernameRef.current = sendUpdateUsername;
 
     def connect() -> None {
         url = getRelayUrl();
-        ws = Reflect.construct(WebSocket, [url]);
+        ws = new(WebSocket, url);
 
-        ws.onopen = lambda -> None {
+        ws.onopen = lambda {
             connectedRef.current = True;
-            reg_msg: any = {
-                "role": "canvas",
-                "sessionId": getSessionId()
-            };
-
-            ws.send(JSON.stringify(reg_msg));
-            console.log("[JaSketch MCP] Connected to relay at " + url);
+            # Mint the tab's session id NOW, not on first send. It is how the MCP
+            # bridge addresses this canvas (JASKETCH_SESSION_ID), and the docs
+            # tell people to read it out of sessionStorage -- which returned null
+            # on any tab that had not yet drawn or joined a room.
+            console.log("[JaSketch] Relay connected at " + url + " (session " + getSessionId() + ")");
+            # Announce this canvas so callers can be told "that tab is gone"
+            # immediately, instead of waiting out a request timeout.
+            relaySend({"kind": "hello", "session_id": getSessionId()});
 
             # Auto-rejoin: check roomStateRef first (normal reconnect), then sessionStorage
             # (handles host refresh where React state reset before onopen fires)
@@ -588,7 +610,7 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             }
             if lr_rid {
                 lr_name = localStorage.getItem("jasketch_username") or "Anonymous";
-                setTimeout(lambda -> None {
+                setTimeout(lambda {
                     if joinRoomRef.current {
                         joinRoomRef.current(lr_rid, lr_name);
                     }
@@ -596,20 +618,22 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
             }
         };
 
-        ws.onmessage = lambda event: any -> None {
+        ws.onmessage = lambda (event: any) {
             handleMessage(ws, event);
         };
 
-        ws.onclose = lambda -> None {
+        ws.onclose = lambda (ev: any) {
             connectedRef.current = False;
             wsRef.current = None;
-            # Reconnect after 3 seconds
-            reconnectTimerRef.current = setTimeout(lambda -> None {
+            # 1008 means the gateway does not route /ws at the root; retry at
+            # once under the service prefix rather than waiting out the backoff.
+            retry_now = ws_should_retry_under_prefix(ev.code or 0);
+            reconnectTimerRef.current = setTimeout(lambda {
                 connect();
-            }, 3000);
+            }, 50 if retry_now else 3000);
         };
 
-        ws.onerror = lambda -> None {
+        ws.onerror = lambda {
             # Suppress errors, onclose will handle reconnect
             x = 0;
         };
@@ -617,26 +641,55 @@ def:pub useWebSocket(elementsHook: dict, viewportHook: dict, canvasRef: any, can
         wsRef.current = ws;
     }
 
-    can with entry {
+    # Acquire-and-release in ONE effect: `can with entry`/`can with exit` compile
+    # to separate useEffect closures, so a handle created in entry is invisible to
+    # exit and the removeEventListener would silently no-op.
+    useEffect(lambda () -> any {
         connect();
-
-        return lambda -> None {
+        # Presence keepalive: the relay reaps members it has not heard from,
+        # because a broadcast endpoint never learns that a socket closed.
+        heartbeat = setInterval(lambda {
+            hb_room = currentRoomId();
+            if hb_room {
+                relaySend({
+                    "kind": "heartbeat",
+                    "room_id": hb_room,
+                    "session_id": getSessionId()
+                });
+            }
+        }, 15000);
+        return lambda {
+            clearInterval(heartbeat);
             if reconnectTimerRef.current {
                 clearTimeout(reconnectTimerRef.current);
             }
             if wsRef.current {
+                hb_leave_room = currentRoomId();
+                if hb_leave_room {
+                    relaySend({
+                        "kind": "leave_room",
+                        "room_id": hb_leave_room,
+                        "session_id": getSessionId()
+                    });
+                }
                 wsRef.current.close();
             }
         };
-    }
+    }, []);
 
-    can with [roomState.room_id] entry {
-        # When room_id becomes set after initial connect (host starts session), send join_room
-        if roomState and roomState.room_id and wsRef.current and connectedRef.current {
-            jr_stored_name = localStorage.getItem("jasketch_username") or "Anonymous";
-            joinRoomRef.current(roomState.room_id, jr_stored_name);
+
+    can with [roomState["room_id"]] entry {
+        # Split rather than one `a and b and c and d` chain: folding the raw
+        # WebSocket handle into an and-chain made the whole guard read false and
+        # the join was silently never sent. Keep JS handles out of boolean chains.
+        jr_room_id = roomState["room_id"] if roomState else "";
+        if jr_room_id {
+            if connectedRef.current {
+                jr_stored_name = localStorage.getItem("jasketch_username") or "Anonymous";
+                joinRoomRef.current(jr_room_id, jr_stored_name);
+            }
         }
-        return lambda -> None { };
+        return lambda { };
     }
 
     return {

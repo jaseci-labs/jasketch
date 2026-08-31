@@ -14,9 +14,17 @@ import uuid;
 import websockets;
 import from mcp.server.fastmcp { FastMCP }
 import from typing { Any }
-import from canvas_tool_provider { CanvasToolProvider }
+# Absolute, not relative: `jac run jasketch_mcp_server/server.jac` from mcp_server/
+# loads the file without a parent package, and a relative import dies there with
+# "attempted relative import with no known parent package". Absolute resolves
+# both that way and from inside the installed wheel.
+import from jasketch_mcp_server.canvas_tools { CanvasToolProvider }
 
-glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "wss://jasketch.jaseci.org/ws");
+# The relay is an endpoint of the app itself now (infrastructure/relay.jac), not
+# a separate server: one origin, one port, no bespoke ingress.
+glob RELAY_URL: str = os.environ.get(
+    "JASKETCH_RELAY_URL", "wss://jasketch.jaseci.org/ws/function/jasketch_relay"
+);
 glob REQUEST_TIMEOUT: float = 40.0;
 
 # HTTP transport config (used when JASKETCH_MCP_TRANSPORT=streamable-http)
@@ -29,9 +37,16 @@ glob _lock = threading.Lock();
 glob _ws: Any = None;
 glob _connected: bool = False;
 glob _canvas_sessions: Any = set();
-glob _pending: dict = {};
+glob _pending: dict[str, tuple[Any, dict]] = {};
 glob _relay_loop: Any = None;
 glob _relay_ready: Any = threading.Event();
+# Set when the socket is actually OPEN, which is a different moment from
+# _relay_ready (that one only says the event loop exists). Without it the first
+# tool call after startup races the handshake and fails with "Not connected".
+glob _relay_connected: Any = threading.Event();
+# How long a tool call waits for the relay before giving up. Generous: an
+# assistant issuing its first command right after launch should wait, not fail.
+glob CONNECT_WAIT_SECONDS: float = 15.0;
 
 glob mcp: FastMCP = FastMCP("jasketch", host=MCP_HOST, port=MCP_PORT, streamable_http_path="/mcp/");
 
@@ -44,63 +59,34 @@ def log(msg: str) -> None {
 # ── Relay connection ──────────────────────────────────────────────────────────
 
 async def _connect_to_relay() -> None {
-    global _ws, _connected, _canvas_sessions;
 
     while True {
         try {
             async with websockets.connect(RELAY_URL, compression=None) as ws {
                 _ws = ws;
                 _connected = True;
+                _relay_connected.set();
                 log(f"Connected to relay at {RELAY_URL}");
-                await ws.send(json.dumps({"role": "controller"}));
 
-                async for raw in ws {
+                # websockets' ClientConnection IS async-iterable; the bundled stub
+                # does not model __aiter__.
+                async for raw in ws {  # jac:ignore[E1022]
                     try {
-                        msg: dict = json.loads(raw);
-                        msg_type: str = msg.get("type", "");
-
-                        if msg_type == "registered" {
-                            existing: list = msg.get("connectedSessions", []);
-                            count: int = 0;
-                            with _lock {
-                                for sid in existing { _canvas_sessions.add(sid); }
-                                count = len(_canvas_sessions);
-                            }
-                            log(f"Registered as controller, {count} canvas(es) connected");
+                        # The relay is a broadcast endpoint: it wraps each yielded
+                        # envelope as {ok, type:"chunk", data}, and every client
+                        # sees every envelope. Ours are the responses whose
+                        # request_id is in _pending.
+                        envelope: dict = json.loads(str(raw));
+                        if envelope.get("type") != "chunk" {
                             continue;
                         }
-                        if msg_type == "canvasConnected" {
-                            session_id: Any = msg.get("sessionId");
-                            if not isinstance(session_id, str) or not session_id {
-                                log(f"Ignoring canvasConnected: invalid sessionId");
-                                continue;
-                            }
-                            count: int = 0;
-                            with _lock {
-                                _canvas_sessions.add(session_id);
-                                count = len(_canvas_sessions);
-                            }
-                            log(f"Canvas connected: {count} total");
-                            continue;
-                        }
-                        if msg_type == "canvasDisconnected" {
-                            session_id: Any = msg.get("sessionId");
-                            if not isinstance(session_id, str) or not session_id {
-                                log(f"Ignoring canvasDisconnected: invalid sessionId");
-                                continue;
-                            }
-                            count: int = 0;
-                            with _lock {
-                                _canvas_sessions.discard(session_id);
-                                count = len(_canvas_sessions);
-                            }
-                            log(f"Canvas disconnected: {count} remaining");
+                        msg: dict = envelope.get("data") or {};
+                        if msg.get("kind") != "response" {
                             continue;
                         }
 
-                        # Response from canvas
-                        request_id: str = msg.get("requestId", "");
-                        entry: Any = None;
+                        request_id: str = msg.get("request_id", "");
+                        entry: tuple[Any, dict] | None = None;
                         with _lock {
                             entry = _pending.pop(request_id, None);
                         }
@@ -124,9 +110,7 @@ async def _connect_to_relay() -> None {
 
         _ws = None;
         _connected = False;
-        with _lock {
-            _canvas_sessions.clear();
-        }
+        _relay_connected.clear();
         log("Disconnected from relay, reconnecting in 3s...");
         await asyncio.sleep(3);
     }
@@ -134,7 +118,6 @@ async def _connect_to_relay() -> None {
 
 
 def _start_relay_thread() -> None {
-    global _relay_loop;
     _relay_loop = asyncio.new_event_loop();
     asyncio.set_event_loop(_relay_loop);
     _relay_ready.set();
@@ -142,23 +125,33 @@ def _start_relay_thread() -> None {
 }
 
 
-"""Resolve session ID — use explicit param, env var, or auto-select if only one canvas."""
+"""Resolve the target canvas. Explicit param first, then $JASKETCH_SESSION_ID.
+
+The old relay tracked which canvases were online and auto-picked when there was
+exactly one. A broadcast endpoint has no such registry, so the session has to be
+named: copy it from the browser tab (sessionStorage `jasketch_session_id`)."""
 def _resolve_session(session_id: str = "") -> str {
     sid: str = session_id or os.environ.get("JASKETCH_SESSION_ID", "");
     if sid { return sid; }
-    with _lock {
-        session_count: int = len(_canvas_sessions);
-        if session_count == 1 { return next(iter(_canvas_sessions)); }
-        if session_count == 0 { raise Exception("No canvas connected. Open JaSketch in browser."); }
-    }
-    raise Exception("Multiple canvases open. Set JASKETCH_SESSION_ID env var to select one.");
+    raise Exception(
+        "No canvas selected. Set JASKETCH_SESSION_ID to the tab's session id "
+        "(sessionStorage key 'jasketch_session_id' in the JaSketch browser tab)."
+    );
 }
 
 
 """Send a command to the canvas via relay (blocking, thread-safe)."""
 def _send_command(action: str, data: dict | None = None, session_id: str = "", timeout: float | None = None) -> Any {
-    if (not _connected) or (_ws is None) {
-        raise Exception(f"Not connected to relay. Ensure the relay is running at {RELAY_URL}");
+    # Wait for the handshake rather than failing on it: the first tool call
+    # typically arrives within a second of launch, before the socket is open.
+    if not _relay_connected.wait(timeout=CONNECT_WAIT_SECONDS) {
+        raise Exception(
+            f"Not connected to relay after {CONNECT_WAIT_SECONDS:.0f}s. "
+            f"Check JASKETCH_RELAY_URL ({RELAY_URL}) and that JaSketch is reachable."
+        );
+    }
+    if _ws is None {
+        raise Exception("Relay socket went away mid-call; retry.");
     }
     if not _relay_ready.wait(timeout=5) {
         raise Exception("Relay event loop not ready");
@@ -173,8 +166,9 @@ def _send_command(action: str, data: dict | None = None, session_id: str = "", t
     }
 
     payload: str = json.dumps({
-        "requestId": request_id,
-        "sessionId": session_id,
+        "kind": "command",
+        "request_id": request_id,
+        "session_id": session_id,
         "action": action,
         "data": data if data is not None else {}
     });
@@ -210,7 +204,7 @@ def _send_command(action: str, data: dict | None = None, session_id: str = "", t
 async def _run_mcp_tool(tool_name: str, args: dict, session_id: str | None) -> str {
     sid: str = _resolve_session(session_id or "");
     provider: CanvasToolProvider = CanvasToolProvider(
-        send_fn=lambda action, data: _send_command(action, data, sid)
+        send_fn=lambda (action: str, data: dict | None) -> any { _send_command(action, data, sid); }
     );
     return await asyncio.to_thread(provider.call_tool, tool_name, args);
 }
@@ -410,7 +404,12 @@ async def get_drawing_guide(session_id: str | None = None) -> str {
 
 # ── Start server ──────────────────────────────────────────────────────────────
 
-with entry {
+"""Console-script entry point (`jasketch-mcp-server`), and what `jac run` calls.
+
+Deliberately NOT a bare `with entry`: that runs on every IMPORT of the module,
+so the packaged console script would start a relay thread and seize stdio the
+moment anything imported it."""
+def main() -> None {
     log(f"Starting MCP server, relay at {RELAY_URL}");
 
     relay_thread: Any = threading.Thread(target=_start_relay_thread, daemon=True);
@@ -425,4 +424,9 @@ with entry {
     } else {
         mcp.run(transport="stdio");
     }
+}
+
+
+with entry:__main__ {
+    main();
 }

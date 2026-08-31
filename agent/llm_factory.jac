@@ -5,7 +5,7 @@ Model on the agent node and use  `by self.llm(...)`  so per-node credentials
 are respected instead of falling back to the jac.toml default_llm singleton.
 """
 
-import from byllm.lib { Model }
+import from jaclang.byllm.lib { Model }
 
 def create_llm(model_name: str, api_key: str) -> Model {
     name = model_name;

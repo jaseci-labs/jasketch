@@ -13,9 +13,14 @@ Run:
     pytest tests/e2e/test_jasketch.py -v --headed
 """
 
+import math
+import re
+
+import pytest
 from playwright.sync_api import Page, expect
 
 ACTION_DELAY = 300  # ms between UI actions
+APP_READY_TIMEOUT = 60_000  # ms for a freshly opened page to render its canvas
 
 
 # -- Helpers -------------------------------------------------------------------
@@ -384,7 +389,12 @@ class TestSelectionAndDeletion:
         wait_for_elements(app, 1)
         select_tool(app, "Select")
         click_canvas(app, S_CX, S_CY)
-        expect(app.get_by_text("rectangle selected")).to_be_visible(timeout=5_000)
+        # The inspector names what you are editing. It reads "Rectangle" with a
+        # "selected" state beside it, rather than one run-on phrase.
+        # The DOM text is the raw type ("rectangle"); the capital is CSS.
+        inspector = app.locator(".sidebar")
+        expect(inspector.get_by_text(re.compile(r"^rectangle$", re.I))).to_be_visible(timeout=5_000)
+        expect(inspector.get_by_text("selected", exact=True)).to_be_visible(timeout=5_000)
 
     def test_delete_selected_element(self, app: Page):
         """Pressing Delete removes the selected element."""
@@ -1145,3 +1155,1192 @@ class TestShortcutHelp:
         app.wait_for_timeout(300)
         help_title_after = app.query_selector("text='Keyboard Shortcuts'")
         assert help_title_after is None, "Help modal should be closed after Escape"
+
+
+# -- Share link tests ----------------------------------------------------------
+
+
+class TestShareLink:
+    """The share round-trip: encrypt in the browser, store ciphertext server-side,
+    reopen the link in a fresh tab and get the same scene back.
+
+    Exercises services/sharing.jac (the def:pub endpoints + the SharedScene store
+    on root.shared) through the real UI, so a broken RPC contract or a lost blob
+    fails here rather than in production."""
+
+    def test_share_link_round_trips_the_scene(self, app: Page, base_url):
+        clear_canvas(app)
+        draw_shape(app, "Rectangle", S_X1, S_Y1, S_X2, S_Y2)
+        wait_for_elements(app, 1)
+        original = get_elements(app)
+
+        app.locator("button[title^='Shareable link']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        app.get_by_text("Generate Link", exact=True).click()
+
+        link_box = app.locator("input[readonly]").first
+        expect(link_box).to_have_value(re.compile(r"#json="), timeout=20_000)
+        share_url = link_box.input_value()
+        assert "#json=" in share_url, share_url
+
+        # A fresh context: no localStorage, so anything that renders must have
+        # come back from the server.
+        viewer = app.context.browser.new_context()
+        try:
+            page = viewer.new_page()
+            page.goto(share_url, wait_until="load")
+            page.locator("canvas").first.wait_for(state="visible", timeout=APP_READY_TIMEOUT)
+            page.wait_for_function(
+                """() => {
+                    const d = localStorage.getItem('jasketch_elements');
+                    return d && JSON.parse(d).length > 0;
+                }""",
+                timeout=20_000,
+            )
+            restored = page.evaluate(
+                "() => JSON.parse(localStorage.getItem('jasketch_elements'))"
+            )
+            assert len(restored) == len(original)
+            assert restored[0]["type"] == original[0]["type"]
+        finally:
+            viewer.close()
+            # The `app` page is module-scoped: leave the modal closed or the next
+            # test's toolbar clicks land on this backdrop.
+            app.locator("div.fixed.inset-0 button", has_text="×").last.click()
+            app.wait_for_timeout(ACTION_DELAY)
+
+    def test_unknown_share_id_reports_an_error(self, app: Page, base_url):
+        viewer = app.context.browser.new_context()
+        try:
+            page = viewer.new_page()
+            page.goto(f"{base_url}/#json=doesnotexist,badkey", wait_until="load")
+            page.locator("canvas").first.wait_for(state="visible", timeout=APP_READY_TIMEOUT)
+            expect(page.get_by_text("Share not found or expired")).to_be_visible(
+                timeout=20_000
+            )
+        finally:
+            viewer.close()
+
+
+# -- Live collaboration tests --------------------------------------------------
+
+
+class TestLiveCollaboration:
+    """Two tabs in one room, over the broadcast relay endpoint.
+
+    Covers the whole collaboration path: a real per-room AES key, the encrypted
+    room_broadcast, infrastructure/relay.jac's fan-out, and the client-side
+    filter that decides which broadcast envelopes belong to this tab."""
+
+    def test_scene_reaches_the_other_tab(self, app: Page, base_url):
+        clear_canvas(app)
+
+        app.locator("button[title^='Live Collaboration']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        app.get_by_text("Start Session", exact=True).click()
+
+        link_box = app.locator("input[readonly]").first
+        expect(link_box).to_have_value(re.compile(r"#room="), timeout=20_000)
+        room_url = link_box.input_value()
+        # room_key must be an independent secret, not a copy of room_id
+        room_id, room_key = room_url.split("#room=")[1].split(",")
+        assert room_key != room_id, "room_key is still a copy of room_id"
+
+        # Scope the close to the dialog: an unscoped text match resolves behind
+        # the modal backdrop and the click is intercepted.
+        app.locator("div.fixed.inset-0 button", has_text="×").last.click()
+        app.wait_for_timeout(ACTION_DELAY)
+
+        guest_ctx = app.context.browser.new_context()
+        try:
+            guest = guest_ctx.new_page()
+            guest.goto(room_url, wait_until="load")
+            guest.locator("canvas").first.wait_for(state="visible", timeout=APP_READY_TIMEOUT)
+            # The joiner is asked for a display name before the room activates.
+            name_field = guest.locator("input[type='text']").first
+            name_field.fill("Guest")
+            guest.keyboard.press("Enter")
+            guest.wait_for_timeout(2000)
+
+            draw_shape(app, "Rectangle", S_X1, S_Y1, S_X2, S_Y2)
+            wait_for_elements(app, 1)
+
+            guest.wait_for_function(
+                """() => {
+                    const d = localStorage.getItem('jasketch_elements');
+                    return d && JSON.parse(d).length > 0;
+                }""",
+                timeout=25_000,
+            )
+            mirrored = guest.evaluate(
+                "() => JSON.parse(localStorage.getItem('jasketch_elements'))"
+            )
+            assert mirrored[0]["type"] == "rectangle"
+        finally:
+            guest_ctx.close()
+
+
+# -- UX parity tests -----------------------------------------------------------
+#
+# These cover the interaction habits a user brings from Excalidraw. Each one
+# stands for a gesture that silently did nothing before: they are here so a
+# refactor cannot quietly take the muscle memory away again.
+
+
+def drag_canvas(page: Page, x1: int, y1: int, x2: int, y2: int, modifier: str = ""):
+    """Drag on the canvas, optionally holding a modifier for the whole gesture."""
+    box = get_canvas(page).bounding_box()
+    page.mouse.move(box["x"] + x1, box["y"] + y1)
+    page.mouse.down()
+    if modifier:
+        page.keyboard.down(modifier)
+    page.mouse.move(box["x"] + x2, box["y"] + y2, steps=10)
+    page.mouse.up()
+    if modifier:
+        page.keyboard.up(modifier)
+    page.wait_for_timeout(ACTION_DELAY)
+
+
+class TestDigitShortcuts:
+    """Tools answer to their toolbar digit. JaSketch uses digits only, on
+    purpose: letter mnemonics were tried and deliberately pulled back out."""
+
+    @pytest.mark.parametrize(
+        "key,tool_title",
+        [
+            ("1", "Select"),
+            ("2", "Pencil"),
+            ("3", "Line"),
+            ("4", "Arrow"),
+            ("5", "Rectangle"),
+            ("6", "Diamond"),
+            ("7", "Ellipse"),
+            ("8", "Text"),
+        ],
+    )
+    def test_digit_selects_tool(self, app: Page, key: str, tool_title: str):
+        press_key(app, "Escape")
+        press_key(app, key)
+        btn_class = app.locator(f"button[title^='{tool_title}']").get_attribute("class")
+        assert "text-orange-600" in btn_class, (
+            f"'{key}' should select {tool_title}, class: {btn_class}"
+        )
+
+    @pytest.mark.parametrize("letter", ["r", "d", "o", "a", "l", "p", "t", "v"])
+    def test_letters_are_not_bound(self, app: Page, letter: str):
+        """The digits-only decision is deliberate, so it is pinned. If a letter
+        ever starts selecting a tool again it should be a choice, not a drift."""
+        press_key(app, "Escape")
+        press_key(app, "5")  # park on Rectangle
+        press_key(app, letter)
+        rect_class = app.locator("button[title^='Rectangle']").get_attribute("class")
+        assert "text-orange-600" in rect_class, (
+            f"'{letter}' should not change the tool, class: {rect_class}"
+        )
+
+
+class TestShiftConstrain:
+    """Shift means 'keep it regular' both while drawing and while resizing."""
+
+    def test_shift_draws_a_square(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 150, 640, 250, modifier="Shift")
+        wait_for_elements(app, 1)
+        el = get_elements(app)[0]
+        assert abs(abs(el["width"]) - abs(el["height"])) < 3, (
+            f"Shift should force a square, got {el['width']}x{el['height']}"
+        )
+
+    def test_no_shift_draws_a_free_rectangle(self, app: Page):
+        """The constraint must be opt-in, or every rectangle becomes a square."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 150, 640, 250)
+        wait_for_elements(app, 1)
+        el = get_elements(app)[0]
+        assert abs(abs(el["width"]) - abs(el["height"])) > 50, (
+            f"Without Shift the drag should stay free, got {el['width']}x{el['height']}"
+        )
+
+    def test_shift_snaps_a_line_to_45_degrees(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "3")
+        # A 240x100 drag is ~23 degrees; Shift should pull it to a flat 0.
+        drag_canvas(app, 400, 200, 640, 300, modifier="Shift")
+        wait_for_elements(app, 1)
+        el = get_elements(app)[0]
+        angle = math.degrees(math.atan2(el["y2"] - el["y1"], el["x2"] - el["x1"]))
+        nearest = round(angle / 45.0) * 45.0
+        assert abs(angle - nearest) < 3, f"Line should snap to a 45 multiple, got {angle:.1f}deg"
+
+    def test_shift_corner_resize_keeps_aspect_ratio(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 150, 560, 230)  # 160x80, a 2:1 box
+        wait_for_elements(app, 1)
+        click_canvas(app, 480, 190)  # select it
+        drag_canvas(app, 560, 230, 700, 280, modifier="Shift")  # drag the SE handle
+        el = get_elements(app)[0]
+        ratio = abs(el["width"]) / max(abs(el["height"]), 1)
+        assert abs(ratio - 2.0) < 0.15, f"Shift should hold the 2:1 ratio, got {ratio:.2f}"
+
+
+class TestToolLock:
+    """Q keeps a tool armed so a diagram can be drawn without re-picking."""
+
+    def test_lock_keeps_the_tool_after_each_shape(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        press_key(app, "q")
+        try:
+            for x in (350, 500, 650):
+                drag_canvas(app, x, 300, x + 90, 380)
+            wait_for_elements(app, 3)
+            assert get_elements_count(app) == 3, "A locked tool should draw three in a row"
+        finally:
+            press_key(app, "q")  # the lock is module-scoped state; hand it back off
+
+    def test_unlocked_tool_still_reverts_to_select(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 300, 490, 380)
+        wait_for_elements(app, 1)
+        sel_class = app.locator("button[title^='Select']").get_attribute("class")
+        assert "text-orange-600" in sel_class, "Without the lock the tool must revert to Select"
+
+    def test_lock_button_is_present(self, app: Page):
+        expect(app.locator("button[title*='Keep the tool selected']")).to_be_visible()
+
+
+class TestArrowKeyNudge:
+    """Arrow keys move the selection by a pixel, Shift by ten."""
+
+    def test_single_element_nudges_one_pixel_per_press(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 200, 560, 300)
+        wait_for_elements(app, 1)
+        click_canvas(app, 480, 250)
+        start_x = get_elements(app)[0]["x"]
+        for _ in range(5):
+            press_key(app, "ArrowRight")
+        moved = get_elements(app)[0]["x"] - start_x
+        assert abs(moved - 5) < 0.51, f"Five presses should travel 5px, travelled {moved}"
+
+    def test_shift_arrow_nudges_ten_pixels(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 200, 560, 300)
+        wait_for_elements(app, 1)
+        click_canvas(app, 480, 250)
+        start_y = get_elements(app)[0]["y"]
+        press_key(app, "Shift+ArrowDown")
+        moved = get_elements(app)[0]["y"] - start_y
+        assert abs(moved - 10) < 0.51, f"Shift+Down should travel 10px, travelled {moved}"
+
+    def test_multi_selection_nudges_every_element(self, app: Page):
+        """Each element is written in ONE batch: a per-element write would let
+        the last one overwrite the rest and only that shape would move."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 350, 200, 470, 290)
+        press_key(app, "5")
+        drag_canvas(app, 600, 200, 720, 290)
+        wait_for_elements(app, 2)
+        press_key(app, "Escape")
+        press_key(app, "Control+a")
+        before = [el["x"] for el in get_elements(app)]
+        for _ in range(4):
+            press_key(app, "ArrowLeft")
+        after = [el["x"] for el in get_elements(app)]
+        for i, (b, a) in enumerate(zip(before, after)):
+            assert abs((a - b) + 4) < 0.51, f"element {i} should move -4px, moved {a - b}"
+
+    def test_nudge_carries_bound_arrows_with_the_shape(self, app: Page):
+        """The shape and every arrow bound to it move in ONE write. Two separate
+        writes in a single keypress would leave the arrow behind."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 350, 200, 470, 290)
+        press_key(app, "5")
+        drag_canvas(app, 650, 200, 770, 290)
+        wait_for_elements(app, 2)
+        press_key(app, "Escape")
+        press_key(app, "4")
+        drag_canvas(app, 470, 245, 648, 245)  # bind the two boxes together
+        wait_for_elements(app, 3)
+        press_key(app, "Escape")
+        click_canvas(app, 700, 245)  # select the right-hand box only
+        before = {e["type"]: dict(e) for e in get_elements(app)}
+        for _ in range(5):
+            press_key(app, "ArrowDown")
+        after = {e["type"]: dict(e) for e in get_elements(app)}
+        box_moved = after["rectangle"]["y"] - before["rectangle"]["y"]
+        assert abs(box_moved - 5) < 0.51, f"the selected box should move 5px, moved {box_moved}"
+        arrow_moved = after["arrow"]["y2"] - before["arrow"]["y2"]
+        assert abs(arrow_moved - 5) < 1.01, (
+            f"the bound arrow endpoint should follow the box, moved {arrow_moved}"
+        )
+
+
+class TestCanvasActionButtons:
+    """Undo, redo and zoom-to-fit are reachable with the mouse alone."""
+
+    def test_undo_and_redo_buttons(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 200, 520, 300)
+        wait_for_elements(app, 1)
+        app.locator("button[title^='Undo']").click()
+        wait_for_elements(app, 0)
+        app.locator("button[title^='Redo']").click()
+        wait_for_elements(app, 1)
+
+    def test_zoom_to_fit_button_frames_the_drawing(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 200, 520, 300)
+        wait_for_elements(app, 1)
+        press_key(app, "Control+0")
+        # Zoom well past the shape, then ask to be brought back to it.
+        for _ in range(4):
+            app.locator("button", has_text="+").last.click()
+            app.wait_for_timeout(100)
+        zoomed = int(app.locator("button", has_text="%").text_content().replace("%", ""))
+        assert zoomed > 100
+        app.locator("button[title^='Zoom to fit']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        fitted = int(app.locator("button", has_text="%").text_content().replace("%", ""))
+        assert fitted != zoomed, "Zoom to fit should reframe the canvas"
+        assert fitted <= 100, f"Fit never zooms past 1:1, got {fitted}%"
+
+    def test_zoom_to_fit_keyboard_shortcut(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 200, 520, 300)
+        wait_for_elements(app, 1)
+        press_key(app, "Control+0")
+        for _ in range(4):
+            app.locator("button", has_text="+").last.click()
+            app.wait_for_timeout(100)
+        press_key(app, "Shift+1")
+        app.wait_for_timeout(ACTION_DELAY)
+        fitted = int(app.locator("button", has_text="%").text_content().replace("%", ""))
+        assert fitted <= 100, f"Shift+1 should frame the drawing, got {fitted}%"
+
+
+class TestLabelStaysInsideItsShape:
+    """A label wraps to the shape's width, so a shape can always be made too
+    short for its own text. The shape grows instead of letting the words out."""
+
+    @staticmethod
+    def _canvas_offset(page: Page):
+        """Measure the canvas-to-page offset instead of assuming it.
+
+        The app fixture is shared by the whole module, so an earlier test may
+        have left the viewport panned. Drawing one throwaway shape at known
+        page coordinates and reading back where it landed gives the current
+        mapping directly."""
+        clear_canvas(page)
+        press_key(page, "Escape")
+        press_key(page, "Control+0")  # zoom back to 1:1 so only the pan differs
+        press_key(page, "5")
+        drag_canvas(page, 400, 200, 500, 300)
+        wait_for_elements(page, 1)
+        probe = get_elements(page)[0]
+        clear_canvas(page)
+        return 400 - probe["x"], 200 - probe["y"]
+
+    def _labelled_box(self, page: Page, text: str):
+        clear_canvas(page)
+        press_key(page, "Escape")
+        press_key(page, "5")
+        drag_canvas(page, 400, 200, 640, 330)
+        wait_for_elements(page, 1)
+        press_key(page, "Escape")
+        double_click_canvas(page, 520, 265)
+        page.keyboard.type(text, delay=6)
+        press_key(page, "Escape")
+        page.wait_for_timeout(ACTION_DELAY)
+        return get_elements(page)[0]
+
+    def test_shape_grows_when_its_label_needs_more_room(self, app: Page):
+        """Asserted as a relative change: the font size is app-wide state that
+        earlier tests move, so an absolute height would pass or fail depending
+        on what ran before."""
+        long_text = "This is a deliberately long label that should wrap inside the box"
+        el = self._labelled_box(app, long_text)
+        assert el.get("shapeText") == long_text
+        h0 = abs(el["height"])
+        click_canvas(app, 520, 265)
+        for _ in range(6):
+            press_key(app, "Control+Shift+Period")
+        h1 = abs(get_elements(app)[0]["height"])
+        assert h1 > h0, f"a bigger label needs a bigger box, {h0} -> {h1}"
+
+    def test_narrowing_a_labelled_shape_makes_it_taller(self, app: Page):
+        """The real failure this guards: a narrower box re-wraps the text to
+        MORE lines, so width and height move in opposite directions."""
+        off_x, off_y = self._canvas_offset(app)
+        el = self._labelled_box(app, "This is a deliberately long label that should wrap inside the box")
+        w0, h0 = abs(el["width"]), abs(el["height"])
+        # Page coordinates of the shape: canvas origin + measured offset.
+        cbox = get_canvas(app).bounding_box()
+        sx = cbox["x"] + el["x"] + off_x
+        sy = cbox["y"] + el["y"] + off_y
+        app.mouse.click(sx + el["width"] / 2, sy + el["height"] / 2)
+        app.wait_for_timeout(ACTION_DELAY)
+        # drag the SE handle far to the left
+        app.mouse.move(sx + el["width"], sy + el["height"])
+        app.mouse.down()
+        app.mouse.move(sx + 110, sy + el["height"], steps=10)
+        app.mouse.up()
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        el2 = get_elements(app)[0]
+        assert abs(el2["width"]) < w0, "the box should have got narrower"
+        assert abs(el2["height"]) > h0, (
+            f"a narrower box needs more height, went {h0} -> {abs(el2['height'])}"
+        )
+
+    def test_an_unlabelled_shape_still_resizes_freely(self, app: Page):
+        """The clamp must only apply to shapes that actually carry a label."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 200, 640, 400)
+        wait_for_elements(app, 1)
+        el = get_elements(app)[0]
+        click_canvas(app, 520, 300)
+        drag_canvas(app, 640, 400, 500, 260)
+        el2 = get_elements(app)[0]
+        assert abs(el2["height"]) < abs(el["height"]), (
+            "an unlabelled shape must still shrink freely"
+        )
+
+
+class TestStylingAppliesToTheWholeSelection:
+    """The style panel has one element id to hand back, but a style change is
+    meant for everything selected."""
+
+    def _three_boxes(self, page: Page):
+        clear_canvas(page)
+        for x in (250, 450, 650):
+            press_key(page, "Escape")
+            press_key(page, "5")
+            drag_canvas(page, x, 250, x + 140, 350)
+        wait_for_elements(page, 3)
+        press_key(page, "Escape")
+        press_key(page, "Control+a")
+        page.wait_for_timeout(ACTION_DELAY)
+
+    def test_colour_applies_to_every_selected_shape(self, app: Page):
+        self._three_boxes(app)
+        app.locator("button[title='#e03131']").first.click()
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        colours = [e.get("color") for e in get_elements(app)]
+        assert colours == ["#e03131"] * 3, f"all three should turn red, got {colours}"
+
+    def test_line_style_applies_to_every_selected_shape(self, app: Page):
+        self._three_boxes(app)
+        app.locator("button[title='Dashed']").first.click()
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        styles = [e.get("lineStyle") for e in get_elements(app)]
+        assert styles == ["dashed"] * 3, f"all three should go dashed, got {styles}"
+
+    def test_a_single_selection_only_restyles_itself(self, app: Page):
+        """Widening to the selection must not leak into the single-select case."""
+        clear_canvas(app)
+        for x in (300, 600):
+            press_key(app, "Escape")
+            press_key(app, "5")
+            drag_canvas(app, x, 250, x + 140, 350)
+        wait_for_elements(app, 2)
+        press_key(app, "Escape")
+        click_canvas(app, 370, 300)
+        app.locator("button[title='#2b8a3e']").first.click()
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        colours = [e.get("color") for e in get_elements(app)]
+        assert colours.count("#2b8a3e") == 1, f"only one should change, got {colours}"
+
+
+class TestLabelFontSize:
+    """Ctrl+Shift+> is advertised in the help dialog; it has to work on a label
+    inside a shape, not only on a standalone text element."""
+
+    def _labelled_box(self, page: Page):
+        clear_canvas(page)
+        press_key(page, "Escape")
+        press_key(page, "5")
+        drag_canvas(page, 400, 200, 620, 330)
+        wait_for_elements(page, 1)
+        press_key(page, "Escape")
+        double_click_canvas(page, 510, 265)
+        page.keyboard.type("Label", delay=20)
+        press_key(page, "Escape")
+        press_key(page, "Escape")
+        click_canvas(page, 510, 265)
+        return get_elements(page)[0]
+
+    def test_increase_label_font_size(self, app: Page):
+        el = self._labelled_box(app)
+        before = el.get("shapeTextFontSize")
+        press_key(app, "Control+Shift+Period")
+        after = get_elements(app)[0].get("shapeTextFontSize")
+        assert after == before + 2, f"font size should rise, {before} -> {after}"
+
+    def test_decrease_label_font_size(self, app: Page):
+        el = self._labelled_box(app)
+        before = el.get("shapeTextFontSize")
+        press_key(app, "Control+Shift+Comma")
+        after = get_elements(app)[0].get("shapeTextFontSize")
+        assert after == before - 2, f"font size should fall, {before} -> {after}"
+
+    def test_standalone_text_font_size_still_works(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "8")
+        click_canvas(app, 400, 300)
+        app.keyboard.type("Hello", delay=20)
+        press_key(app, "Escape")
+        wait_for_elements(app, 1)
+        press_key(app, "Escape")
+        click_canvas(app, 410, 305)
+        before = get_elements(app)[0].get("fontSize")
+        press_key(app, "Control+Shift+Period")
+        after = get_elements(app)[0].get("fontSize")
+        assert after == before + 2, f"text font size should rise, {before} -> {after}"
+
+    def test_a_drawing_saved_before_the_fix_heals_on_open(self, app: Page):
+        """A shape authored elsewhere -- by the MCP tools, the agent, or an older
+        build -- never passed through the editor, so nothing checked that its box
+        could hold its label. Opening it is the last chance to notice."""
+        clear_canvas(app)
+        app.evaluate(
+            """() => localStorage.setItem('jasketch_elements', JSON.stringify([{
+                type: "rectangle", x: 120, y: 80, width: 200, height: 40, id: "legacy-1",
+                color: "#000000", strokeWidth: 2, fillColor: "transparent",
+                lineStyle: "solid", opacity: 1,
+                shapeText: "A long label that cannot possibly fit inside forty pixels",
+                shapeTextColor: "#000000", shapeTextFontSize: 20, shapeTextFontFamily: "Virgil"
+            }]))"""
+        )
+        app.reload(wait_until="load")
+        get_canvas(app).wait_for(state="visible", timeout=APP_READY_TIMEOUT)
+        app.wait_for_timeout(ACTION_DELAY * 4)
+        el = get_elements(app)[0]
+        assert abs(el["height"]) > 40, (
+            f"a too-short legacy shape should heal on open, height is {el['height']}"
+        )
+        assert el.get("shapeText"), "the label itself must survive the repair"
+
+
+class TestGeometryIsNormalised:
+    """A shape dragged out bottom-up or right-to-left used to store a negative
+    size, which left its selection outline sitting away from the shape."""
+
+    @pytest.mark.parametrize(
+        "name,x1,y1,x2,y2",
+        [
+            ("top-left to bottom-right", 400, 200, 550, 300),
+            ("bottom-right to top-left", 550, 300, 400, 200),
+            ("top-right to bottom-left", 550, 200, 400, 300),
+            ("bottom-left to top-right", 400, 300, 550, 200),
+        ],
+    )
+    def test_drawn_in_any_direction_stores_a_positive_size(
+        self, app: Page, name: str, x1: int, y1: int, x2: int, y2: int
+    ):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, x1, y1, x2, y2)
+        wait_for_elements(app, 1)
+        el = get_elements(app)[0]
+        assert el["width"] > 0 and el["height"] > 0, (
+            f"{name} stored {el['width']}x{el['height']}"
+        )
+
+
+class TestStylePanelFollowsEverySelection:
+    """The panel keys off a primary element. Every path that builds a selection
+    has to set one, or the controls silently vanish."""
+
+    @staticmethod
+    def _swatches(page: Page) -> int:
+        return page.evaluate(
+            """() => [...document.querySelectorAll('button')]
+                 .filter(b => /^#/.test(b.getAttribute('title') || '')).length"""
+        )
+
+    def test_rubber_band_selection_keeps_the_style_panel(self, app: Page):
+        clear_canvas(app)
+        for x in (300, 500):
+            press_key(app, "Escape")
+            press_key(app, "5")
+            drag_canvas(app, x, 250, x + 120, 350)
+        wait_for_elements(app, 2)
+        press_key(app, "Escape")
+        drag_canvas(app, 250, 200, 700, 420)   # rubber-band around both
+        assert self._swatches(app) > 0, "box-selecting two shapes hid the style panel"
+
+    def test_select_all_keeps_the_style_panel(self, app: Page):
+        clear_canvas(app)
+        for x in (300, 500):
+            press_key(app, "Escape")
+            press_key(app, "5")
+            drag_canvas(app, x, 250, x + 120, 350)
+        wait_for_elements(app, 2)
+        press_key(app, "Escape")
+        press_key(app, "Control+a")
+        assert self._swatches(app) > 0, "Ctrl+A hid the style panel"
+
+
+class TestMenuDropdown:
+    def test_closes_on_an_outside_click(self, app: Page):
+        app.locator("button[title='Menu']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        assert app.get_by_text("Keyboard shortcuts").is_visible()
+        get_canvas(app).click(position={"x": 700, "y": 500}, force=True)
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        assert not app.get_by_text("Keyboard shortcuts").is_visible(), (
+            "the menu stayed open over the canvas after clicking away"
+        )
+
+    def test_closes_on_escape(self, app: Page):
+        app.locator("button[title='Menu']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        press_key(app, "Escape")
+        app.wait_for_timeout(ACTION_DELAY)
+        assert not app.get_by_text("Keyboard shortcuts").is_visible()
+
+
+class TestLabelEditorWraps:
+    """While typing, the label used to run off the side of the shape and get
+    clipped -- so you could not read what you were writing."""
+
+    def test_editor_wraps_instead_of_clipping(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 300, 250, 430, 340)
+        wait_for_elements(app, 1)
+        press_key(app, "Escape")
+        double_click_canvas(app, 365, 295)
+        app.keyboard.type("erfjhsdkjf idisoncsd skdvcnksdjvn ksjdvnksjdnv", delay=8)
+        app.wait_for_timeout(ACTION_DELAY)
+        editor = app.locator("textarea").last
+        metrics = editor.evaluate(
+            "n => ({sw: n.scrollWidth, cw: n.clientWidth, sh: n.scrollHeight, ch: n.clientHeight})"
+        )
+        assert metrics["sw"] <= metrics["cw"] + 1, "the label editor clipped horizontally"
+        assert metrics["sh"] <= metrics["ch"] + 1, "the label editor clipped vertically"
+        press_key(app, "Escape")
+
+    def test_shape_grows_while_the_label_is_typed(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 300, 250, 430, 340)
+        wait_for_elements(app, 1)
+        h0 = abs(get_elements(app)[0]["height"])
+        press_key(app, "Escape")
+        double_click_canvas(app, 365, 295)
+        app.keyboard.type("a label long enough that it has to wrap several times over", delay=8)
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        h1 = abs(get_elements(app)[0]["height"])
+        assert h1 > h0, f"the box should grow as the label is typed, {h0} -> {h1}"
+        press_key(app, "Escape")
+
+
+class TestAlignmentSnapping:
+    """Dragging a shape close to a neighbour lines the two up exactly."""
+
+    def _two_stacked_boxes(self, page: Page):
+        clear_canvas(page)
+        press_key(page, "Escape")
+        press_key(page, "5")
+        drag_canvas(page, 300, 200, 450, 300)
+        press_key(page, "Escape")
+        press_key(page, "5")
+        drag_canvas(page, 300, 420, 450, 520)
+        wait_for_elements(page, 2)
+        press_key(page, "Escape")
+        return sorted(get_elements(page), key=lambda e: e["y"])
+
+    def test_a_near_miss_snaps_into_line(self, app: Page):
+        top, bottom = self._two_stacked_boxes(app)
+        assert abs(bottom["x"] - top["x"]) < 0.01
+        drag_canvas(app, 375, 470, 379, 470)   # 4px right: within the snap radius
+        moved = sorted(get_elements(app), key=lambda e: e["y"])[1]
+        assert abs(moved["x"] - top["x"]) < 0.6, (
+            f"a 4px near-miss should snap back into line, x is {moved['x']}"
+        )
+
+    def test_ctrl_suppresses_snapping(self, app: Page):
+        """There has to be a way to put a shape exactly where you want it."""
+        top, bottom = self._two_stacked_boxes(app)
+        start_x = bottom["x"]
+        box = get_canvas(app).bounding_box()
+        app.mouse.move(box["x"] + 375, box["y"] + 470)
+        app.mouse.down()
+        app.keyboard.down("Control")
+        app.mouse.move(box["x"] + 379, box["y"] + 470, steps=8)
+        app.mouse.up()
+        app.keyboard.up("Control")
+        app.wait_for_timeout(ACTION_DELAY)
+        moved = sorted(get_elements(app), key=lambda e: e["y"])[1]
+        assert abs(moved["x"] - (start_x + 4)) < 1.5, (
+            f"Ctrl should suppress the snap, x is {moved['x']} (wanted {start_x + 4})"
+        )
+
+
+class TestConnectorLabels:
+    """A flowchart's meaning lives on its arrows ("yes", "no", "on failure").
+    Before this the only way to write that was a floating text element that did
+    not travel with the arrow."""
+
+    def _labelled_arrow(self, page: Page, text: str = "Get money"):
+        clear_canvas(page)
+        press_key(page, "Escape")
+        press_key(page, "4")
+        drag_canvas(page, 400, 250, 400, 450)
+        wait_for_elements(page, 1)
+        press_key(page, "Escape")
+        double_click_canvas(page, 400, 350)
+        page.keyboard.type(text, delay=15)
+        press_key(page, "Escape")
+        page.wait_for_timeout(ACTION_DELAY)
+        return get_elements(page)[0]
+
+    def test_double_click_labels_an_arrow(self, app: Page):
+        el = self._labelled_arrow(app)
+        assert el["type"] == "arrow"
+        assert el.get("shapeText") == "Get money"
+
+    def test_labelling_leaves_the_geometry_alone(self, app: Page):
+        """fit_shape_to_label grows boxes; a connector has no height to grow and
+        must not pick up a NaN one."""
+        el = self._labelled_arrow(app)
+        for key in ("x1", "y1", "x2", "y2"):
+            assert el[key] == el[key], f"{key} became NaN"
+        assert el.get("height") in (None, 0) or el["height"] == el["height"]
+
+    def test_the_label_can_be_edited_again(self, app: Page):
+        self._labelled_arrow(app)
+        press_key(app, "Escape")
+        double_click_canvas(app, 400, 350)
+        value = app.locator("textarea").last.input_value()
+        assert "Get money" in value
+        press_key(app, "Escape")
+
+    def test_the_label_survives_the_arrow_moving(self, app: Page):
+        self._labelled_arrow(app)
+        press_key(app, "Escape")
+        click_canvas(app, 400, 350)
+        for _ in range(3):
+            press_key(app, "Shift+ArrowRight")
+        el = get_elements(app)[0]
+        assert el.get("shapeText") == "Get money"
+
+
+class TestConnectorHitTolerance:
+    """The old test measured |d1 + d2 - length|, which is an ellipse through the
+    endpoints rather than a corridor along the line: on a long connector it
+    accepted clicks tens of pixels away."""
+
+    def _one_arrow(self, page: Page):
+        clear_canvas(page)
+        press_key(page, "Escape")
+        press_key(page, "4")
+        drag_canvas(page, 400, 300, 700, 300)
+        wait_for_elements(page, 1)
+        press_key(page, "Escape")
+
+    def _selects_at(self, page: Page, x: int, y: int) -> bool:
+        get_canvas(page).click(position={"x": 1100, "y": 650}, force=True)  # deselect
+        page.wait_for_timeout(150)
+        before = get_elements(page)[0]["y1"]
+        get_canvas(page).click(position={"x": x, "y": y}, force=True)
+        page.wait_for_timeout(200)
+        press_key(page, "ArrowDown")
+        hit = abs(get_elements(page)[0]["y1"] - before) > 0.01
+        if hit:
+            press_key(page, "ArrowUp")
+        return hit
+
+    def test_a_click_on_the_line_selects_it(self, app: Page):
+        self._one_arrow(app)
+        assert self._selects_at(app, 550, 303), "a click on the connector should select it"
+
+    @pytest.mark.parametrize("offset", [20, 40])
+    def test_a_click_well_clear_of_the_line_does_not(self, app: Page, offset: int):
+        self._one_arrow(app)
+        assert not self._selects_at(app, 550, 300 + offset), (
+            f"a click {offset}px from the connector should be ignored"
+        )
+
+
+class TestGestureFollowsThePointer:
+    """A drag belongs to the pointer, not to the element it began on. Crossing
+    onto the sidebar used to stall the drag and swallow the release."""
+
+    def test_a_drag_survives_crossing_the_sidebar(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 600, 300, 760, 400)
+        wait_for_elements(app, 1)
+        press_key(app, "Escape")
+        click_canvas(app, 680, 350)
+        x0 = get_elements(app)[0]["x"]
+        box = get_canvas(app).bounding_box()
+        app.mouse.move(box["x"] + 680, box["y"] + 350)
+        app.mouse.down()
+        app.mouse.move(box["x"] + 400, box["y"] + 350, steps=8)
+        app.mouse.move(box["x"] + 60, box["y"] + 350, steps=8)   # over the sidebar
+        app.mouse.move(box["x"] + 500, box["y"] + 420, steps=8)  # and back
+        app.mouse.up()
+        app.wait_for_timeout(ACTION_DELAY)
+        x1 = get_elements(app)[0]["x"]
+        assert abs(x1 - x0) > 50, f"the drag stalled crossing the panel: {x0} -> {x1}"
+
+    def test_releasing_over_the_sidebar_ends_the_drag(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 600, 300, 760, 400)
+        wait_for_elements(app, 1)
+        press_key(app, "Escape")
+        click_canvas(app, 680, 350)
+        box = get_canvas(app).bounding_box()
+        app.mouse.move(box["x"] + 680, box["y"] + 350)
+        app.mouse.down()
+        app.mouse.move(box["x"] + 80, box["y"] + 350, steps=10)
+        app.mouse.up()                       # released over the panel
+        app.wait_for_timeout(ACTION_DELAY)
+        settled = get_elements(app)[0]["x"]
+        app.mouse.move(box["x"] + 700, box["y"] + 600)   # no button held
+        app.mouse.move(box["x"] + 780, box["y"] + 650, steps=6)
+        app.wait_for_timeout(ACTION_DELAY)
+        assert abs(get_elements(app)[0]["x"] - settled) < 0.5, (
+            "the shape kept following the pointer after the button was released"
+        )
+
+
+class TestDialogDismissal:
+    def test_share_dialog_closes_on_escape(self, app: Page):
+        app.locator("button[title='Shareable link']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        assert app.get_by_text("Share Canvas").is_visible()
+        press_key(app, "Escape")
+        app.wait_for_timeout(ACTION_DELAY)
+        assert app.get_by_text("Share Canvas").count() == 0
+
+    def test_share_dialog_closes_on_a_backdrop_click(self, app: Page):
+        app.locator("button[title='Shareable link']").click()
+        app.wait_for_timeout(ACTION_DELAY)
+        # The backdrop is fixed inset-0, so a corner is always on it and always
+        # inside the viewport whatever size the test window happens to be.
+        app.mouse.click(20, 20)
+        app.wait_for_timeout(ACTION_DELAY)
+        assert app.get_by_text("Share Canvas").count() == 0
+
+
+class TestGroupingAndLayering:
+    """These are all reached from the keydown listener, whose closure only
+    refreshes when the ELEMENT list changes -- so anything that read the
+    selection from it saw the state from before the selection was made."""
+
+    def _three_boxes(self, page: Page):
+        clear_canvas(page)
+        for i in range(3):
+            press_key(page, "Escape")
+            press_key(page, "5")
+            drag_canvas(page, 300 + i * 110, 250, 300 + i * 110 + 90, 320)
+        wait_for_elements(page, 3)
+        press_key(page, "Escape")
+        press_key(page, "Control+a")
+        page.wait_for_timeout(ACTION_DELAY)
+
+    def test_select_all_then_group(self, app: Page):
+        self._three_boxes(app)
+        press_key(app, "Control+g")
+        app.wait_for_timeout(ACTION_DELAY)
+        grouped = [e for e in get_elements(app) if e.get("groupId")]
+        assert len(grouped) == 3, f"Ctrl+A then Ctrl+G grouped {len(grouped)}/3"
+
+    def test_select_all_then_duplicate(self, app: Page):
+        self._three_boxes(app)
+        press_key(app, "Control+d")
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        assert get_elements_count(app) == 6, "Ctrl+A then Ctrl+D should duplicate all three"
+
+    def test_layering_works_in_both_directions(self, app: Page):
+        """bring-to-front used to do removeElement then addElement -- two writes
+        in one tick that cancelled each other out."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 300, 250, 500, 400)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 360, 300, 560, 450)
+        wait_for_elements(app, 2)
+        original = [e["id"] for e in get_elements(app)]
+        press_key(app, "Escape")
+        click_canvas(app, 530, 430)
+        press_key(app, "Control+BracketLeft")
+        app.wait_for_timeout(ACTION_DELAY)
+        sent_back = [e["id"] for e in get_elements(app)]
+        assert sent_back != original, "send to back did not reorder"
+        press_key(app, "Control+BracketRight")
+        app.wait_for_timeout(ACTION_DELAY)
+        assert [e["id"] for e in get_elements(app)] == original, (
+            "bring to front did not undo the send to back"
+        )
+
+    def test_layering_keeps_the_selection(self, app: Page):
+        """Clearing it meant you could not layer twice in a row."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 250, 540, 340)
+        wait_for_elements(app, 1)
+        press_key(app, "Escape")
+        click_canvas(app, 470, 295)
+        press_key(app, "Control+BracketLeft")
+        app.wait_for_timeout(ACTION_DELAY)
+        x0 = get_elements(app)[0]["x"]
+        press_key(app, "ArrowRight")
+        assert abs(get_elements(app)[0]["x"] - x0 - 1) < 0.6, (
+            "the shape was deselected by the layer change"
+        )
+
+
+class TestRapidDrawing:
+    def test_twelve_shapes_drawn_quickly_all_land(self, app: Page):
+        """Every mutation used to rebuild from the render-time element list, so
+        two in one tick meant the second discarded the first."""
+        clear_canvas(app)
+        box = get_canvas(app).bounding_box()
+        for i in range(12):
+            press_key(app, "Escape")
+            press_key(app, "5")
+            app.mouse.move(box["x"] + 300 + i * 58, box["y"] + 250)
+            app.mouse.down()
+            app.mouse.move(box["x"] + 300 + i * 58 + 48, box["y"] + 310, steps=3)
+            app.mouse.up()
+            app.wait_for_timeout(40)
+        wait_for_elements(app, 12, timeout=8000)
+        assert get_elements_count(app) == 12
+
+
+class TestConnectorLabelRoundTrip:
+    def test_a_connector_label_survives_save_and_load(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 250, 540, 340)
+        wait_for_elements(app, 1)
+        press_key(app, "Escape")
+        double_click_canvas(app, 470, 295)
+        app.keyboard.type("Box A", delay=12)
+        press_key(app, "Escape")
+        press_key(app, "Escape")
+        press_key(app, "4")
+        drag_canvas(app, 560, 300, 700, 300)
+        wait_for_elements(app, 2)
+        press_key(app, "Escape")
+        double_click_canvas(app, 630, 300)
+        app.keyboard.type("yes", delay=12)
+        press_key(app, "Escape")
+        app.wait_for_timeout(ACTION_DELAY)
+
+        with app.expect_download(timeout=15000) as dl:
+            press_key(app, "Control+s")
+        saved = "/tmp/jasketch-roundtrip.jasketch"
+        dl.value.save_as(saved)
+
+        clear_canvas(app)
+        # index 1 is the .jasketch input; index 0 accepts images
+        app.locator("input[type=file]").nth(1).set_input_files(saved)
+        app.wait_for_timeout(ACTION_DELAY * 6)
+        restored = {e["type"]: e.get("shapeText") for e in get_elements(app)}
+        assert restored.get("rectangle") == "Box A", f"shape label lost: {restored}"
+        assert restored.get("arrow") == "yes", f"connector label lost: {restored}"
+
+
+class TestNoJunkElements:
+    def test_a_bare_click_with_a_shape_tool_creates_nothing(self, app: Page):
+        """A click rather than a drag left an invisible zero-size element behind
+        that could still be selected, counted and exported."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        click_canvas(app, 500, 300)
+        app.wait_for_timeout(ACTION_DELAY)
+        assert get_elements_count(app) == 0
+
+    def test_escape_mid_drag_cancels_the_shape(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        box = get_canvas(app).bounding_box()
+        app.mouse.move(box["x"] + 400, box["y"] + 250)
+        app.mouse.down()
+        app.mouse.move(box["x"] + 560, box["y"] + 350, steps=6)
+        press_key(app, "Escape")
+        app.mouse.up()
+        app.wait_for_timeout(ACTION_DELAY)
+        assert get_elements_count(app) == 0
+
+
+class TestDeletingClearsBindings:
+    def test_deleting_a_shape_unbinds_its_arrows(self, app: Page):
+        """An arrow bound to a deleted shape kept a binding naming a ghost."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 300, 250, 430, 330)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 650, 250, 780, 330)
+        press_key(app, "Escape")
+        press_key(app, "4")
+        drag_canvas(app, 432, 290, 648, 290)
+        wait_for_elements(app, 3)
+        press_key(app, "Escape")
+        click_canvas(app, 710, 290)      # the right-hand box
+        press_key(app, "Delete")
+        app.wait_for_timeout(ACTION_DELAY)
+        arrows = [e for e in get_elements(app) if e["type"] == "arrow"]
+        assert arrows, "the arrow itself should still be there"
+        assert not arrows[0].get("endBinding"), "the binding to the deleted shape was kept"
+
+
+class TestPointerFeedback:
+    """Nothing distinguished "you will move this", "you will resize it" and
+    "you will start a selection box" until after you had committed to it."""
+
+    def _one_shape(self, page: Page):
+        clear_canvas(page)
+        press_key(page, "Escape")
+        press_key(page, "5")
+        drag_canvas(page, 400, 250, 560, 350)
+        wait_for_elements(page, 1)
+        press_key(page, "Escape")
+        press_key(page, "1")
+
+    @staticmethod
+    def _cursor(page: Page) -> str:
+        return page.evaluate("() => getComputedStyle(document.querySelector('canvas')).cursor")
+
+    def _hover(self, page: Page, x: int, y: int):
+        box = get_canvas(page).bounding_box()
+        page.mouse.move(box["x"] + x, box["y"] + y)
+        page.wait_for_timeout(ACTION_DELAY)
+
+    def test_cursor_reflects_what_a_click_would_do(self, app: Page):
+        self._one_shape(app)
+        self._hover(app, 900, 600)
+        empty = self._cursor(app)
+        self._hover(app, 480, 300)
+        over = self._cursor(app)
+        assert over != empty, f"cursor did not change over a shape ({empty})"
+        assert over == "move", f"expected a move cursor over a shape, got {over}"
+
+    def test_cursor_shows_resize_and_rotate_on_the_handles(self, app: Page):
+        self._one_shape(app)
+        click_canvas(app, 480, 300)
+        self._hover(app, 560, 350)
+        assert self._cursor(app) == "nwse-resize", f"corner handle gave {self._cursor(app)}"
+        self._hover(app, 480, 225)
+        assert self._cursor(app) == "grab", f"rotate handle gave {self._cursor(app)}"
+
+    def test_hovering_outlines_the_shape_that_would_be_picked(self, app: Page):
+        self._one_shape(app)
+        click_canvas(app, 950, 620)          # deselect first
+        self._hover(app, 950, 620)
+        away = app.screenshot(clip={"x": 380, "y": 230, "width": 220, "height": 150})
+        self._hover(app, 480, 300)
+        over = app.screenshot(clip={"x": 380, "y": 230, "width": 220, "height": 150})
+        assert over != away, "hovering a shape showed no hint"
+        self._hover(app, 950, 620)
+        assert app.screenshot(clip={"x": 380, "y": 230, "width": 220, "height": 150}) == away, (
+            "the hover outline was left behind after moving away"
+        )
+
+
+class TestInspectorLayout:
+    """The properties panel moved to the right and became part of the layout
+    rather than a card floating over the drawing."""
+
+    def test_the_canvas_is_not_covered_by_the_panel(self, app: Page):
+        """The old left panel sat ON the canvas, so its whole footprint was a
+        dead zone: a mousedown there never reached the drawing surface."""
+        # Arm a drawing tool so there is something to configure -- with select
+        # and nothing selected the inspector is deliberately absent.
+        press_key(app, "Escape")
+        press_key(app, "5")
+        app.wait_for_timeout(ACTION_DELAY)
+        geo = app.evaluate(
+            """() => {
+                const c = document.querySelector('canvas').getBoundingClientRect();
+                const s = document.querySelector('.sidebar');
+                return {cx: c.x, cw: c.width, sx: s ? s.getBoundingClientRect().x : null};
+            }"""
+        )
+        assert geo["cx"] == 0, "the canvas should start at the left edge"
+        assert geo["sx"] is not None, "the inspector should always be present"
+        assert geo["cw"] <= geo["sx"] + 2, "the canvas runs underneath the inspector"
+
+    def test_the_far_left_of_the_canvas_is_drawable(self, app: Page):
+        """This is the dead zone, tested directly."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 60, 300, 200, 400)
+        wait_for_elements(app, 1)
+        assert get_elements_count(app) == 1
+
+    def test_the_inspector_shows_defaults_with_nothing_selected(self, app: Page):
+        """Setting a colour and then drawing has to keep working, which is why
+        this is a permanent panel and not a selection popup."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        inspector = app.locator(".sidebar")
+        expect(inspector).to_be_visible()
+        expect(inspector.get_by_text("Defaults", exact=True)).to_be_visible()
+        swatches = app.evaluate(
+            """() => [...document.querySelectorAll('.sidebar button')]
+                 .filter(b => /^#/.test(b.getAttribute('title') || '')).length"""
+        )
+        assert swatches > 0, "no colour controls with nothing selected"
+
+    def test_collapsing_gives_the_canvas_the_full_width(self, app: Page):
+        """The canvas has to re-measure: folding the panel away changes its
+        container without firing a window resize."""
+        full = app.evaluate("() => innerWidth")
+        app.locator("button[title*='inspector']").click()
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        widened = app.evaluate("() => document.querySelector('canvas').getBoundingClientRect().width")
+        assert abs(widened - full) < 2, f"canvas did not reclaim the space: {widened} of {full}"
+        app.locator("button[title*='inspector']").click()
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        restored = app.evaluate("() => document.querySelector('canvas').getBoundingClientRect().width")
+        assert restored < full, "the inspector did not come back"

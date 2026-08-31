@@ -232,3 +232,6 @@ package-lock.json
 *.session
 *.session.*
 .claude/
+
+# Wheel/sdist output from `jac build --as wheel` in the MCP sub-project
+mcp_server/dist/

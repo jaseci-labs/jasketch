@@ -1,12 +1,12 @@
 """CollaboratorCursors — Render other collaborators' cursors and usernames on the canvas."""
 
-def:pub CollaboratorCursors(cursor_states: dict, zoom: float, pan_x: float, pan_y: float) -> any {
+def:pub CollaboratorCursors(cursor_states: dict, zoom: float, pan_x: float, pan_y: float) -> JsxElement | None {
     if not cursor_states {
         return None;
     }
 
-    cursor_sids: list = Object.keys(cursor_states);
-    if not cursor_sids or cursor_sids.length == 0 {
+    cursor_sids: list = cursor_states.keys();
+    if not cursor_sids or len(cursor_sids) == 0 {
         return None;
     }
 
@@ -34,6 +34,6 @@ def:pub CollaboratorCursors(cursor_states: dict, zoom: float, pan_x: float, pan_
             >
                 {cursor_states[csid].username or "Anonymous"}
             </div>
-        </div> for csid in Object.keys(cursor_states)]}
+        </div> for csid in cursor_states.keys()]}
     </div>;
 }

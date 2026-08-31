@@ -259,7 +259,7 @@ obj CanvasToolProvider {
         return el;
     }
 
-    def _compute_edges(el: dict) -> dict {
+    def _compute_edges(el: dict) -> dict[str, dict[str, float]] {
         el_type: str = el.get("type", "");
         if el_type in ("rectangle", "circle", "diamond", "image") {
             x: float = el.get("x", 0);
@@ -279,12 +279,12 @@ obj CanvasToolProvider {
         };
     }
 
-    def _nearest_edge_points(source: dict, target: dict) -> tuple {
-        source_edges: dict = self._compute_edges(source);
-        target_edges: dict = self._compute_edges(target);
+    def _nearest_edge_points(source: dict, target: dict) -> tuple[dict[str, float], dict[str, float]] {
+        source_edges: dict[str, dict[str, float]] = self._compute_edges(source);
+        target_edges: dict[str, dict[str, float]] = self._compute_edges(target);
         best_dist: float = 999999.0;
-        from_point: dict = {};
-        to_point: dict = {};
+        from_point: dict[str, float] = {};
+        to_point: dict[str, float] = {};
         for from_side in ["top", "bottom", "left", "right"] {
             if from_side not in source_edges { continue; }
             for to_side in ["top", "bottom", "left", "right"] {

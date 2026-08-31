@@ -5,9 +5,11 @@ import from "marked" { marked }
 
 # --- Icon helpers (keeps JSX readable) ---
 
-def ChatIcon(props: dict) -> JsxElement {
-    size = props.size or 16;
-    return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={props.strokeWidth or "2"} strokeLinecap="round" strokeLinejoin="round">
+def ChatIcon(
+    size: float = 16,
+    strokeWidth: any = "2"
+) -> JsxElement {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth or "2"} strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>;
 }
@@ -66,36 +68,49 @@ def inputClass() -> str {
 
 # --- Section components ---
 
-def ChatHeader(props: dict) -> JsxElement {
+def ChatHeader(
+    isConnected: bool,
+    showSettings: bool,
+    onSettingsToggle: Callable[[], None],
+    onClear: Callable[[], None],
+    onClose: Callable[[], None]
+) -> JsxElement {
     return <div className="flex items-center justify-between px-4 py-3 border-b border-orange-100">
         <div className="flex items-center gap-2">
-            <div className={"w-2 h-2 rounded-full " + (props.isConnected and "bg-green-500" or "bg-red-400")}></div>
+            <div className={"w-2 h-2 rounded-full " + (isConnected and "bg-green-500" or "bg-red-400")}></div>
             <span className="text-sm font-semibold text-gray-700">AI Chat</span>
         </div>
         <div className="flex items-center gap-1">
-            <button onClick={props.onSettingsToggle} title="Settings" className={headerBtnClass(props.showSettings)}>
+            <button onClick={onSettingsToggle} title="Settings" className={headerBtnClass(showSettings)}>
                 <GearIcon />
             </button>
-            <button onClick={props.onClear} title="Clear chat" className={headerBtnClass(False)}>
+            <button onClick={onClear} title="Clear chat" className={headerBtnClass(False)}>
                 <TrashIcon />
             </button>
-            <button onClick={props.onClose} title="Close chat" className={headerBtnClass(False)}>
+            <button onClick={onClose} title="Close chat" className={headerBtnClass(False)}>
                 <CloseIcon />
             </button>
         </div>
     </div>;
 }
 
-def ChatSettings(props: dict) -> JsxElement {
-    stopProp = lambda e: any -> None { e.stopPropagation(); };
+def ChatSettings(
+    apiKey: str,
+    selectedModel: str,
+    modelOptions: list,
+    onApiKeyChange: Callable[[str], None],
+    onModelChange: Callable[[str], None],
+    onConfigure: Callable[[], None]
+) -> JsxElement {
+    stopProp = lambda (e: any) { e.stopPropagation(); };
 
     return <div className="px-4 py-3 border-b border-orange-100 bg-orange-100/40 animate-fade-in">
         <div className="mb-3">
             <span className="sidebar-label">API Key</span>
             <input
                 type="password"
-                value={props.apiKey}
-                onChange={lambda e: any -> None { props.onApiKeyChange(e.target.value); }}
+                value={apiKey}
+                onChange={lambda (e: any) { onApiKeyChange(e.target.value); }}
                 onKeyDown={stopProp}
                 placeholder="sk-... or anthropic key..."
                 className={inputClass()}
@@ -104,19 +119,19 @@ def ChatSettings(props: dict) -> JsxElement {
         <div className="mb-3">
             <span className="sidebar-label">Model</span>
             <select
-                value={props.selectedModel}
-                onChange={lambda e: any -> None { props.onModelChange(e.target.value); }}
+                value={selectedModel}
+                onChange={lambda (e: any) { onModelChange(e.target.value); }}
                 onKeyDown={stopProp}
                 className={inputClass() + " cursor-pointer"}
             >
                 {[
                     <option key={opt.id} value={opt.id}>{opt.label}</option>
-                    for opt in props.modelOptions
+                    for opt in modelOptions
                 ]}
             </select>
         </div>
         <button
-            onClick={props.onConfigure}
+            onClick={onConfigure}
             className="w-full py-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors cursor-pointer"
         >
             {"Configure"}
@@ -134,8 +149,9 @@ def ChatEmptyState() -> JsxElement {
     </div>;
 }
 
-def ChatMessage(props: dict) -> JsxElement {
-    msg = props.msg;
+def ChatMessage(
+    msg: any
+) -> JsxElement {
 
     if msg.role == "user" {
         return <div className="flex justify-end">
@@ -151,7 +167,7 @@ def ChatMessage(props: dict) -> JsxElement {
         </div>;
     }
     if msg.role == "tool" {
-        statusClass = msg.status == "running" and "bg-blue-50 text-blue-500" or "bg-green-50 text-green-600";
+        statusClass = msg.status == "running" and "bg-orange-50 text-orange-600" or "bg-emerald-50 text-emerald-600";
         return <div className="flex justify-center">
             <div className={"chat-msg-tool px-2.5 py-1 rounded-full text-[10px] font-medium " + statusClass}>
                 {msg.status == "running" and "... " or ""}{msg.content}
@@ -168,25 +184,29 @@ def ChatMessage(props: dict) -> JsxElement {
     return <></>;
 }
 
-def ChatToast(props: dict) -> JsxElement {
-    if not props.msg { return <></>; }
-    colorClass = props.type == "success" and "bg-green-500" or "bg-red-500";
+def ChatToast(
+    msg: str,
+    type: str
+) -> JsxElement {
+    if not msg { return <></>; }
+    colorClass = type == "success" and "bg-green-500" or "bg-red-500";
     return <div className={"chat-toast fixed bottom-20 right-4 z-50 px-4 py-2 rounded-xl text-white text-xs font-medium shadow-lg " + colorClass}>
-        {props.msg}
+        {msg}
     </div>;
 }
 
-def CanvasConfirmModal(props: dict) -> JsxElement {
-    pending = props.pending;
-    onApprove = props.onApprove;
-    onDeny = props.onDeny;
+def CanvasConfirmModal(
+    pending: any,
+    onApprove: Callable[[], None],
+    onDeny: Callable[[], None]
+) -> JsxElement {
     if not pending or not pending.confirmId {
         return <></>;
     }
-    return <div className="flex-shrink-0 border-t border-amber-200/40 bg-amber-50 px-4 py-3">
+    return <div className="flex-shrink-0 border-t border-slate-900/[0.07] bg-white/60 px-4 py-3">
         <div className="flex items-start gap-3">
             <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-amber-600 mb-1">Canvas Confirmation</p>
+                <p className="text-xs font-semibold text-slate-700 mb-1">Canvas Confirmation</p>
                 <p className="text-xs text-gray-700 mb-3">{pending.message}</p>
                 <div className="flex gap-2">
                     <button onClick={onApprove}
@@ -203,30 +223,38 @@ def CanvasConfirmModal(props: dict) -> JsxElement {
     </div>;
 }
 
-def ChatInput(props: dict) -> JsxElement {
-    canSend = props.apiKey and props.inputText.trim() and not props.isLoading;
-    isDisabled = not props.apiKey or props.isLoading;
+def ChatInput(
+    inputRef: any,
+    inputText: str,
+    apiKey: str,
+    isLoading: bool,
+    onChange: Callable[[ChangeEvent], None],
+    onKeyDown: Callable[[KeyboardEvent], None],
+    onSend: Callable[[], None]
+) -> JsxElement {
+    canSend = apiKey and inputText.strip() and not isLoading;
+    isDisabled = not apiKey or isLoading;
 
     return <div className="px-4 py-3 border-t border-orange-100">
-        {not props.apiKey and <p className="text-[10px] text-amber-500 mb-2 flex items-center gap-1">
+        {not apiKey and <p className="text-[10px] text-orange-600 mb-2 flex items-center gap-1">
             <WarnIcon />
             {"Set your API key in settings to start"}
         </p> or None}
         <div className="flex items-end gap-2">
             <textarea
-                ref={props.inputRef}
-                value={props.inputText}
-                onChange={props.onChange}
-                onKeyDown={props.onKeyDown}
-                placeholder={props.apiKey and "Ask AI to draw..." or "Set API key first..."}
+                ref={inputRef}
+                value={inputText}
+                onChange={onChange}
+                onKeyDown={onKeyDown}
+                placeholder={apiKey and "Ask AI to draw..." or "Set API key first..."}
                 disabled={isDisabled}
-                rows="1"
+                rows={1}
                 className="chat-input flex-1 px-3 py-2 text-xs rounded-xl border border-gray-200 bg-gray-50 resize-none outline-none focus:border-orange-300 focus:ring-1 focus:ring-orange-200 focus:bg-white disabled:opacity-50 disabled:cursor-not-allowed max-h-[100px] transition-all"
             />
             <button
-                onClick={props.onSend}
+                onClick={onSend}
                 disabled={not canSend}
-                className="w-9 h-9 rounded-xl flex items-center justify-center bg-orange-500 text-white hover:bg-orange-600 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all duration-150 flex-shrink-0"
+                className="w-9 h-9 rounded-xl flex items-center justify-center bg-orange-500 text-white hover:bg-orange-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed transition-all duration-150 flex-shrink-0"
                 title="Send message"
             >
                 <SendIcon />
@@ -238,9 +266,12 @@ def ChatInput(props: dict) -> JsxElement {
 
 # --- Main component ---
 
-def:pub ChatPanel(props: dict) -> JsxElement {
-    isOpen = props.isOpen;
-    onToggle = props.onToggle;
+def:pub ChatPanel(
+    isOpen: bool,
+    onToggle: Callable[[], None],
+    elementsRef: any,
+    setElementsRef: any
+) -> JsxElement {
 
     has apiKey: str = "";
     has selectedModel: str = "gpt-4o-mini";
@@ -250,7 +281,16 @@ def:pub ChatPanel(props: dict) -> JsxElement {
     has toastMsg: str = "";
     has toastType: str = "success";
 
-    chat = useChatSocket();
+    # The agent works on a server-side copy of the canvas, so the panel is the
+    # one that hands it over and applies what comes back (see agent/chat.jac).
+    chat = useChatSocket(
+        lambda () -> list { return elementsRef.current or []; },
+        lambda (els: list) {
+            if setElementsRef.current {
+                setElementsRef.current(els);
+            }
+        }
+    );
     messagesEndRef = useRef(None);
     inputRef = useRef(None);
 
@@ -289,7 +329,7 @@ def:pub ChatPanel(props: dict) -> JsxElement {
     # Focus input when panel opens
     can with [isOpen] entry {
         if isOpen and inputRef.current {
-            setTimeout(lambda -> None {
+            setTimeout(lambda {
                 if inputRef.current { inputRef.current.focus(); }
             }, 150);
         }
@@ -319,7 +359,7 @@ def:pub ChatPanel(props: dict) -> JsxElement {
     }
 
     def handleSend() -> None {
-        text = inputText.trim();
+        text = inputText.strip();
         if not text or not apiKey or chat.isLoading { return; }
         chat.sendMessage(apiKey, selectedModel, text);
         inputText = "";
@@ -337,7 +377,7 @@ def:pub ChatPanel(props: dict) -> JsxElement {
     if not isOpen {
         return <button
             onClick={onToggle}
-            className="fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full bg-orange-500 hover:bg-orange-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center"
+            className="absolute bottom-6 right-6 z-30 w-12 h-12 rounded-full bg-orange-500 hover:bg-orange-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center"
             title="Open AI Chat"
         >
             <ChatIcon size={22} />
@@ -346,13 +386,13 @@ def:pub ChatPanel(props: dict) -> JsxElement {
 
 
     # Open state: full panel
-    return <div className="chat-panel fixed right-0 top-[44px] bottom-0 w-[380px] z-40 bg-orange-50/95 backdrop-blur-xl border-l border-orange-100/60 shadow-xl flex flex-col animate-slide-in-right">
+    return <div className="chat-panel fixed right-0 top-[44px] bottom-0 w-[380px] z-40 bg-white/75 backdrop-blur-2xl border-l border-slate-900/[0.07] shadow-xl flex flex-col animate-slide-in-right">
 
         <ChatHeader
             isConnected={chat.isConnected}
             showSettings={showSettings}
-            onSettingsToggle={lambda -> None { showSettings = not showSettings; }}
-            onClear={lambda -> None { chat.clearMessages(); }}
+            onSettingsToggle={lambda { showSettings = not showSettings; }}
+            onClear={lambda { chat.clearMessages(); }}
             onClose={onToggle}
         />
 
@@ -369,7 +409,7 @@ def:pub ChatPanel(props: dict) -> JsxElement {
             {chat.messages.length == 0 and <ChatEmptyState /> or None}
 
             {[
-                <div key={String(msg.id)}>
+                <div key={str(msg.id)}>
                     <ChatMessage msg={msg} />
                 </div>
                 for msg in chat.messages
@@ -387,8 +427,8 @@ def:pub ChatPanel(props: dict) -> JsxElement {
 
         <CanvasConfirmModal
             pending={chat.pendingConfirm}
-            onApprove={lambda -> None { chat.respondConfirm("ok"); }}
-            onDeny={lambda -> None { chat.respondConfirm("deny"); }}
+            onApprove={lambda { chat.respondConfirm("ok"); }}
+            onDeny={lambda { chat.respondConfirm("deny"); }}
         />
 
         <ChatInput
@@ -396,7 +436,7 @@ def:pub ChatPanel(props: dict) -> JsxElement {
             inputText={inputText}
             isLoading={chat.isLoading}
             inputRef={inputRef}
-            onChange={lambda e: any -> None { inputText = e.target.value; }}
+            onChange={lambda (e: any) { inputText = e.target.value; }}
             onKeyDown={handleKeyDown}
             onSend={handleSend}
         />

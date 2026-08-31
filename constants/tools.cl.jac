@@ -12,6 +12,11 @@ def:pub TOOLS() -> list {
     ];
 }
 
+"""Single-key tool shortcuts, in toolbar order.
+
+Digits only, deliberately. Letter mnemonics were tried and pulled back out:
+JaSketch picks its own scheme rather than inheriting another tool's, and one
+scheme that is true everywhere beats two that have to be kept in agreement."""
 def:pub TOOL_SHORTCUTS() -> dict {
     return {
         "1": "select",

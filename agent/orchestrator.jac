@@ -24,16 +24,16 @@ Routing flow:
     → next_step=SYNTHESIZE → send decision.summary, visit DiagramComposer
 """
 
-import asyncio;
 import json;
-import os;
 import sys;
 import threading;
-import time;
 import uuid;
 
-import from jasketch_mcp.canvas_tool_provider { CanvasToolProvider }
 import from typing { Any }
+import from .canvas_mirror { CanvasMirror }
+# The tool surface lives with the MCP package, which publishes it to PyPI;
+# one definition, so the agent and the bridge can never drift apart.
+import from mcp_server.jasketch_mcp_server.canvas_tools { CanvasToolProvider }
 import from .session { SessionContext }
 import from .subagents {
     RouteTag,
@@ -47,31 +47,27 @@ import from .subagents {
     DiagramComposer,
     DiagramEditor
 }
+import from .subagents.router { parse_route_decision }
+import from .subagents.planner { parse_planner_decision }
 import from .subagents.synthesizer { _set_composer_provider }
 import from .subagents.refiner { _set_editor_provider }
 import from .llm_factory { create_llm }
 
 # ── Globals ────────────────────────────────────────────────────────────────────
 
-glob RELAY_URL: str = os.environ.get("JASKETCH_RELAY_URL", "ws://localhost:9601");
-glob REQUEST_TIMEOUT: float = 40.0;
-
-# WebSocket relay state (same pattern as MCP server)
 glob _lock = threading.Lock();
-glob _ws: Any = None;
-glob _connected: bool = False;
-glob _pending: dict[str, Any] = {};
-glob _pending_confirms: dict[str, Any] = {};
-glob _relay_loop: Any = None;
-glob _relay_ready: Any = threading.Event();
 
-# Agent singletons (typed Any to avoid annotation-eval NameError at spawn time;
-# visit dispatch uses actual runtime type so abilities still fire correctly)
-glob _intent_router: Any = None;
-glob _diagram_planner: Any = None;
-glob _diagram_analyst: Any = None;
-glob _diagram_composer: Any = None;
-glob _diagram_editor: Any = None;
+# Confirmations in flight. The orchestrator runs on a worker thread and blocks on
+# the Event while the browser's answer arrives as a SEPARATE request, which
+# resolves it -- see resolve_confirm() in agent/chat.jac.
+glob _pending_confirms: dict[str, tuple[Any, dict]] = {};
+
+# Agent singletons, one per archetype, hung off root on first use.
+glob _intent_router: IntentRouter | None = None;
+glob _diagram_planner: DiagramPlanner | None = None;
+glob _diagram_analyst: DiagramAnalyst | None = None;
+glob _diagram_composer: DiagramComposer | None = None;
+glob _diagram_editor: DiagramEditor | None = None;
 
 # Session context cache (ephemeral, per user lifetime)
 glob _sessions: dict[str, SessionContext] = {};
@@ -83,123 +79,20 @@ def log(msg: str) -> None {
 
 # ── Session management ──────────────────────────────────────────────────────────
 
-def _find_or_create_session(session_id: str) -> SessionContext {
-    import from .session { SessionContext }
+def _find_or_create_session(anchor: Root, session_id: str) -> SessionContext {
     if session_id not in _sessions {
         ctx: SessionContext = SessionContext();
         ctx.session_id = session_id;
-        root() ++> ctx;
+        anchor ++> ctx;
         _sessions[session_id] = ctx;
     }
     return _sessions[session_id];
 }
 
 
-# ── Relay connection (reuse MCP pattern) ──────────────────────────────────────
-
-async def _connect_to_relay() -> None {
-    global _ws, _connected;
-    import websockets;
-
-    while True {
-        try {
-            async with websockets.connect(RELAY_URL, compression=None) as ws {
-                _ws = ws;
-                _connected = True;
-                log(f"Connected to relay at {RELAY_URL}");
-                await ws.send(json.dumps({"role": "controller"}));
-
-                async for raw in ws {
-                    try {
-                        msg: dict[str, Any] = json.loads(raw);
-                        request_id: str = msg.get("requestId", "");
-                        entry: Any = None;
-                        with _lock {
-                            entry = _pending.pop(request_id, None);
-                        }
-                        if entry is not None {
-                            (evt, res) = entry;
-                            if msg.get("success") {
-                                res["data"] = msg.get("data");
-                            } else {
-                                res["error"] = msg.get("error", "Unknown error");
-                            }
-                            evt.set();
-                        }
-                    } except Exception as error {
-                        log(f"Bad message: {error}");
-                    }
-                }
-            }
-        } except Exception as error {
-            log(f"Relay connection error: {error}");
-        }
-
-        _ws = None;
-        _connected = False;
-        log("Disconnected from relay, reconnecting in 3s...");
-        await asyncio.sleep(3);
-    }
-}
-
-def _start_relay_thread() -> None {
-    global _relay_loop;
-    _relay_loop = asyncio.new_event_loop();
-    asyncio.set_event_loop(_relay_loop);
-    _relay_ready.set();
-    _relay_loop.run_until_complete(_connect_to_relay());
-}
-
-def _send_command(action: str, data: dict | None = None, session_id: str = "", timeout: float | None = None) -> Any {
-    if (not _connected) or (_ws is None) {
-        raise Exception(f"Not connected to relay at {RELAY_URL}");
-    }
-    if not _relay_ready.wait(timeout=5) {
-        raise Exception("Relay event loop not ready");
-    }
-
-    request_id: str = str(uuid.uuid4());
-    evt: Any = threading.Event();
-    res: dict[str, Any] = {};
-
-    with _lock {
-        _pending[request_id] = (evt, res);
-    }
-
-    payload: str = json.dumps({
-        "role": "controller",
-        "requestId": request_id,
-        "sessionId": session_id,
-        "action": action,
-        "data": data if data is not None else {}
-    });
-
-    try {
-        future: Any = asyncio.run_coroutine_threadsafe(_ws.send(payload), _relay_loop);
-        future.result(timeout=5);
-    } except Exception as error {
-        with _lock {
-            _pending.pop(request_id, None);
-        }
-        raise Exception(f"Failed to send command: {error}");
-    }
-
-    effective_timeout: float = timeout if timeout is not None else REQUEST_TIMEOUT;
-    if not evt.wait(timeout=effective_timeout) {
-        with _lock {
-            _pending.pop(request_id, None);
-        }
-        raise Exception(f"Request timed out ({effective_timeout}s)");
-    }
-
-    if "error" in res {
-        raise Exception(res["error"]);
-    }
-    return res.get("data");
-}
 """Resolve a pending confirmation via chat WebSocket (called from server.jac)."""
 def _resolve_confirm(confirm_id: str, result: str) -> None {
-    entry: Any = None;
+    entry: tuple[Any, dict] | None = None;
     with _lock {
         entry = _pending_confirms.pop(confirm_id, None);
     }
@@ -210,15 +103,15 @@ def _resolve_confirm(confirm_id: str, result: str) -> None {
     }
 }
 
-"""Send confirmation request via chat WebSocket and wait for response (max 60s)."""
-def _chat_confirm(ws: Any, event_loop: Any, session_id: str, message: str) -> str {
+"""Ask the browser a yes/no question and block until it answers (max 60s)."""
+def _chat_confirm(sink: Any, session_id: str, message: str) -> str {
     confirm_id: str = str(uuid.uuid4());
     evt: Any = threading.Event();
     res: dict = {};
     with _lock {
         _pending_confirms[confirm_id] = (evt, res);
     }
-    _send_ws(ws, {"type": "confirm", "sessionId": session_id, "confirmId": confirm_id, "message": message}, event_loop);
+    _emit(sink, {"type": "confirm", "sessionId": session_id, "confirmId": confirm_id, "message": message});
     if not evt.wait(timeout=60.0) {
         with _lock {
             _pending_confirms.pop(confirm_id, None);
@@ -246,15 +139,14 @@ def _check_canvas_empty(provider: CanvasToolProvider) -> bool {
 }
 
 
-# ── WebSocket send helper ─────────────────────────────────────────────────────
+# ── Frame sink ────────────────────────────────────────────────────────────────
 
-"""Send JSON message to WebSocket asynchronously from thread context."""
-def _send_ws(ws: Any, msg: dict[str, str], event_loop: Any) -> None {
+"""Hand one progress frame to the streaming endpoint draining this turn."""
+def _emit(sink: Any, msg: dict[str, Any]) -> None {
     try {
-        future: Any = asyncio.run_coroutine_threadsafe(ws.send(json.dumps(msg)), event_loop);
-        future.result(timeout=5);
+        sink.put(msg);
     } except Exception as error {
-        log(f"WebSocket send error: {error}");
+        log(f"Frame sink error: {error}");
     }
 }
 
@@ -266,8 +158,12 @@ walker AgentOrchestrator {
     has message: str;
     has api_key: str;
     has model: str;
-    has ws: Any;
-    has event_loop: Any;
+    has sink: Any;
+    has canvas: CanvasMirror;
+    # The graph node the agent singletons and session contexts hang off. Passed
+    # in rather than read from the ambient `root` because the turn runs on a
+    # worker thread, off the request that started it.
+    has anchor: Root;
 
     # Context state (populated during traversal)
     has _provider: CanvasToolProvider | None = None;
@@ -275,15 +171,13 @@ walker AgentOrchestrator {
 
     can init_context with Root entry {
         # Find or create SessionContext for this session
-        self._provider = CanvasToolProvider(
-            send_fn=lambda (action: str, data: dict[str, Any]) -> Any {return _send_command(action, data, self.session_id);}
-        );
+        self._provider = CanvasToolProvider(send_fn=self.canvas.handle);
 
         # Find or create session context (persists across turns)
-        self._session_context = _find_or_create_session(self.session_id);
+        self._session_context = _find_or_create_session(self.anchor, self.session_id);
 
         # Ensure agent singletons exist
-        _ensure_agent_singletons(self.api_key, self.model);
+        _ensure_agent_singletons(self.anchor, self.api_key, self.model);
 
         # Pre-routing: handle clear canvas directly without LLM
         msg_lower: str = self.message.lower();
@@ -307,8 +201,8 @@ walker AgentOrchestrator {
                 self._session_context.append_turn("user", self.message);
                 self._session_context.append_turn("router", "Canvas cleared.");
             }
-            _send_ws(self.ws, {"type": "message", "sessionId": self.session_id, "content": "Canvas cleared."}, self.event_loop);
-            _send_ws(self.ws, {"type": "done", "sessionId": self.session_id}, self.event_loop);
+            _emit(self.sink, {"type": "message", "sessionId": self.session_id, "content": "Canvas cleared."});
+            _emit(self.sink, {"type": "done", "sessionId": self.session_id});
             return;
         }
 
@@ -326,23 +220,25 @@ walker AgentOrchestrator {
 
         # Call IntentRouter LLM — returns typed RouteDecision
         log("route_intent: calling IntentRouter");
-        _send_ws(self.ws, {"type": "agent_start", "sessionId": self.session_id, "agent": "Routing"}, self.event_loop);
-        decision: RouteDecision = _intent_router.handle(
-            self.message,
-            self._session_context.conversation_log,
-            has_blueprint,
-            self._session_context.canvas_summary
+        _emit(self.sink, {"type": "agent_start", "sessionId": self.session_id, "agent": "Routing"});
+        decision: RouteDecision = parse_route_decision(
+            _intent_router.handle(
+                self.message,
+                self._session_context.conversation_log,
+                has_blueprint,
+                self._session_context.canvas_summary
+            )
         );
         log(f"route_intent: route = {decision.route}");
-        _send_ws(self.ws, {"type": "agent_done", "sessionId": self.session_id, "agent": "Routing"}, self.event_loop);
+        _emit(self.sink, {"type": "agent_done", "sessionId": self.session_id, "agent": "Routing"});
 
         # Append user message to context
         self._session_context.append_turn("user", self.message);
 
         if decision.route == RouteTag.NO_ROUTE {
             self._session_context.append_turn("router", decision.reply);
-            _send_ws(self.ws, {"type": "message", "sessionId": self.session_id, "content": decision.reply}, self.event_loop);
-            _send_ws(self.ws, {"type": "done", "sessionId": self.session_id}, self.event_loop);
+            _emit(self.sink, {"type": "message", "sessionId": self.session_id, "content": decision.reply});
+            _emit(self.sink, {"type": "done", "sessionId": self.session_id});
             log("route_intent: NO_ROUTE, done");
         } elif decision.route == RouteTag.ROUTE_PLAN {
             if _diagram_planner is not None { visit _diagram_planner; }
@@ -355,8 +251,8 @@ walker AgentOrchestrator {
         } else {
             # Fallback — treat as NO_ROUTE
             log(f"route_intent: unhandled route {decision.route}, sending fallback");
-            _send_ws(self.ws, {"type": "message", "sessionId": self.session_id, "content": decision.reply}, self.event_loop);
-            _send_ws(self.ws, {"type": "done", "sessionId": self.session_id}, self.event_loop);
+            _emit(self.sink, {"type": "message", "sessionId": self.session_id, "content": decision.reply});
+            _emit(self.sink, {"type": "done", "sessionId": self.session_id});
         }
     }
 
@@ -366,14 +262,16 @@ walker AgentOrchestrator {
 
         log("build_blueprint: calling DiagramPlanner");
 
-        _send_ws(self.ws, {"type": "agent_start", "sessionId": self.session_id, "agent": "Planning"}, self.event_loop);
+        _emit(self.sink, {"type": "agent_start", "sessionId": self.session_id, "agent": "Planning"});
         # Call DiagramPlanner LLM — returns typed PlannerDecision
-        decision: PlannerDecision = _diagram_planner.reason(
-            self.message,
-            self._session_context.conversation_log
+        decision: PlannerDecision = parse_planner_decision(
+            _diagram_planner.reason(
+                self.message,
+                self._session_context.conversation_log
+            )
         );
         log(f"build_blueprint: next_step = {decision.next_step}");
-        _send_ws(self.ws, {"type": "agent_done", "sessionId": self.session_id, "agent": "Planning"}, self.event_loop);
+        _emit(self.sink, {"type": "agent_done", "sessionId": self.session_id, "agent": "Planning"});
 
         # Persist blueprint to session if one was produced
         if decision.blueprint is not None {
@@ -389,13 +287,13 @@ walker AgentOrchestrator {
         }
 
         self._session_context.append_turn("planner", decision.summary);
-        _send_ws(self.ws, {"type": "message", "sessionId": self.session_id, "content": decision.summary}, self.event_loop);
+        _emit(self.sink, {"type": "message", "sessionId": self.session_id, "content": decision.summary});
 
         if decision.next_step == PlannerNextStep.SYNTHESIZE {
             log("build_blueprint: chaining to DiagramComposer");
             if _diagram_composer is not None { visit _diagram_composer; }
         } else {
-            _send_ws(self.ws, {"type": "done", "sessionId": self.session_id}, self.event_loop);
+            _emit(self.sink, {"type": "done", "sessionId": self.session_id});
             log("build_blueprint: done");
         }
     }
@@ -417,8 +315,7 @@ walker AgentOrchestrator {
         if not canvas_empty {
             # Canvas non-empty: request confirmation via chat
             confirm_result: str = _chat_confirm(
-                self.ws,
-                self.event_loop,
+                self.sink,
                 self.session_id,
                 "Canvas is not empty. **Approve** to clear it and render the new diagram, or **Deny** to place it beside the existing content."
             );
@@ -464,7 +361,7 @@ walker AgentOrchestrator {
 
         if _diagram_composer is None { return; }
 
-        _send_ws(self.ws, {"type": "agent_start", "sessionId": self.session_id, "agent": "Synthesizing"}, self.event_loop);
+        _emit(self.sink, {"type": "agent_start", "sessionId": self.session_id, "agent": "Synthesizing"});
         # Call DiagramComposer LLM
         response: str = _diagram_composer.compose(
             self.message,
@@ -475,13 +372,13 @@ walker AgentOrchestrator {
             existing_bounding_box
         );
         log(f"compose_diagram: response = {response[:80]}");
-        _send_ws(self.ws, {"type": "agent_done", "sessionId": self.session_id, "agent": "Synthesizing"}, self.event_loop);
+        _emit(self.sink, {"type": "agent_done", "sessionId": self.session_id, "agent": "Synthesizing"});
 
         self._session_context.clear_diagram_blueprint();
         self._session_context.canvas_summary = "non-empty";
         self._session_context.append_turn("composer", response);
-        _send_ws(self.ws, {"type": "message", "sessionId": self.session_id, "content": response}, self.event_loop);
-        _send_ws(self.ws, {"type": "done", "sessionId": self.session_id}, self.event_loop);
+        _emit(self.sink, {"type": "message", "sessionId": self.session_id, "content": response});
+        _emit(self.sink, {"type": "done", "sessionId": self.session_id});
         log("compose_diagram: done");
     }
 
@@ -492,7 +389,7 @@ walker AgentOrchestrator {
 
         log("explain_canvas: starting DiagramAnalyst");
 
-        _send_ws(self.ws, {"type": "agent_start", "sessionId": self.session_id, "agent": "Analyzing"}, self.event_loop);
+        _emit(self.sink, {"type": "agent_start", "sessionId": self.session_id, "agent": "Analyzing"});
         # Pre-fetch canvas elements directly (same pattern as _check_canvas_empty)
         canvas_elements_json: str = '{"elements":[],"total":0}';
         try {
@@ -508,11 +405,11 @@ walker AgentOrchestrator {
             canvas_elements_json
         );
         log(f"explain_canvas: response = {response[:80]}");
-        _send_ws(self.ws, {"type": "agent_done", "sessionId": self.session_id, "agent": "Analyzing"}, self.event_loop);
+        _emit(self.sink, {"type": "agent_done", "sessionId": self.session_id, "agent": "Analyzing"});
 
         self._session_context.append_turn("analyst", response);
-        _send_ws(self.ws, {"type": "message", "sessionId": self.session_id, "content": response}, self.event_loop);
-        _send_ws(self.ws, {"type": "done", "sessionId": self.session_id}, self.event_loop);
+        _emit(self.sink, {"type": "message", "sessionId": self.session_id, "content": response});
+        _emit(self.sink, {"type": "done", "sessionId": self.session_id});
         log("explain_canvas: done");
     }
 
@@ -524,17 +421,17 @@ walker AgentOrchestrator {
         log("edit_canvas: starting DiagramEditor");
         _set_editor_provider(self._provider);
 
-        _send_ws(self.ws, {"type": "agent_start", "sessionId": self.session_id, "agent": "Editing"}, self.event_loop);
+        _emit(self.sink, {"type": "agent_start", "sessionId": self.session_id, "agent": "Editing"});
         response: str = _diagram_editor.revise(
             self.message,
             self._session_context.conversation_log
         );
         log(f"edit_canvas: response = {response[:80]}");
-        _send_ws(self.ws, {"type": "agent_done", "sessionId": self.session_id, "agent": "Editing"}, self.event_loop);
+        _emit(self.sink, {"type": "agent_done", "sessionId": self.session_id, "agent": "Editing"});
 
         self._session_context.append_turn("editor", response);
-        _send_ws(self.ws, {"type": "message", "sessionId": self.session_id, "content": response}, self.event_loop);
-        _send_ws(self.ws, {"type": "done", "sessionId": self.session_id}, self.event_loop);
+        _emit(self.sink, {"type": "message", "sessionId": self.session_id, "content": response});
+        _emit(self.sink, {"type": "done", "sessionId": self.session_id});
         log("edit_canvas: done");
     }
 }
@@ -543,84 +440,79 @@ walker AgentOrchestrator {
 # ── Helper functions ──────────────────────────────────────────────────────────
 
 """Create agent singleton nodes (idempotent)."""
-def _ensure_agent_singletons(api_key: str, model_name: str) -> None {
-    global _intent_router, _diagram_planner, _diagram_analyst, _diagram_composer, _diagram_editor;
+def _ensure_agent_singletons(anchor: Root, api_key: str, model_name: str) -> None {
 
-    root_node: Any = root();
     llm_model: Any = create_llm(model_name, api_key);
 
     if _intent_router is None {
         new_ir: IntentRouter = IntentRouter(model=model_name, api_key=api_key);
         _intent_router = new_ir;
-        root_node ++> new_ir;
+        anchor ++> new_ir;
     }
     _intent_router.llm = llm_model;
 
     if _diagram_planner is None {
         new_dp: DiagramPlanner = DiagramPlanner(model=model_name, api_key=api_key);
         _diagram_planner = new_dp;
-        root_node ++> new_dp;
+        anchor ++> new_dp;
     }
     _diagram_planner.llm = llm_model;
 
     if _diagram_analyst is None {
         new_da: DiagramAnalyst = DiagramAnalyst(model=model_name, api_key=api_key);
         _diagram_analyst = new_da;
-        root_node ++> new_da;
+        anchor ++> new_da;
     }
     _diagram_analyst.llm = llm_model;
 
     if _diagram_composer is None {
         new_dc: DiagramComposer = DiagramComposer(model=model_name, api_key=api_key);
         _diagram_composer = new_dc;
-        root_node ++> new_dc;
+        anchor ++> new_dc;
     }
     _diagram_composer.llm = llm_model;
 
     if _diagram_editor is None {
         new_de: DiagramEditor = DiagramEditor(model=model_name, api_key=api_key);
         _diagram_editor = new_de;
-        root_node ++> new_de;
+        anchor ++> new_de;
     }
     _diagram_editor.llm = llm_model;
 }
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
-"""Run a single conversation turn via AgentOrchestrator."""
-def _run_conversation(session_id: str, message: str, api_key: str, model: str, ws: Any, event_loop: Any) -> None {
-    log(f"Running conversation for session {session_id}: {message[:50]}");
 
+"""Run one conversation turn against `canvas`, streaming frames into `sink`.
+
+Runs on a worker thread: the LLM calls are blocking, and the endpoint draining
+`sink` needs to keep yielding while they are in flight."""
+def run_conversation(
+    session_id: str,
+    message: str,
+    api_key: str,
+    model: str,
+    sink: Any,
+    canvas: CanvasMirror,
+    anchor: Root
+) -> None {
+    log(f"Running conversation for session {session_id}: {message[:50]}");
     try {
         # Spawn walker on root — triggers init_context ability and graph traversal
-        root() spawn AgentOrchestrator(
+        anchor spawn AgentOrchestrator(
             session_id=session_id,
             message=message,
             api_key=api_key,
             model=model,
-            ws=ws,
-            event_loop=event_loop
+            sink=sink,
+            canvas=canvas,
+            anchor=anchor
         );
     } except Exception as e {
         import traceback;
-        log(f"ERROR in _run_conversation: {e}");
+        log(f"ERROR in run_conversation: {e}");
         log(traceback.format_exc());
-        # Try to send error to client
-        try {
-            future: Any = asyncio.run_coroutine_threadsafe(
-                ws.send(json.dumps({"type": "error", "sessionId": session_id, "message": str(e)})),
-                event_loop
-            );
-            future.result(timeout=5);
-        } except Exception { _ = None; }
+        _emit(sink, {"type": "error", "sessionId": session_id, "message": str(e)});
+        _emit(sink, {"type": "done", "sessionId": session_id});
     }
-}
-
-"""Boot the orchestrator and start relay connection."""
-def _boot() -> None {
-    log("Starting orchestrator");
-    relay_thread: Any = threading.Thread(target=_start_relay_thread, daemon=True);
-    relay_thread.start();
-    _relay_ready.wait(timeout=5);
-    log("Orchestrator ready");
 }

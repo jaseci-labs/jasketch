@@ -1,6 +1,6 @@
-def:pub ShortcutHelp(props: dict) -> JsxElement {
-    def _noop() -> None {}
-    onClose = props.onClose or _noop;
+import from react { useEffect }
+
+def:pub ShortcutHelp(onClose: Callable[[], None]) -> JsxElement {
 
     toolShortcuts = [
         {"action": "Hand (pan)", "key": "Space"},
@@ -13,6 +13,7 @@ def:pub ShortcutHelp(props: dict) -> JsxElement {
         {"action": "Ellipse", "key": "7"},
         {"action": "Text", "key": "8"},
         {"action": "Image", "key": "9"},
+        {"action": "Keep tool selected", "key": "Q"},
     ];
 
     editorShortcuts = [
@@ -32,6 +33,10 @@ def:pub ShortcutHelp(props: dict) -> JsxElement {
         {"action": "Zoom in", "key": "Ctrl++"},
         {"action": "Zoom out", "key": "Ctrl+-"},
         {"action": "Reset zoom", "key": "Ctrl+0"},
+        {"action": "Zoom to fit", "key": "Shift+1"},
+        {"action": "Nudge selection", "key": "Arrow keys"},
+        {"action": "Nudge by 10px", "key": "Shift+Arrow"},
+        {"action": "Constrain / keep proportions", "key": "Hold Shift"},
         {"action": "Reset canvas", "key": "Ctrl+Delete"},
         {"action": "Increase font size", "key": "Ctrl+Shift+>"},
         {"action": "Decrease font size", "key": "Ctrl+Shift+<"},
@@ -41,24 +46,28 @@ def:pub ShortcutHelp(props: dict) -> JsxElement {
         {"action": "Keyboard shortcuts", "key": "?"},
     ];
 
-    def handleBackdropClick(e: dict) -> None {
+    def handleBackdropClick(e: MouseEvent) -> None {
         if e.target == e.currentTarget {
             onClose();
         }
     }
 
-    def handleEscape(e: dict) -> None {
+    def handleEscape(e: KeyboardEvent) -> None {
         if e.key == "Escape" {
             onClose();
         }
     }
 
-    can with entry {
+    # Acquire-and-release in ONE effect: `can with entry`/`can with exit` compile
+    # to separate useEffect closures, so a handle created in entry is invisible to
+    # exit and the removeEventListener would silently no-op.
+    useEffect(lambda () -> any {
         window.addEventListener("keydown", handleEscape);
-        return lambda -> None {
+        return lambda {
             window.removeEventListener("keydown", handleEscape);
         };
-    }
+    }, []);
+
 
     return <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"

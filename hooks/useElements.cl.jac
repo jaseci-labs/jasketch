@@ -29,9 +29,9 @@ def:pub useElements() -> dict {
         stored = localStorage.getItem(STORAGE_KEY);
         if stored {
             parsed = JSON.parse(stored);
-            if parsed and parsed.length > 0 {
+            if parsed and len(parsed) > 0 {
                 mi = 0;
-                while mi < parsed.length {
+                while mi < len(parsed) {
                     if not parsed[mi].id {
                         parsed[mi].id = crypto.randomUUID();
                     }
@@ -57,35 +57,49 @@ def:pub useElements() -> dict {
         historyIndexRef.current = newHistory.length - 1;
     }
 
+    """The element list as it stands RIGHT NOW.
+
+    `elements` is React state and only changes at the next render, so two
+    mutations inside one tick both built on the same stale list and the second
+    silently discarded the first. Drawing quickly dropped shapes, nudging a
+    multi-selection moved one element, restyling recoloured one shape, and
+    bring-to-front cancelled itself out -- all the same bug wearing different
+    clothes. `elementsRef` is written synchronously in setElementsInternal, so
+    it is always current."""
+    def _live() -> list {
+        return elementsRef.current or elements;
+    }
+
     def setElementsWithHistory(newElements: list) -> None {
         pushHistory(newElements);
         setElementsInternal(newElements);
     }
 
     def addElement(element: dict) -> None {
-        if not element.id {
-            element.id = crypto.randomUUID();
+        if not element["id"] {
+            element["id"] = crypto.randomUUID();
         }
-        newElements = elements.concat([element]);
+        newElements = _live() + [element];
         setElementsWithHistory(newElements);
     }
 
     def addMultipleElements(newItems: list) -> None {
         ni = 0;
-        while ni < newItems.length {
+        while ni < len(newItems) {
             if not newItems[ni].id {
                 newItems[ni].id = crypto.randomUUID();
             }
             ni = ni + 1;
         }
-        newElements = elements.concat(newItems);
+        newElements = _live() + newItems;
         setElementsWithHistory(newElements);
     }
 
     def _findIndex(id: str) -> int {
         fi = 0;
-        while fi < elements.length {
-            if elements[fi] and elements[fi].id == id {
+        scan = _live();
+        while fi < len(scan) {
+            if scan[fi] and scan[fi].id == id {
                 return fi;
             }
             fi = fi + 1;
@@ -96,7 +110,7 @@ def:pub useElements() -> dict {
     def updateElement(id: str, newElement: dict) -> None {
         idx = _findIndex(id);
         if idx >= 0 {
-            newElements = elements.slice();
+            newElements = _live()[:];
             newElements[idx] = newElement;
             setElementsWithHistory(newElements);
         }
@@ -105,16 +119,16 @@ def:pub useElements() -> dict {
     def updateElementSilent(id: str, newElement: dict) -> None {
         idx = _findIndex(id);
         if idx >= 0 {
-            newElements = elements.slice();
+            newElements = _live()[:];
             newElements[idx] = newElement;
             setElementsInternal(newElements);
         }
     }
 
     def updateMultipleElements(updates: list) -> None {
-        newElements = elements.slice();
+        newElements = _live()[:];
         i = 0;
-        while i < updates.length {
+        while i < len(updates) {
             idx = _findIndex(updates[i].id);
             if idx >= 0 {
                 newElements[idx] = updates[i].element;
@@ -125,9 +139,9 @@ def:pub useElements() -> dict {
     }
 
     def updateMultipleElementsSilent(updates: list) -> None {
-        newElements = elements.slice();
+        newElements = _live()[:];
         i = 0;
-        while i < updates.length {
+        while i < len(updates) {
             idx = _findIndex(updates[i].id);
             if idx >= 0 {
                 newElements[idx] = updates[i].element;
@@ -138,37 +152,74 @@ def:pub useElements() -> dict {
     }
 
     def commitToHistory() -> None {
-        pushHistory(elements);
+        pushHistory(_live());
+    }
+
+    """Drop bindings that point at elements which no longer exist.
+
+    An arrow bound to a deleted shape kept a startBinding or endBinding naming a
+    ghost. Nothing on screen showed it, but the connector was still nominally
+    attached to something that had gone."""
+    def _drop_stale_bindings(pool: list, removed: dict) -> list {
+        out = [];
+        bi = 0;
+        while bi < len(pool) {
+            item = pool[bi];
+            if item and (item.type == "line" or item.type == "arrow") {
+                startGone = item.startBinding and removed[item.startBinding.elementId];
+                endGone = item.endBinding and removed[item.endBinding.elementId];
+                if startGone or endGone {
+                    fixed = {**item};
+                    if startGone {
+                        fixed.startBinding = None;
+                    }
+                    if endGone {
+                        fixed.endBinding = None;
+                    }
+                    out.append(fixed);
+                } else {
+                    out.append(item);
+                }
+            } else {
+                out.append(item);
+            }
+            bi = bi + 1;
+        }
+        return out;
     }
 
     def removeElement(id: str) -> None {
         newElements = [];
         ri = 0;
-        while ri < elements.length {
-            if elements[ri] and elements[ri].id != id {
-                newElements.push(elements[ri]);
+        keep = _live();
+        while ri < len(keep) {
+            if keep[ri] and keep[ri].id != id {
+                newElements.append(keep[ri]);
             }
             ri = ri + 1;
         }
-        setElementsWithHistory(newElements);
+        gone = {};
+        gone[id] = True;
+        setElementsWithHistory(_drop_stale_bindings(newElements, gone));
     }
 
     def removeMultipleElements(ids: list) -> None {
         idSet = {};
         i = 0;
-        while i < ids.length {
+        while i < len(ids) {
             idSet[ids[i]] = True;
             i = i + 1;
         }
         newElements = [];
         rmi = 0;
-        while rmi < elements.length {
-            if elements[rmi] and not idSet[elements[rmi].id] {
-                newElements.push(elements[rmi]);
+        pool = _live();
+        while rmi < len(pool) {
+            if pool[rmi] and not idSet[pool[rmi].id] {
+                newElements.append(pool[rmi]);
             }
             rmi = rmi + 1;
         }
-        setElementsWithHistory(newElements);
+        setElementsWithHistory(_drop_stale_bindings(newElements, idSet));
     }
 
     def clearElements() -> None {
@@ -178,7 +229,7 @@ def:pub useElements() -> dict {
     def setElementsReplaceAll(newElements: list) -> None {
         # Add IDs to any elements missing them
         i = 0;
-        while i < newElements.length {
+        while i < len(newElements) {
             if not newElements[i].id {
                 newElements[i].id = crypto.randomUUID();
             }

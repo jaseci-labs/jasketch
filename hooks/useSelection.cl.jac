@@ -19,6 +19,14 @@ def:pub useSelection() -> dict {
 
     def updateSelectedElements(val: list) -> None {
         selectedElements = val;
+        # The primary tracks the group. Without this, Ctrl+A on a fresh canvas
+        # left it null and the whole style panel stayed hidden -- it only looked
+        # like it worked when a shape had been clicked beforehand.
+        if val and len(val) > 0 {
+            selectedElement = val[0];
+        } else {
+            selectedElement = None;
+        }
     }
 
     def updateIsDragging(val: bool) -> None {
@@ -42,7 +50,7 @@ def:pub useSelection() -> dict {
     }
 
     def findElementAtPoint(point: dict, elems: list) -> dict {
-        i = elems.length - 1;
+        i = len(elems) - 1;
         while i >= 0 {
             if isPointInElement(point, elems[i]) {
                 return {"element": elems[i], "id": elems[i].id};
@@ -58,7 +66,7 @@ def:pub useSelection() -> dict {
         isDragging = True;
         dragStartPos = mousePos;
 
-        element = elementInfo.element;
+        element = elementInfo["element"];
 
         elementX = 0;
         elementY = 0;
@@ -74,8 +82,8 @@ def:pub useSelection() -> dict {
             elementY = element.y;
         }
 
-        offsetX = mousePos.x - elementX;
-        offsetY = mousePos.y - elementY;
+        offsetX = mousePos["x"] - elementX;
+        offsetY = mousePos["y"] - elementY;
 
         dragOffset = {"x": offsetX, "y": offsetY};
     }
@@ -100,9 +108,11 @@ def:pub useSelection() -> dict {
     def removeFromSelection(id: str) -> None {
         newList = [sel for sel in selectedElements if sel.id != id];
         selectedElements = newList;
-        if newList.length == 1 {
+        # Always re-point the primary. Leaving it alone when two or more remain
+        # could leave it pointing at the element that was just removed.
+        if len(newList) > 0 {
             selectedElement = newList[0];
-        } elif newList.length == 0 {
+        } else {
             selectedElement = None;
         }
     }
@@ -126,16 +136,20 @@ def:pub useSelection() -> dict {
 
             selected = [];
             i = 0;
-            while i < elems.length {
+            while i < len(elems) {
                 element = elems[i];
                 if isElementInBox(element, minX, minY, maxX, maxY) {
-                    selected.push({"element": element, "id": element.id});
+                    selected.append({"element": element, "id": element.id});
                 }
                 i = i + 1;
             }
 
             selectedElements = selected;
-            if selected.length == 1 {
+            # Keep a primary element even for a multi-selection, exactly as
+            # updateSelectedElements does. The style panel keys off this, so
+            # clearing it meant rubber-band selecting two shapes made every
+            # colour and stroke control vanish -- while Ctrl+A kept them.
+            if len(selected) > 0 {
                 selectedElement = selected[0];
             } else {
                 selectedElement = None;
@@ -149,29 +163,29 @@ def:pub useSelection() -> dict {
 
     def isElementInBox(element: dict, boxMinX: float, boxMinY: float, boxMaxX: float, boxMaxY: float) -> bool {
         # Check if element's bounding box overlaps with selection box
-        if element.type == "text" or element.type == "rectangle" or element.type == "circle" or element.type == "diamond" or element.type == "image" {
-            shL = Math.min(element.x, element.x + (element.width or 0));
-            shR = Math.max(element.x, element.x + (element.width or 0));
-            shT = Math.min(element.y, element.y + (element.height or 0));
-            shB = Math.max(element.y, element.y + (element.height or 0));
+        if element["type"] == "text" or element["type"] == "rectangle" or element["type"] == "circle" or element["type"] == "diamond" or element["type"] == "image" {
+            shL = Math.min(element["x"], element["x"] + (element["width"] or 0));
+            shR = Math.max(element["x"], element["x"] + (element["width"] or 0));
+            shT = Math.min(element["y"], element["y"] + (element["height"] or 0));
+            shB = Math.max(element["y"], element["y"] + (element["height"] or 0));
             return shL <= boxMaxX and shR >= boxMinX and shT <= boxMaxY and shB >= boxMinY;
-        } elif element.type == "line" or element.type == "arrow" {
-            lnL = Math.min(element.x1, element.x2);
-            lnR = Math.max(element.x1, element.x2);
-            lnT = Math.min(element.y1, element.y2);
-            lnB = Math.max(element.y1, element.y2);
+        } elif element["type"] == "line" or element["type"] == "arrow" {
+            lnL = Math.min(element["x1"], element["x2"]);
+            lnR = Math.max(element["x1"], element["x2"]);
+            lnT = Math.min(element["y1"], element["y2"]);
+            lnB = Math.max(element["y1"], element["y2"]);
             return lnL <= boxMaxX and lnR >= boxMinX and lnT <= boxMaxY and lnB >= boxMinY;
-        } elif element.type == "freehand" {
-            if not element.points or element.points.length == 0 {
+        } elif element["type"] == "freehand" {
+            if not element["points"] or element["points"].length == 0 {
                 return False;
             }
-            fhL = element.points[0].x;
-            fhR = element.points[0].x;
-            fhT = element.points[0].y;
-            fhB = element.points[0].y;
+            fhL = element["points"][0].x;
+            fhR = element["points"][0].x;
+            fhT = element["points"][0].y;
+            fhB = element["points"][0].y;
             fi = 1;
-            while fi < element.points.length {
-                pt = element.points[fi];
+            while fi < element["points"].length {
+                pt = element["points"][fi];
                 if pt.x < fhL { fhL = pt.x; }
                 if pt.x > fhR { fhR = pt.x; }
                 if pt.y < fhT { fhT = pt.y; }

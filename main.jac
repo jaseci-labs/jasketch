@@ -1,19 +1,11 @@
 """Main entry point for JaSketch - Modern Whiteboard Application."""
 
-import from typing { Any }
-import os;
-import from infrastructure.relay { start_relay_server }
-import from infrastructure.share_server { initialize_share_server }
-
-# Start relay by default unless explicitly disabled via JASKETCH_START_RELAY (helps avoid port conflicts when turned off in multi-process/reload scenarios)
-glob _relay_started: Any = start_relay_server() if os.environ.get("JASKETCH_START_RELAY", "true").lower() == "true" else None;
-
-# Initialize share server for encrypted scene storage
-glob _share_server_ready: Any = initialize_share_server();
-
-# Load and initialize agent
-import from agent.server { _boot }
-glob _agent_booted: Any = _boot();
+# Endpoint registration: a def:pub only reaches its route if the entry module
+# names it (jaseci-labs/jac#7695), so these imports are load-bearing.
+import from services.sharing { create_share, read_share, ShareRef, SharePayload }
+import from agent.chat { jasketch_chat, jasketch_chat_confirm }
+import from infrastructure.relay { jasketch_relay }
+import from infrastructure.mcp_http { mcp_rpc }
 
 cl {
     # Client-side imports
@@ -42,12 +34,28 @@ cl {
 
         # Selection state (updated by Canvas via callback)
         has selectedElement: any = None;
+        has selectedElements: list = [];
 
         # Chat panel state
         has chatOpen: bool = False;
 
         # Keyboard shortcuts help state
         has showShortcuts: bool = False;
+
+        # Tool lock: keep the drawing tool selected after each shape. Lives here
+        # because both the toolbar toggle and the canvas's Q shortcut set it.
+        has toolLocked: bool = False;
+
+        # The inspector is always present. This only folds it away for the
+        # moments you want the canvas edge to edge.
+        has inspectorOpen: bool = True;
+
+        # With the select tool and nothing selected there is nothing to
+        # configure, so the inspector is not just collapsed -- it is absent, and
+        # the canvas takes the whole width. An empty panel with a header and no
+        # controls is worse than no panel.
+        inspectorHasContent = selectedElement != None or currentTool != "select";
+        showInspector = inspectorOpen and inspectorHasContent;
 
         # Share dialog state
         has shareDialogOpen: bool = False;
@@ -103,7 +111,7 @@ cl {
                 }
                 return;
             }
-            if hash.startsWith("#json=") {
+            if hash.startswith("#json=") {
                 # Static share: #json=<share_id>,<encryption_key>
                 hash_part = hash[6:];
                 parts = hash_part.split(",");
@@ -124,7 +132,7 @@ cl {
                 } elif not (share_id and share_key) {
                     shareLoadError = "Share link is malformed — missing ID or key.";
                 }
-            } elif hash.startsWith("#room=") {
+            } elif hash.startswith("#room=") {
                 # Collaboration room: #room=<room_id>,<room_key>
                 room_hash_part = hash[6:];
                 room_parts = room_hash_part.split(",");
@@ -146,7 +154,7 @@ cl {
 
         # Parse URL hash on mount for share links
         useEffect(
-            lambda -> any {
+            lambda () -> any {
                 load_share_from_url();
                 return None;
             },
@@ -158,57 +166,35 @@ cl {
         if shareLoadError {
             share_error_banner = <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg text-sm z-50 flex items-center gap-3">
                 <span>{shareLoadError}</span>
-                <button onClick={lambda -> None { handleDismissShareError(); }} className="text-white/80 hover:text-white font-bold text-lg leading-none">{"×"}</button>
+                <button onClick={lambda { handleDismissShareError(); }} className="text-white/80 hover:text-white font-bold text-lg leading-none">{"×"}</button>
             </div>;
         }
 
-        return <div className="h-screen flex flex-col overflow-hidden bg-white">
+        return <div className="jsk-app-ground h-screen flex flex-col overflow-hidden">
             <TopBar
                 currentTool={currentTool}
-                onToolChange={lambda tool: any -> None { currentTool = tool; }}
-                onImageLoad={lambda element: any -> None {
+                onToolChange={lambda (tool: any) { currentTool = tool; }}
+                onImageLoad={lambda (element: any) {
                     if addElementRef.current {
                         addElementRef.current(element);
                     }
                 }}
-                onSave={lambda -> None { if saveRef.current { saveRef.current(); } }}
-                onLoad={lambda file: any -> None { if loadElementsRef.current { loadElementsRef.current(file); } }}
-                onShowShortcuts={lambda -> None { showShortcuts = not showShortcuts; }}
-                onShare={lambda -> None { shareDialogTab = "static"; shareDialogOpen = True; }}
-                onCollab={lambda -> None { shareDialogTab = "collab"; shareDialogOpen = True; }}
+                onSave={lambda { if saveRef.current { saveRef.current(); } }}
+                onLoad={lambda (file: any) { if loadElementsRef.current { loadElementsRef.current(file); } }}
+                onShowShortcuts={lambda { showShortcuts = not showShortcuts; }}
+                onShare={lambda { shareDialogTab = "static"; shareDialogOpen = True; }}
+                onCollab={lambda { shareDialogTab = "collab"; shareDialogOpen = True; }}
                 roomState={roomState}
                 participants={participants}
                 isHost={isHost}
                 participantListOpen={participantListOpen}
-                onParticipantListToggle={lambda -> None { participantListOpen = not participantListOpen; }}
+                onParticipantListToggle={lambda { participantListOpen = not participantListOpen; }}
+                onToggleToolLock={lambda { toolLocked = not toolLocked; }}
+                toolLocked={toolLocked}
             />
 
-            <div className="flex-1 overflow-hidden relative">
-                <div className="absolute left-3 top-3 z-10">
-                    <Sidebar
-                        currentTool={currentTool}
-                        currentColor={currentColor}
-                        currentStrokeWidth={currentStrokeWidth}
-                        currentOpacity={currentOpacity}
-                        currentFontSize={currentFontSize}
-                        currentFontFamily={currentFontFamily}
-                        currentLineStyle={currentLineStyle}
-                        currentCurveStyle={currentCurveStyle}
-                        currentFillColor={currentFillColor}
-                        selectedElement={selectedElement}
-                        onColorChange={lambda color: any -> None { currentColor = color; }}
-                        onStrokeWidthChange={lambda width: any -> None { currentStrokeWidth = width; }}
-                        onOpacityChange={lambda opacity: any -> None { currentOpacity = opacity; }}
-                        onFontSizeChange={lambda size: any -> None { currentFontSize = size; }}
-                        onFontFamilyChange={lambda font: any -> None { currentFontFamily = font; }}
-                        onLineStyleChange={lambda style: any -> None { currentLineStyle = style; }}
-                        onCurveStyleChange={lambda style: any -> None { currentCurveStyle = style; }}
-                        onFillColorChange={lambda color: any -> None { currentFillColor = color; }}
-                        onUpdateElement={handleUpdateElement}
-                    />
-                </div>
-
-                <div className="w-full h-full">
+            <div className="flex-1 overflow-hidden relative flex flex-row min-h-0">
+                <div className="flex-1 relative min-w-0 h-full">
                     <Canvas
                         currentTool={currentTool}
                         currentColor={currentColor}
@@ -229,8 +215,8 @@ cl {
                         setElementsRef={setElementsRef}
                         endSessionRef={endSessionRef}
                         updateUsernameRef={updateUsernameRef}
-                        onParticipantsChange={lambda p: any { participants = p; }}
-                        onSessionEnded={lambda -> None {
+                        onParticipantsChange={lambda (p: any) { participants = p; }}
+                        onSessionEnded={lambda {
                             sessionStorage.removeItem("jasketch_room_id");
                             sessionStorage.removeItem("jasketch_room_key");
                             sessionStorage.removeItem("jasketch_is_host");
@@ -239,17 +225,58 @@ cl {
                             shareDialogOpen = False;
                             participantListOpen = False;
                         }}
-                        onSelectionChange={lambda sel: any -> None { selectedElement = sel; }}
-                        onToolChange={lambda tool: any -> None { currentTool = tool; }}
+                        onSelectionChange={lambda (sel: any, allSel: any) { selectedElement = sel; selectedElements = allSel or []; }}
+                        onToolChange={lambda (tool: any) { currentTool = tool; }}
+                        toolLocked={toolLocked}
+                        onToolLockChange={lambda (v: bool) { toolLocked = v; }}
                         showShortcuts={showShortcuts}
-                        onToggleShortcuts={lambda -> None { showShortcuts = not showShortcuts; }}
+                        onToggleShortcuts={lambda { showShortcuts = not showShortcuts; }}
                     />
+                    <ChatPanel
+                    isOpen={chatOpen}
+                    onToggle={lambda { chatOpen = not chatOpen; }}
+                    elementsRef={elementsForShareRef}
+                    setElementsRef={setElementsRef}
+                />
                 </div>
 
-                <ChatPanel
-                    isOpen={chatOpen}
-                    onToggle={lambda -> None { chatOpen = not chatOpen; }}
-                />
+                {inspectorHasContent and <button
+                    onClick={lambda { inspectorOpen = not inspectorOpen; }}
+                    title={inspectorOpen and "Hide the inspector" or "Show the inspector"}
+                    className="absolute top-1/2 -translate-y-1/2 z-20 w-5 h-12 rounded-l-md bg-white/70 border border-r-0 border-slate-900/10 text-slate-400 hover:text-slate-900 hover:bg-slate-900/5 flex items-center justify-center transition-colors"
+                    style={showInspector and {"right": "248px"} or {"right": "0px"}}
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        {inspectorOpen and <polyline points="9 18 15 12 9 6" /> or <polyline points="15 18 9 12 15 6" />}
+                    </svg>
+                </button> or None}
+
+                {showInspector and <div className="shrink-0 w-[248px] h-full border-l border-slate-900/10 bg-white/70 backdrop-blur-xl overflow-y-auto">
+                    <Sidebar
+                        currentTool={currentTool}
+                        currentColor={currentColor}
+                        currentStrokeWidth={currentStrokeWidth}
+                        currentOpacity={currentOpacity}
+                        currentFontSize={currentFontSize}
+                        currentFontFamily={currentFontFamily}
+                        currentLineStyle={currentLineStyle}
+                        currentCurveStyle={currentCurveStyle}
+                        currentFillColor={currentFillColor}
+                        selectedElement={selectedElement}
+                        selectedElements={selectedElements}
+                        onColorChange={lambda (color: any) { currentColor = color; }}
+                        onStrokeWidthChange={lambda (width: any) { currentStrokeWidth = width; }}
+                        onOpacityChange={lambda (opacity: any) { currentOpacity = opacity; }}
+                        onFontSizeChange={lambda (size: any) { currentFontSize = size; }}
+                        onFontFamilyChange={lambda (font: any) { currentFontFamily = font; }}
+                        onLineStyleChange={lambda (style: any) { currentLineStyle = style; }}
+                        onCurveStyleChange={lambda (style: any) { currentCurveStyle = style; }}
+                        onFillColorChange={lambda (color: any) { currentFillColor = color; }}
+                        onUpdateElement={handleUpdateElement}
+                    />
+                </div> or None}
+
+
 
                 <ShareDialog
                     is_open={shareDialogOpen}
@@ -257,7 +284,7 @@ cl {
                     elements_ref={elementsForShareRef}
                     room_state={roomState}
                     default_tab={shareDialogTab}
-                    on_join_room={lambda room_id, room_key {
+                    on_join_room={lambda (room_id: str, room_key: str) {
                         sessionStorage.setItem("jasketch_room_id", room_id);
                         sessionStorage.setItem("jasketch_room_key", room_key);
                         sessionStorage.setItem("jasketch_is_host", "true");
@@ -265,30 +292,30 @@ cl {
                         isHost = True;
                     }}
                     on_end_session={lambda {
-                        es_rid = roomState.room_id or "";
+                        es_rid = roomState["room_id"] or "";
                         if endSessionRef.current and es_rid { endSessionRef.current(es_rid); }
                     }}
-                    on_username_set={lambda room_id, name {
+                    on_username_set={lambda (room_id: str, name: str) {
                         if updateUsernameRef.current { updateUsernameRef.current(room_id, name); }
                     }}
                 />
 
-                <div className="absolute bottom-3 right-4 z-10 pointer-events-none">
+                <div className="absolute bottom-3 right-20 z-10 pointer-events-none">
                     <span className="text-[10px] tracking-wider text-gray-300 font-medium uppercase">
                         {"Powered by Jaseci"}
                     </span>
                 </div>
 
-                {participantListOpen and roomState and roomState.room_id and <div className="absolute top-11 right-1 z-50">
+                {participantListOpen and roomState and roomState["room_id"] and <div className="absolute top-11 right-1 z-50">
                     <ParticipantList
                         participants={participants}
                         isHost={isHost}
                         mySessionId={sessionStorage.getItem("jasketch_session_id") or ""}
-                        onClose={lambda -> None { participantListOpen = False; }}
-                        onRenameMe={lambda name: any {
+                        onClose={lambda { participantListOpen = False; }}
+                        onRenameMe={lambda (name: any) {
                             localStorage.setItem("jasketch_username", name);
-                            if updateUsernameRef.current and roomState.room_id {
-                                updateUsernameRef.current(roomState.room_id, name);
+                            if updateUsernameRef.current and roomState["room_id"] {
+                                updateUsernameRef.current(roomState["room_id"], name);
                             }
                         }}
                     />
@@ -297,14 +324,14 @@ cl {
 
             {shareLoadError and <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg text-sm z-50 flex items-center gap-3">
                 <span>{shareLoadError}</span>
-                <button onClick={lambda -> None { handleDismissShareError(); }} className="text-white/80 hover:text-white font-bold text-lg leading-none">{"×"}</button>
+                <button onClick={lambda { handleDismissShareError(); }} className="text-white/80 hover:text-white font-bold text-lg leading-none">{"×"}</button>
             </div> or None}
 
             {joinOverlayVisible and <JoinNameOverlay
-                on_join={lambda name: any -> None {
+                on_join={lambda (name: any) {
                     localStorage.setItem("jasketch_username", name);
-                    sessionStorage.setItem("jasketch_room_id", pendingRoom.room_id);
-                    sessionStorage.setItem("jasketch_room_key", pendingRoom.room_key);
+                    sessionStorage.setItem("jasketch_room_id", pendingRoom["room_id"]);
+                    sessionStorage.setItem("jasketch_room_key", pendingRoom["room_key"]);
                     roomState = pendingRoom;
                     joinOverlayVisible = False;
                 }}
