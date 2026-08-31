@@ -2882,6 +2882,33 @@ class TestMermaidStateDiagrams:
         apart = math.hypot(amid[0] - bmid[0], amid[1] - bmid[1])
         assert apart > 40, f"opposing transitions are only {apart:.0f} units apart"
 
+    def test_separating_that_pair_does_not_create_a_crossing(self, app: Page):
+        """The first attempt at separating opposing transitions moved BOTH of
+        them. That shoved `Loading --> Failed` sideways off its face and
+        straight across `Loading --> Ready`, trading a hidden label for an X."""
+
+        def crosses(p, q) -> bool:
+            (x1, y1), (x2, y2) = p
+            (x3, y3), (x4, y4) = q
+            d = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3)
+            if abs(d) < 1e-9:
+                return False
+            t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / d
+            u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / d
+            # endpoints meeting at a shared node are not a crossing
+            return 0.02 < t < 0.98 and 0.02 < u < 0.98
+
+        clear_canvas(app)
+        self._import(app, self.MACHINE)
+        arrows = [e for e in get_elements(app) if e["type"] == "arrow"]
+        segs = [(((e["x1"], e["y1"]), (e["x2"], e["y2"])), e.get("shapeText")) for e in arrows]
+        bad = []
+        for i in range(len(segs)):
+            for j in range(i + 1, len(segs)):
+                if crosses(segs[i][0], segs[j][0]):
+                    bad.append((segs[i][1], segs[j][1]))
+        assert not bad, f"transitions cross each other: {bad}"
+
     def test_a_retry_loop_does_not_blow_the_layout_apart(self, app: Page):
         clear_canvas(app)
         self._import(app, self.MACHINE)
