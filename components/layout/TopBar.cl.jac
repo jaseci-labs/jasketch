@@ -256,6 +256,14 @@ def:pub TopBar(
 
             <div className="min-w-[150px] flex items-center justify-end relative">
                 <div className="jsk-glass flex items-center gap-0.5 rounded-xl px-1.5 py-1">
+                <button onClick={lambda { onImportMermaid(); }} title="Import from Mermaid"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-900/5 transition-colors">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="7" height="5" rx="1" /><rect x="14" y="16" width="7" height="5" rx="1" />
+                        <path d="M6.5 8v4a2 2 0 0 0 2 2h6a2 2 0 0 1 2 2v0" />
+                    </svg>
+                </button>
+
                 <button onClick={lambda {handleShare();}} title="Shareable link"
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-900/5 transition-colors">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

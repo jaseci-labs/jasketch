@@ -234,6 +234,7 @@ cl {
                         onToolChange={lambda (tool: any) { currentTool = tool; }}
                         toolLocked={toolLocked}
                         onToolLockChange={lambda (v: bool) { toolLocked = v; }}
+                        onImportMermaid={lambda { mermaidOpen = True; }}
                         showShortcuts={showShortcuts}
                         onToggleShortcuts={lambda { showShortcuts = not showShortcuts; }}
                     />

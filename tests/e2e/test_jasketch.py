@@ -2537,3 +2537,56 @@ class TestMermaidImport:
         by_label = {e.get("shapeText"): e for e in get_elements(app) if e.get("shapeText")}
         plain = by_label["Approved?"]
         assert plain["fillColor"] == "transparent", f"unstyled node picked up a fill: {plain['fillColor']}"
+
+    CYCLIC = (
+        "graph LR\n"
+        "    Start((Begin)) --> Check{Valid?}\n"
+        "    Check -- yes --> Save[(Save to DB)]\n"
+        "    Check -- no --> Fix[Fix input] --> Check\n"
+        "    Save -.-> Audit[Audit log]\n"
+    )
+
+    def test_a_retry_loop_does_not_blow_the_layout_apart(self, app: Page):
+        """Longest-path layering has no answer for a cycle: each pass round the
+        loop pushes both nodes another layer along, and a retry arrow spread the
+        diagram across thousands of pixels."""
+        clear_canvas(app)
+        self._import(app, self.CYCLIC)
+        xs = [e["x"] for e in get_elements(app) if e["type"] not in ("arrow", "line")]
+        assert xs, "nothing imported"
+        assert max(xs) - min(xs) < 1600, f"layout spread to {round(max(xs) - min(xs))}px"
+
+    def test_shapes_beyond_the_basics(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.CYCLIC)
+        by_label = {e.get("shapeText"): e for e in get_elements(app) if e.get("shapeText")}
+        assert by_label["Begin"]["type"] == "circle", "((double parens)) should be a circle"
+        assert by_label["Valid?"]["type"] == "diamond"
+        # [(cylinder)] must not keep its parentheses in the label
+        assert "Save to DB" in by_label, f"cylinder label mangled: {sorted(by_label)}"
+
+    def test_a_dotted_connector_stays_dotted(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.CYCLIC)
+        dashed = [e for e in get_elements(app) if e.get("lineStyle") == "dashed"]
+        assert len(dashed) == 1, f"expected one dotted connector, got {len(dashed)}"
+
+
+class TestMermaidIsDiscoverable:
+    def test_there_is_a_toolbar_button(self, app: Page):
+        expect(app.locator("button[title='Import from Mermaid']").first).to_be_visible()
+
+    def test_an_empty_canvas_offers_it(self, app: Page):
+        """An empty canvas otherwise says nothing at all, and this is exactly the
+        moment someone would want to import."""
+        clear_canvas(app)
+        press_key(app, "Escape")
+        expect(app.get_by_text("paste a Mermaid flowchart")).to_be_visible(timeout=3000)
+
+    def test_the_offer_goes_away_once_there_is_something_drawn(self, app: Page):
+        clear_canvas(app)
+        press_key(app, "Escape")
+        press_key(app, "5")
+        drag_canvas(app, 400, 250, 560, 350)
+        wait_for_elements(app, 1)
+        assert app.get_by_text("paste a Mermaid flowchart").count() == 0

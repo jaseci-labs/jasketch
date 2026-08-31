@@ -57,8 +57,9 @@ def _shape_from_token(token: str) -> any {
     t = str(token or "").strip();
     pairs = [
         ["((", "))", "circle"],
-        ["([", "])", "rectangle"],
-        ["[[", "]]", "rectangle"],
+        ["[(", ")]", "rectangle"],   # cylinder / database
+        ["([", "])", "rectangle"],   # stadium
+        ["[[", "]]", "rectangle"],   # subroutine
         ["{{", "}}", "diamond"],
         ["[/", "/]", "rectangle"],
         ["[\\", "\\]", "rectangle"],
@@ -437,6 +438,76 @@ def parts_name(key: str) -> str {
 }
 
 
+"""Which edges close a loop, and so must not push anything further down.
+
+A cycle in a flowchart is normal -- a retry arrow going back to a check -- but
+longest-path layering has no answer for it: each pass round the loop pushes both
+nodes one layer further, so a diagram with a retry arrow spread itself across
+thousands of pixels instead of a few hundred.
+
+A depth-first walk marks any edge pointing at a node still on the current path
+as a back edge. Those are drawn, but they take no part in deciding what sits
+below what."""
+def _back_edges(node_count: int, edges: list, index_of: any) -> any {
+    out_edges = {};
+    ei = 0;
+    while ei < len(edges) {
+        a = index_of[edges[ei]["from"]];
+        if a != None and a != undefined {
+            if a not in out_edges {
+                out_edges[a] = [];
+            }
+            out_edges[a].append(ei);
+        }
+        ei = ei + 1;
+    }
+
+    # 0 unvisited, 1 on the current path, 2 finished
+    state = [];
+    si = 0;
+    while si < node_count {
+        state.append(0);
+        si = si + 1;
+    }
+    back = {};
+
+    # Not `root`: like `node` and `skip`, it is a built-in reference in Jac and
+    # cannot be used as a variable name.
+    seed = 0;
+    while seed < node_count {
+        if state[seed] == 0 {
+            # explicit stack of [node index, position in its edge list]
+            stack = [[seed, 0]];
+            state[seed] = 1;
+            while len(stack) > 0 {
+                top = stack[len(stack) - 1];
+                here = top[0];
+                mine = out_edges[here] or [];
+                if top[1] >= len(mine) {
+                    state[here] = 2;
+                    stack.pop();
+                    continue;
+                }
+                edge_i = mine[top[1]];
+                top[1] = top[1] + 1;
+                nxt = index_of[edges[edge_i]["to"]];
+                if nxt == None or nxt == undefined {
+                    continue;
+                }
+                if state[nxt] == 1 {
+                    back[edge_i] = True;     # points back up the current path
+                } elif state[nxt] == 0 {
+                    state[nxt] = 1;
+                    stack.append([nxt, 0]);
+                }
+            }
+        }
+        seed = seed + 1;
+    }
+    return back;
+}
+
+
 """How wide the label really is, at the font it will be drawn in.
 
 A detached canvas is enough: measureText needs a context, not a visible one."""
@@ -493,8 +564,9 @@ def:pub layout_graph(parsed: any, origin_x: float, origin_y: float, font_size: f
         ii = ii + 1;
     }
 
-    # longest-path layering, relaxed repeatedly; bounded by the node count so a
-    # cycle cannot spin forever
+    # longest-path layering over the acyclic part only
+    # `skip` is a reserved word in Jac.
+    loop_edges = _back_edges(len(nodes), edges, index_of);
     passes = 0;
     changed = True;
     while changed and passes <= len(nodes) {
@@ -503,7 +575,7 @@ def:pub layout_graph(parsed: any, origin_x: float, origin_y: float, font_size: f
         while ei < len(edges) {
             a = index_of[edges[ei]["from"]];
             b = index_of[edges[ei]["to"]];
-            if a != None and b != None and a != undefined and b != undefined {
+            if not loop_edges[ei] and a != None and b != None and a != undefined and b != undefined {
                 want = nodes[a]["layer"] + 1;
                 if want > nodes[b]["layer"] {
                     nodes[b]["layer"] = want;
