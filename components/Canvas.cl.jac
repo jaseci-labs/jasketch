@@ -27,6 +27,7 @@ def:pub Canvas(
     loadElementsRef: any,
     elementsForShareRef: any,
     setElementsRef: any,
+    addMultipleRef: any = None,
     endSessionRef: any,
     updateUsernameRef: any,
     onParticipantsChange: Callable[[dict], None],
@@ -35,6 +36,7 @@ def:pub Canvas(
     onToolChange: Callable[[str], None],
     onToggleShortcuts: Callable[[], None],
     onToolLockChange: Callable[[bool], None],
+    onImportMermaid: Callable[[], None] = None,
     showShortcuts: bool = False,
     toolLocked: bool = False,
     roomState: dict = {},
@@ -598,6 +600,26 @@ def:pub Canvas(
         if elementsForShareRef {
             elementsForShareRef.current = elementsHook.elements;
         }
+        if addMultipleRef {
+            addMultipleRef.current = lambda (incoming: any) {
+                # One write, so an import is a single undo rather than one per
+                # shape. Each element still passes through fit_shape_to_label:
+                # nothing generated elsewhere has seen a text metric.
+                fitted = [];
+                ai = 0;
+                while ai < incoming.length {
+                    fitted.append(fit_shape_to_label(incoming[ai]));
+                    ai = ai + 1;
+                }
+                elementsHook.addMultipleElements(fitted);
+                selectionHook.clearSelection();
+                # Frame what just arrived. An imported diagram is taller than the
+                # viewport more often than not, and landing on a view that cuts
+                # it off reads as a broken import rather than a tall one.
+                setTimeout(lambda { fitToContent(); }, 60);
+                showToast("Imported " + str(fitted.length) + " elements");
+            };
+        }
         if setElementsRef {
             setElementsRef.current = lambda (elements: any) {
                 fitted = [];
@@ -1137,7 +1159,12 @@ def:pub Canvas(
 
     """Frame everything on the canvas."""
     def fitToContent() -> None {
-        fit_els = elementsHook.elements;
+        # The LIVE list, not the render's copy. Fitting straight after an import
+        # runs before React has re-rendered, so the closure's `elements` is still
+        # the empty list it was before -- this returned early and left the new
+        # diagram running off the edge of the screen.
+        fit_els = (elementsHook.elementsRef and elementsHook.elementsRef.current)
+            or elementsHook.elements;
         if not fit_els or len(fit_els) == 0 {
             return;
         }
@@ -2731,6 +2758,23 @@ def:pub Canvas(
                 onCopyCanvasSVG={handleCopyCanvasAsSVG}
                 onSelectAll={handleSelectAll}
             />
+
+            {elementsHook.elements.length == 0 and not drawingState.isDrawing and <div
+                className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                <div className="flex flex-col items-center gap-3">
+                    <p className="text-sm text-slate-400">{"Start drawing, or"}</p>
+                    <button
+                        onClick={lambda { if onImportMermaid { onImportMermaid(); } }}
+                        className="jsk-glass pointer-events-auto px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 hover:text-slate-900 flex items-center gap-2 transition-colors"
+                    >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="3" width="7" height="5" rx="1" /><rect x="14" y="16" width="7" height="5" rx="1" />
+                            <path d="M6.5 8v4a2 2 0 0 0 2 2h6a2 2 0 0 1 2 2v0" />
+                        </svg>
+                        {"paste a Mermaid flowchart"}
+                    </button>
+                </div>
+            </div> or None}
 
             <div className="absolute bottom-4 left-4 flex items-center z-40 select-none">
               <div className="jsk-glass flex items-center rounded-xl overflow-hidden">
