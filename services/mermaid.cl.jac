@@ -16,18 +16,25 @@ to have stray whitespace, semicolons and blank lines, and refusing the whole
 paste over one of those would be worse than ignoring the line.
 """
 
-# Sizing. Nodes are made big enough for their label up front; the canvas will
-# still grow a shape whose text does not fit, but starting close avoids every
-# imported node visibly resizing itself on arrival.
-glob MM_CHAR_WIDTH: float = 9.0;
+# Sizing. A node is measured, not guessed: the label is rendered into an
+# offscreen context at the real font and the box is built around it. Estimating
+# by character count made every box too narrow for a handwriting face, so
+# labels wrapped mid-word -- "Christmas" arriving as "Christm / as" -- which
+# reads as broken rather than as a different style.
+glob MM_LABEL_PAD_X: float = 34.0;
 glob MM_MIN_WIDTH: float = 120.0;
-glob MM_MAX_WIDTH: float = 260.0;
-glob MM_NODE_HEIGHT: float = 64.0;
-glob MM_DIAMOND_PAD: float = 40.0;
+glob MM_MAX_WIDTH: float = 280.0;
+glob MM_NODE_HEIGHT: float = 62.0;
+glob MM_DIAMOND_PAD_X: float = 64.0;
+glob MM_DIAMOND_PAD_Y: float = 34.0;
 
 # Spacing between layers, and between siblings within a layer.
-glob MM_LAYER_GAP: float = 88.0;
-glob MM_SIBLING_GAP: float = 48.0;
+# Layers are spaced generously ON PURPOSE. A connector label clears the line
+# behind itself so the words are not struck through, and on a short arrow that
+# knockout eats most of the line and the arrow reads as severed. Longer arrows
+# leave room for the label and still look like arrows.
+glob MM_LAYER_GAP: float = 128.0;
+glob MM_SIBLING_GAP: float = 64.0;
 
 
 """Strip a trailing comment and surrounding whitespace from one line."""
@@ -430,13 +437,27 @@ def parts_name(key: str) -> str {
 }
 
 
+"""How wide the label really is, at the font it will be drawn in.
+
+A detached canvas is enough: measureText needs a context, not a visible one."""
+def:pub measure_label(text: str, font_size: float, font_family: str) -> float {
+    probe = document.createElement("canvas");
+    ctx = probe.getContext("2d");
+    if not ctx {
+        return len(str(text or "")) * font_size * 0.55;
+    }
+    ctx.font = font_size + "px " + font_family;
+    return ctx.measureText(str(text or "")).width;
+}
+
+
 """Place the nodes in layers, and give each one a size that fits its label.
 
 Layer assignment is longest-path: a node sits one layer below the deepest
 parent that points at it, which is what makes a flowchart read top to bottom
 without edges skipping backwards. Cycles are broken by refusing to revisit a
 node, so a loop lays out rather than hanging."""
-def:pub layout_graph(parsed: any, origin_x: float, origin_y: float) -> any {
+def:pub layout_graph(parsed: any, origin_x: float, origin_y: float, font_size: float, font_family: str) -> any {
     nodes = parsed["nodes"];
     edges = parsed["edges"];
     direction = (parsed["direction"] or "TD").upper();
@@ -447,19 +468,24 @@ def:pub layout_graph(parsed: any, origin_x: float, origin_y: float) -> any {
     while ii < len(nodes) {
         index_of[nodes[ii]["id"]] = ii;
         # size first: the layer maths needs the extents
-        label_len = len(str(nodes[ii]["label"] or ""));
-        w = MM_MIN_WIDTH;
-        measured = label_len * MM_CHAR_WIDTH + 32;
-        if measured > w {
-            w = measured;
-        }
-        if w > MM_MAX_WIDTH {
-            w = MM_MAX_WIDTH;
+        text_w = measure_label(nodes[ii]["label"], font_size, font_family);
+        w = text_w + MM_LABEL_PAD_X * 2;
+        if w < MM_MIN_WIDTH {
+            w = MM_MIN_WIDTH;
         }
         h = MM_NODE_HEIGHT;
+        if w > MM_MAX_WIDTH {
+            # Too long for one line: let it wrap, and give it the height to do
+            # so rather than pushing the words outside the box.
+            w = MM_MAX_WIDTH;
+            lines = Math.ceil(text_w / (MM_MAX_WIDTH - MM_LABEL_PAD_X * 2));
+            h = MM_NODE_HEIGHT + (lines - 1) * font_size * 1.3;
+        }
         if nodes[ii]["shape"] == "diamond" {
-            w = w + MM_DIAMOND_PAD;
-            h = h + MM_DIAMOND_PAD;
+            # A diamond only has its full width across the middle, so the label
+            # needs noticeably more room than the same text in a box.
+            w = w + MM_DIAMOND_PAD_X;
+            h = h + MM_DIAMOND_PAD_Y;
         }
         nodes[ii]["width"] = w;
         nodes[ii]["height"] = h;
@@ -677,6 +703,6 @@ def:pub mermaid_to_elements(
     if not parsed["ok"] {
         return {"ok": False, "error": parsed["error"], "elements": []};
     }
-    laid = layout_graph(parsed, origin_x, origin_y);
+    laid = layout_graph(parsed, origin_x, origin_y, font_size, font_family);
     return {"ok": True, "error": "", "elements": to_elements(laid, color, stroke_width, font_family, font_size)};
 }
