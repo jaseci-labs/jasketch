@@ -2421,3 +2421,84 @@ class TestChromeIsGrouped:
         text = app.evaluate("() => document.body.innerText")
         assert "Pan the canvas" in text and "Zoom the canvas" in text
         press_key(app, "Escape")
+
+
+class TestMermaidImport:
+    """Paste a Mermaid flowchart, get shapes you can edit."""
+
+    FLOWCHART = (
+        "graph TD\n"
+        "    A[Christmas] -->|Get money| B(Go shopping)\n"
+        "    B --> C{Let me think}\n"
+        "    C -->|One| D[Laptop]\n"
+        "    C -->|Two| E[iPhone]\n"
+    )
+
+    def _open_dialog(self, page: Page):
+        page.locator("button[title='Menu']").click()
+        page.wait_for_timeout(ACTION_DELAY)
+        page.get_by_text("Import from Mermaid").click()
+        page.wait_for_timeout(ACTION_DELAY)
+
+    def _import(self, page: Page, text: str):
+        self._open_dialog(page)
+        page.locator("textarea").last.fill(text)
+        page.get_by_text("Add to canvas").click()
+        page.wait_for_timeout(ACTION_DELAY * 4)
+
+    def test_a_flowchart_becomes_shapes_and_arrows(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.FLOWCHART)
+        els = get_elements(app)
+        kinds = {}
+        for e in els:
+            kinds[e["type"]] = kinds.get(e["type"], 0) + 1
+        assert kinds.get("rectangle") == 4, f"expected 4 boxes, got {kinds}"
+        assert kinds.get("diamond") == 1, f"the decision node should be a diamond, got {kinds}"
+        assert kinds.get("arrow") == 4, f"expected 4 arrows, got {kinds}"
+
+    def test_node_and_edge_labels_both_survive(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.FLOWCHART)
+        labels = {e.get("shapeText") for e in get_elements(app) if e.get("shapeText")}
+        for want in ("Christmas", "Go shopping", "Let me think", "Laptop", "iPhone"):
+            assert want in labels, f"node label {want!r} missing from {labels}"
+        for want in ("Get money", "One", "Two"):
+            assert want in labels, f"edge label {want!r} missing from {labels}"
+
+    def test_arrows_are_bound_so_the_diagram_stays_connected(self, app: Page):
+        """An import that is not bound is just a picture: moving one box would
+        leave its arrows behind."""
+        clear_canvas(app)
+        self._import(app, self.FLOWCHART)
+        arrows = [e for e in get_elements(app) if e["type"] == "arrow"]
+        assert arrows, "no arrows imported"
+        for a in arrows:
+            assert a.get("startBinding") and a.get("endBinding"), "an arrow was left unbound"
+
+    def test_the_import_is_a_single_undo(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.FLOWCHART)
+        assert get_elements_count(app) == 9
+        press_key(app, "Control+z")
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        assert get_elements_count(app) == 0, "the import should undo in one step"
+
+    def test_a_non_flowchart_is_refused_rather_than_mangled(self, app: Page):
+        clear_canvas(app)
+        self._open_dialog(app)
+        app.locator("textarea").last.fill("sequenceDiagram\n  Alice->>Bob: Hello")
+        app.get_by_text("Add to canvas").click()
+        app.wait_for_timeout(ACTION_DELAY * 2)
+        assert "Only flowcharts" in app.evaluate("() => document.body.innerText")
+        assert get_elements_count(app) == 0, "nothing should be drawn for an unsupported diagram"
+        press_key(app, "Escape")
+
+    def test_left_to_right_lays_out_sideways(self, app: Page):
+        clear_canvas(app)
+        self._import(app, "graph LR\n  A[One] --> B[Two] --> C[Three]\n")
+        boxes = sorted(get_elements(app), key=lambda e: e.get("x", 0))
+        boxes = [b for b in boxes if b["type"] == "rectangle"]
+        assert len(boxes) == 3
+        # in LR the layers advance along x, so each box starts right of the last
+        assert boxes[0]["x"] < boxes[1]["x"] < boxes[2]["x"]

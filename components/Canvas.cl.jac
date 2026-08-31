@@ -27,6 +27,7 @@ def:pub Canvas(
     loadElementsRef: any,
     elementsForShareRef: any,
     setElementsRef: any,
+    addMultipleRef: any = None,
     endSessionRef: any,
     updateUsernameRef: any,
     onParticipantsChange: Callable[[dict], None],
@@ -597,6 +598,26 @@ def:pub Canvas(
         }
         if elementsForShareRef {
             elementsForShareRef.current = elementsHook.elements;
+        }
+        if addMultipleRef {
+            addMultipleRef.current = lambda (incoming: any) {
+                # One write, so an import is a single undo rather than one per
+                # shape. Each element still passes through fit_shape_to_label:
+                # nothing generated elsewhere has seen a text metric.
+                fitted = [];
+                ai = 0;
+                while ai < incoming.length {
+                    fitted.append(fit_shape_to_label(incoming[ai]));
+                    ai = ai + 1;
+                }
+                elementsHook.addMultipleElements(fitted);
+                selectionHook.clearSelection();
+                # Frame what just arrived. An imported diagram is taller than the
+                # viewport more often than not, and landing on a view that cuts
+                # it off reads as a broken import rather than a tall one.
+                setTimeout(lambda { fitToContent(); }, 60);
+                showToast("Imported " + str(fitted.length) + " elements");
+            };
         }
         if setElementsRef {
             setElementsRef.current = lambda (elements: any) {

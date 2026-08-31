@@ -59,6 +59,7 @@ def:pub TopBar(
     onSave: Callable[[], None],
     onLoad: Callable[[any], None],
     onShowShortcuts: Callable[[], None],
+    onImportMermaid: Callable[[], None],
     onShare: Callable[[], None],
     onCollab: Callable[[], None],
     onParticipantListToggle: Callable[[], None],
@@ -311,6 +312,15 @@ def:pub TopBar(
                 {"Open"}
                 <span className="ml-auto text-xs text-slate-400">{"Ctrl+O"}</span>
             </button>
+            <button onClick={lambda { onImportMermaid(); menuOpen = False; }}
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-slate-900/5 flex items-center gap-3">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="7" height="5" rx="1" /><rect x="14" y="16" width="7" height="5" rx="1" />
+                    <path d="M6.5 8v4a2 2 0 0 0 2 2h6a2 2 0 0 1 2 2v0" />
+                </svg>
+                <span>{"Import from Mermaid"}</span>
+            </button>
+
             <button onClick={lambda { handleSave(); menuOpen = False; }}
                 className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-slate-900/5 flex items-center gap-3">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

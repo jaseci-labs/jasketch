@@ -13,6 +13,7 @@ cl {
     import from .components.layout.TopBar { TopBar }
     import from .components.layout.Sidebar { Sidebar }
     import from .components.layout.ChatPanel { ChatPanel }
+    import from .components.layout.MermaidDialog { MermaidDialog }
     import from .components.layout.share_dialog { ShareDialog }
     import from .components.layout.participant_list { ParticipantList }
     import from .components.Canvas { Canvas }
@@ -49,6 +50,7 @@ cl {
         # The inspector is always present. This only folds it away for the
         # moments you want the canvas edge to edge.
         has inspectorOpen: bool = True;
+        has mermaidOpen: bool = False;
 
         # With the select tool and nothing selected there is nothing to
         # configure, so the inspector is not just collapsed -- it is absent, and
@@ -86,6 +88,7 @@ cl {
         loadElementsRef = useRef(None);
         elementsForShareRef = useRef([]);
         setElementsRef = useRef(None);
+        addMultipleRef = useRef(None);
 
         def handleDismissShareError() -> None {
             shareLoadError = "";
@@ -182,6 +185,7 @@ cl {
                 onSave={lambda { if saveRef.current { saveRef.current(); } }}
                 onLoad={lambda (file: any) { if loadElementsRef.current { loadElementsRef.current(file); } }}
                 onShowShortcuts={lambda { showShortcuts = not showShortcuts; }}
+                onImportMermaid={lambda { mermaidOpen = True; }}
                 onShare={lambda { shareDialogTab = "static"; shareDialogOpen = True; }}
                 onCollab={lambda { shareDialogTab = "collab"; shareDialogOpen = True; }}
                 roomState={roomState}
@@ -213,6 +217,7 @@ cl {
                         loadElementsRef={loadElementsRef}
                         elementsForShareRef={elementsForShareRef}
                         setElementsRef={setElementsRef}
+                        addMultipleRef={addMultipleRef}
                         endSessionRef={endSessionRef}
                         updateUsernameRef={updateUsernameRef}
                         onParticipantsChange={lambda (p: any) { participants = p; }}
@@ -277,6 +282,18 @@ cl {
                 </div> or None}
 
 
+
+                <MermaidDialog
+                    is_open={mermaidOpen}
+                    on_close={lambda { mermaidOpen = False; }}
+                    color={currentColor}
+                    stroke_width={currentStrokeWidth}
+                    font_family={currentFontFamily}
+                    font_size={currentFontSize}
+                    on_import={lambda (els: any) {
+                        if addMultipleRef.current { addMultipleRef.current(els); }
+                    }}
+                />
 
                 <ShareDialog
                     is_open={shareDialogOpen}
