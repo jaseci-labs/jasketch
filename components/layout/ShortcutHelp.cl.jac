@@ -4,6 +4,8 @@ def:pub ShortcutHelp(onClose: Callable[[], None]) -> JsxElement {
 
     toolShortcuts = [
         {"action": "Hand (pan)", "key": "Space"},
+        {"action": "Pan the canvas", "key": "Scroll"},
+        {"action": "Zoom the canvas", "key": "Ctrl+Scroll"},
         {"action": "Select", "key": "1"},
         {"action": "Pencil", "key": "2"},
         {"action": "Line", "key": "3"},

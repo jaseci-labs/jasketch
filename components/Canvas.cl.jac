@@ -100,6 +100,9 @@ def:pub Canvas(
     selectedElementRef = useRef(None);
     selectedElementsRef = useRef([]);
     altDragCopiedRef = useRef(False);
+    # Where an Alt+drag copy started, so its release can tell whether the copy
+    # ever moved off the original.
+    altDragOriginRef = useRef(None);
     drawingStateRef = useRef(drawingState);
     viewportHookRef = useRef(viewportHook);
     selectionHookRef = useRef(selectionHook);
@@ -1246,14 +1249,9 @@ def:pub Canvas(
             elementsHook.addElement(singleDup);
         }
         contextMenu = None;
+            showToast("Duplicated");
     }
 
-    """Move the selection to the very front or the very back of the stack.
-
-    ONE setElements call, not a remove followed by an add: both rebuild the list
-    from the CURRENT render, so that pair cancelled out and bring-to-front did
-    nothing at all. The selection is also kept -- clearing it meant you could not
-    layer twice in a row and lost your place after a single press."""
     def _reorder_selection(to_front: bool) -> None {
         picked = [];
         multi = selectedElementsRef.current;
@@ -1480,6 +1478,7 @@ def:pub Canvas(
             } else {
                 selectionHook.setSelectedElement(None);
             }
+            showToast("Pasted");
         }
     }
 
@@ -2068,6 +2067,7 @@ def:pub Canvas(
         if selectionHook.isDragging and currentTool == "select" {
             # Alt+Drag to duplicate: clone originals in place, then drag copies
             if e.altKey and not altDragCopiedRef.current {
+                altDragOriginRef.current = {"x": pos.x, "y": pos.y};
                 if selectionHook.selectedElements.length > 1 {
                     clones = [];
                     aci = 0;
@@ -2093,8 +2093,13 @@ def:pub Canvas(
                     singleClone = {**selectionHook.selectedElement.element};
                     singleClone.id = None;
                     elementsHook.addElement(singleClone);
-                    selectionHook.setSelectedElement({"element": singleClone, "id": singleClone.id});
+                    # Clear the multi-selection FIRST. setSelectedElements also
+                    # re-points the primary element, so doing it second wiped the
+                    # copy we had just selected and left nothing selected at all
+                    # -- the new shape could not be nudged or restyled without
+                    # clicking it again.
                     selectionHook.setSelectedElements([]);
+                    selectionHook.setSelectedElement({"element": singleClone, "id": singleClone.id});
                     altDragCopiedRef.current = True;
                     return;
                 }
@@ -2429,8 +2434,27 @@ def:pub Canvas(
         }
 
         if selectionHook.isDragging {
+            # An Alt+drag that barely moved leaves the copy exactly on top of the
+            # original: invisible, and indistinguishable from nothing having
+            # happened at all. Nudge it clear so the duplicate is something you
+            # can see and undo, rather than a surprise found later.
+            if altDragCopiedRef.current and altDragOriginRef.current {
+                # `pos` is declared further down this function, so it cannot be
+                # read here -- take the position directly instead.
+                releasedAt = getMousePosition(e, canvasRef.current, viewportHook.panOffset, viewportHook.zoom);
+                travelled = Math.sqrt(
+                    Math.pow(releasedAt.x - altDragOriginRef.current.x, 2)
+                    + Math.pow(releasedAt.y - altDragOriginRef.current.y, 2)
+                );
+                if travelled < 6 {
+                    if nudgeSelection(20, 20) {
+                        showToast("Duplicated");
+                    }
+                }
+            }
             elementsHook.commitToHistory();
         }
+        altDragOriginRef.current = None;
         # The guides belong to the gesture, so they go when it does.
         snapGuidesRef.current = [];
         selectionHook.stopDragging();
@@ -2708,12 +2732,12 @@ def:pub Canvas(
                 onSelectAll={handleSelectAll}
             />
 
-            <div className="absolute bottom-4 left-4 flex items-center gap-2 z-40 select-none">
-              <div className="jsk-glass flex items-center rounded-xl">
+            <div className="absolute bottom-4 left-4 flex items-center z-40 select-none">
+              <div className="jsk-glass flex items-center rounded-xl overflow-hidden">
                 <button
                     title="Undo (Ctrl+Z)"
                     aria-label="Undo"
-                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 rounded-l-xl transition-colors"
+                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 transition-colors"
                     onClick={lambda { elementsHook.undo(); selectionHook.clearSelection(); }}
                 >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2723,17 +2747,16 @@ def:pub Canvas(
                 <button
                     title="Redo (Ctrl+Shift+Z)"
                     aria-label="Redo"
-                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 rounded-r-xl transition-colors"
+                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 transition-colors"
                     onClick={lambda { elementsHook.redo(); selectionHook.clearSelection(); }}
                 >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="m15 14 5-5-5-5" /><path d="M20 9H10a6 6 0 0 0 0 12h3" />
                     </svg>
                 </button>
-              </div>
-              <div className="jsk-glass flex items-center rounded-xl">
+                <div className="w-px h-5 bg-slate-900/10 mx-0.5"></div>
                 <button
-                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 rounded-l-xl text-base font-medium transition-colors"
+                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 text-base font-medium transition-colors"
                     onClick={lambda {
                         zoomCanvas = canvasRef.current;
                         if zoomCanvas {
@@ -2762,7 +2785,7 @@ def:pub Canvas(
                 <button
                     title="Zoom to fit (Shift+1)"
                     aria-label="Zoom to fit"
-                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 rounded-r-xl border-l border-slate-900/10/80 transition-colors"
+                    className="px-3 py-2 text-slate-600 hover:bg-slate-900/10 border-l border-slate-900/10 transition-colors"
                     onClick={lambda { fitToContent(); }}
                 >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

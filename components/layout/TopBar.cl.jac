@@ -253,11 +253,10 @@ def:pub TopBar(
                 </button>
             </div>
 
-            <div className="min-w-[150px] flex items-center justify-end gap-1 relative">
-                <span className="text-[10px] text-slate-400 hidden lg:block mr-2">{"Scroll to pan | Ctrl+scroll to zoom"}</span>
-
+            <div className="min-w-[150px] flex items-center justify-end relative">
+                <div className="jsk-glass flex items-center gap-0.5 rounded-xl px-1.5 py-1">
                 <button onClick={lambda {handleShare();}} title="Shareable link"
-                    className="w-8 h-8 rounded-md flex items-center justify-center text-orange-600 hover:bg-orange-50 transition-all duration-150">
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-900/5 transition-colors">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                         <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
@@ -284,11 +283,12 @@ def:pub TopBar(
                     {str(participant_count)}
                 </button> or None}
 
-                <button ref={menuBtnRef} onClick={lambda { menuOpen = not menuOpen; }} title="Menu" className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400">
+                <button ref={menuBtnRef} onClick={lambda { menuOpen = not menuOpen; }} title="Menu" className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-900/5 transition-colors">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                         <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
                     </svg>
                 </button>
+                </div>
             </div>
         </div>
 
