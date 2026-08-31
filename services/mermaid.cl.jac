@@ -739,6 +739,11 @@ drags its arrows with it exactly as a hand-drawn one would."""
 def:pub to_elements(parsed: any, color: str, stroke_width: float, font_family: str, font_size: float) -> list {
     nodes = parsed["nodes"];
     edges = parsed["edges"];
+    # Which way the layers advance decides which FACE an edge should leave from.
+    # Without this every edge was routed bottom-to-top, which is right for TD and
+    # draws a diagonal straight through the shapes in LR.
+    direction = (parsed["direction"] or "TD").upper();
+    horizontal = direction == "LR" or direction == "RL";
     out = [];
     id_for = {};
 
@@ -800,24 +805,45 @@ def:pub to_elements(parsed: any, color: str, stroke_width: float, font_family: s
             }
             if a and b {
                 # leave from the side facing the target, arrive on the facing side
-                ax = a["x"] + a["width"] / 2;
-                ay = a["y"] + a["height"];
-                bx = b["x"] + b["width"] / 2;
-                by = b["y"];
-                a_side = "bottom";
-                b_side = "top";
-                if Math.abs(b["y"] - a["y"]) < 8 {
-                    # same layer: go sideways instead of through each other
-                    if b["x"] > a["x"] {
-                        ax = a["x"] + a["width"]; ay = a["y"] + a["height"] / 2; a_side = "right";
-                        bx = b["x"]; by = b["y"] + b["height"] / 2; b_side = "left";
-                    } else {
+                # Leave from the face pointing at the target, arrive on the
+                # face pointing back. Which axis counts as "forward" depends on
+                # the layout direction, not on the shapes.
+                if horizontal {
+                    ax = a["x"] + a["width"]; ay = a["y"] + a["height"] / 2;
+                    bx = b["x"]; by = b["y"] + b["height"] / 2;
+                    a_side = "right"; b_side = "left";
+                    if Math.abs(b["x"] - a["x"]) < 8 {
+                        # Same column in a sideways layout: go up or down
+                        # instead of doubling back through both shapes.
+                        if b["y"] > a["y"] {
+                            ax = a["x"] + a["width"] / 2; ay = a["y"] + a["height"]; a_side = "bottom";
+                            bx = b["x"] + b["width"] / 2; by = b["y"]; b_side = "top";
+                        } else {
+                            ax = a["x"] + a["width"] / 2; ay = a["y"]; a_side = "top";
+                            bx = b["x"] + b["width"] / 2; by = b["y"] + b["height"]; b_side = "bottom";
+                        }
+                    } elif b["x"] < a["x"] {
+                        # A back edge, so face the other way.
                         ax = a["x"]; ay = a["y"] + a["height"] / 2; a_side = "left";
                         bx = b["x"] + b["width"]; by = b["y"] + b["height"] / 2; b_side = "right";
                     }
-                } elif b["y"] < a["y"] {
-                    ay = a["y"]; a_side = "top";
-                    by = b["y"] + b["height"]; b_side = "bottom";
+                } else {
+                    ax = a["x"] + a["width"] / 2; ay = a["y"] + a["height"];
+                    bx = b["x"] + b["width"] / 2; by = b["y"];
+                    a_side = "bottom"; b_side = "top";
+                    if Math.abs(b["y"] - a["y"]) < 8 {
+                        # same layer: go sideways instead of through each other
+                        if b["x"] > a["x"] {
+                            ax = a["x"] + a["width"]; ay = a["y"] + a["height"] / 2; a_side = "right";
+                            bx = b["x"]; by = b["y"] + b["height"] / 2; b_side = "left";
+                        } else {
+                            ax = a["x"]; ay = a["y"] + a["height"] / 2; a_side = "left";
+                            bx = b["x"] + b["width"]; by = b["y"] + b["height"] / 2; b_side = "right";
+                        }
+                    } elif b["y"] < a["y"] {
+                        ay = a["y"]; a_side = "top";
+                        by = b["y"] + b["height"]; b_side = "bottom";
+                    }
                 }
                 if has_reverse[e["to"] + " " + e["from"]] {
                     # Perpendicular to this edge's own direction, so the

@@ -2756,6 +2756,56 @@ class TestTextFieldsKeepTheirKeys:
         assert len(get_elements(app)) == 0, "canvas Backspace stopped deleting"
 
 
+class TestMermaidRoutesAlongTheLayoutDirection:
+    """An edge must leave the face that points at its target.
+
+    to_elements used to decide this on the vertical axis only, with a sideways
+    special case that fired just when two nodes shared a row within 8px. In LR
+    the layers advance along x, so that test almost never fired and every edge
+    was drawn bottom-to-top: a diagonal straight through the shapes.
+    """
+
+    CHART = (
+        "graph LR\n"
+        "    A[One] --> B[Two]\n"
+        "    B --> C[Three]\n"
+        "    C --> B\n"
+    )
+
+    def _import(self, page: Page, text: str):
+        page.locator("button[title='Import from Mermaid']").first.click()
+        page.wait_for_timeout(ACTION_DELAY)
+        page.locator("textarea").last.fill(text)
+        page.get_by_text("Add to canvas").click()
+        page.wait_for_timeout(ACTION_DELAY * 4)
+
+    def _faces(self, page: Page):
+        out = []
+        for e in get_elements(page):
+            if e["type"] in ("arrow", "line") and e.get("startBinding"):
+                out.append(e["startBinding"]["side"] + "->" + e["endBinding"]["side"])
+        return out
+
+    def test_left_to_right_edges_leave_the_right_face(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.CHART)
+        faces = self._faces(app)
+        assert faces.count("right->left") == 2, f"forward edges routed as {faces}"
+        assert "bottom->top" not in faces, f"a sideways chart used vertical faces: {faces}"
+
+    def test_a_back_edge_faces_the_other_way(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.CHART)
+        assert "left->right" in self._faces(app), "the C --> B back edge did not reverse"
+
+    def test_top_down_still_routes_vertically(self, app: Page):
+        """The vertical path was correct already; make sure it was not traded."""
+        clear_canvas(app)
+        self._import(app, "graph TD\n    A[One] --> B[Two]\n    B --> C[Three]\n")
+        faces = self._faces(app)
+        assert faces.count("bottom->top") == 2, f"top-down chart routed as {faces}"
+
+
 class TestMermaidStateDiagrams:
     """A state machine is a directed graph, so it reuses the flowchart pipeline.
 
