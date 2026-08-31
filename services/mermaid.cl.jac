@@ -157,6 +157,42 @@ def _read_node(token: str) -> any {
 }
 
 
+
+"""Read a Mermaid style declaration into the fields this canvas understands.
+
+`fill:#bbf,stroke:#333,stroke-width:2px` becomes
+{"fillColor": "#bbf", "color": "#333", "strokeWidth": 2}. Anything else in the
+declaration is ignored rather than refused -- Mermaid styles carry plenty that
+has no meaning on a hand-drawn canvas (font-weight, colour of the label, dash
+arrays) and dropping those is better than dropping the whole line."""
+def _parse_style(decl: str) -> any {
+    out = {};
+    pieces = str(decl or "").split(",");
+    si = 0;
+    while si < len(pieces) {
+        bit = pieces[si].strip();
+        colon = bit.find(":");
+        if colon > 0 {
+            key = bit[:colon].strip().lower();
+            val = bit[colon + 1:].strip();
+            if key == "fill" {
+                out["fillColor"] = val;
+            } elif key == "stroke" {
+                out["color"] = val;
+            } elif key == "stroke-width" {
+                num = val.replace("px", "").strip();
+                parsed_w = parseFloat(num);
+                if parsed_w == parsed_w {
+                    out["strokeWidth"] = parsed_w;
+                }
+            }
+        }
+        si = si + 1;
+    }
+    return out;
+}
+
+
 """Parse Mermaid flowchart text.
 
 Returns {"ok": bool, "error": str, "direction": str, "nodes": list, "edges": list}.
@@ -185,6 +221,8 @@ def:pub parse_mermaid(source: str) -> any {
     node_order = [];
     node_map = {};
     edges = [];
+    styles = {};       # node id -> style fields
+    class_defs = {};   # class name -> style fields
 
     li = 0;
     while li < len(raw_lines) {
@@ -225,10 +263,42 @@ def:pub parse_mermaid(source: str) -> any {
         if lowered.startswith("subgraph") or lowered == "end" {
             continue;
         }
-        # styling directives carry no geometry
-        if lowered.startswith("style ") or lowered.startswith("classdef ")
-            or lowered.startswith("class ") or lowered.startswith("linkstyle ")
-            or lowered.startswith("click ") {
+        # Styling. Mermaid carries colour three ways and all three are read:
+        # a direct `style`, a named `classDef`, and `class` applying one.
+        if lowered.startswith("style ") {
+            body = line[6:].strip();
+            gap = body.find(" ");
+            if gap > 0 {
+                styles[body[:gap].strip()] = _parse_style(body[gap + 1:]);
+            }
+            continue;
+        }
+        if lowered.startswith("classdef ") {
+            body = line[9:].strip();
+            gap = body.find(" ");
+            if gap > 0 {
+                class_defs[body[:gap].strip()] = _parse_style(body[gap + 1:]);
+            }
+            continue;
+        }
+        if lowered.startswith("class ") {
+            body = line[6:].strip();
+            gap = body.rfind(" ");
+            if gap > 0 {
+                cls = body[gap + 1:].strip();
+                targets = body[:gap].split(",");
+                ti = 0;
+                while ti < len(targets) {
+                    who = targets[ti].strip();
+                    if who != "" and cls in class_defs {
+                        styles[who] = class_defs[cls];
+                    }
+                    ti = ti + 1;
+                }
+            }
+            continue;
+        }
+        if lowered.startswith("linkstyle ") or lowered.startswith("click ") {
             continue;
         }
 
@@ -333,6 +403,11 @@ def:pub parse_mermaid(source: str) -> any {
     while ni < len(node_order) {
         nodes.append(node_map[node_order[ni]]);
         ni = ni + 1;
+    }
+    ci2 = 0;
+    while ci2 < len(nodes) {
+        nodes[ci2]["style"] = styles[nodes[ci2]["id"]] or {};
+        ci2 = ci2 + 1;
     }
     return {"ok": True, "error": "", "direction": direction, "nodes": nodes, "edges": edges};
 }
@@ -507,6 +582,13 @@ def:pub to_elements(parsed: any, color: str, stroke_width: float, font_family: s
         n = nodes[ni];
         el_id = "mm-" + str(Date.now()) + "-" + str(ni);
         id_for[n["id"]] = el_id;
+        # A node's own style wins over the panel defaults, per field, so a
+        # diagram that colours only some nodes keeps the rest consistent with
+        # whatever the user was drawing in.
+        st = n["style"] or {};
+        node_color = st["color"] or color;
+        node_fill = st["fillColor"] or "transparent";
+        node_stroke = st["strokeWidth"] or stroke_width;
         out.append({
             "id": el_id,
             "type": n["shape"],
@@ -514,13 +596,13 @@ def:pub to_elements(parsed: any, color: str, stroke_width: float, font_family: s
             "y": n["y"],
             "width": n["width"],
             "height": n["height"],
-            "color": color,
-            "strokeWidth": stroke_width,
-            "fillColor": "transparent",
+            "color": node_color,
+            "strokeWidth": node_stroke,
+            "fillColor": node_fill,
             "lineStyle": "solid",
             "opacity": 1.0,
             "shapeText": n["label"],
-            "shapeTextColor": color,
+            "shapeTextColor": node_color,
             "shapeTextFontSize": font_size,
             "shapeTextFontFamily": font_family
         });

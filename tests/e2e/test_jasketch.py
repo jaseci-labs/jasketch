@@ -2502,3 +2502,38 @@ class TestMermaidImport:
         assert len(boxes) == 3
         # in LR the layers advance along x, so each box starts right of the last
         assert boxes[0]["x"] < boxes[1]["x"] < boxes[2]["x"]
+
+    STYLED = (
+        "graph TD\n"
+        "    A[Start] --> B{Approved?}\n"
+        "    B -->|Yes| C[Ship it]\n"
+        "    B -->|No| D[Send back]\n"
+        "    style A fill:#dbeafe,stroke:#1971c2,stroke-width:3px\n"
+        "    classDef danger fill:#ffe3e3,stroke:#e03131\n"
+        "    class D danger\n"
+    )
+
+    def test_style_and_classdef_carry_colour_through(self, app: Page):
+        clear_canvas(app)
+        self._import(app, self.STYLED)
+        by_label = {e.get("shapeText"): e for e in get_elements(app) if e.get("shapeText")}
+
+        start = by_label["Start"]
+        assert start["color"] == "#1971c2", f"stroke colour lost: {start['color']}"
+        assert start["fillColor"] == "#dbeafe", f"fill lost: {start['fillColor']}"
+        assert start["strokeWidth"] == 3, f"stroke width lost: {start['strokeWidth']}"
+
+        # applied through classDef + class rather than a direct style
+        back = by_label["Send back"]
+        assert back["color"] == "#e03131" and back["fillColor"] == "#ffe3e3", (
+            f"classDef did not reach the node: {back['color']}, {back['fillColor']}"
+        )
+
+    def test_unstyled_nodes_keep_the_current_defaults(self, app: Page):
+        """A diagram that colours only some nodes should leave the rest looking
+        like whatever the user was already drawing in."""
+        clear_canvas(app)
+        self._import(app, self.STYLED)
+        by_label = {e.get("shapeText"): e for e in get_elements(app) if e.get("shapeText")}
+        plain = by_label["Approved?"]
+        assert plain["fillColor"] == "transparent", f"unstyled node picked up a fill: {plain['fillColor']}"
